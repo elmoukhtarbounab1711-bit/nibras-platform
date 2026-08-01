@@ -219,6 +219,31 @@ CREATE TABLE IF NOT EXISTS procedure_progress (
     PRIMARY KEY (user_id, procedure_id, step_id)
 );
 
+-- مولّد الوثائق (المرحلة 4 — قرار D-022، وثيقة 06 §5):
+-- القوالب بيانات (field_schema + body_template Jinja2) لا كود، والتوليد
+-- بحفظ نصه في doc_text (بدل مخزن كائنات غير متوفر محليًا) ثم تصدير PDF/DOCX
+-- عند الطلب في الذاكرة.
+CREATE TABLE IF NOT EXISTS document_templates (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug          TEXT UNIQUE NOT NULL,
+    name          TEXT NOT NULL,
+    category      TEXT NOT NULL,
+    field_schema  TEXT NOT NULL,
+    body_template TEXT NOT NULL,
+    created_at    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS generated_documents (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    template_id INTEGER NOT NULL REFERENCES document_templates(id),
+    answers_json TEXT NOT NULL,
+    version     INTEGER NOT NULL DEFAULT 1,
+    doc_text    TEXT NOT NULL,
+    created_at  TEXT,
+    updated_at  TEXT
+);
+
 -- فهارس مفاتيح أجنبية: حذف تسلسلي فعّال وبحث عن جلسات مستخدم/توكنات استعادته
 CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles(role_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
@@ -228,6 +253,8 @@ CREATE INDEX IF NOT EXISTS idx_ai_queries_created_at ON ai_queries(created_at);
 CREATE INDEX IF NOT EXISTS idx_calculator_runs_calculator_id ON calculator_runs(calculator_id);
 CREATE INDEX IF NOT EXISTS idx_procedure_steps_procedure_id ON procedure_steps(procedure_id);
 CREATE INDEX IF NOT EXISTS idx_procedure_progress_user ON procedure_progress(user_id);
+CREATE INDEX IF NOT EXISTS idx_generated_documents_user_id ON generated_documents(user_id);
+CREATE INDEX IF NOT EXISTS idx_generated_documents_template_id ON generated_documents(template_id);
 """
 
 
@@ -267,8 +294,14 @@ def init_db(reset: bool = False):
         _ensure_column(conn, "user_roles", "rejection_reason", "TEXT")
     # بذر الأدوار الثابتة وبيانات الإسناد بعد إنشاء المخطط (استيراد مؤجَّل
     # لكسر الدورة الظاهرية — نمط ensure_roles القائم في D-021)
-    from . import services_auth, services_calculators, services_procedures
+    from . import (
+        services_auth,
+        services_calculators,
+        services_documents,
+        services_procedures,
+    )
 
     services_auth.ensure_roles()
     services_calculators.ensure_defaults()
     services_procedures.ensure_defaults()
+    services_documents.ensure_defaults()

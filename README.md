@@ -25,6 +25,7 @@ nibras-backend/
 │   ├── services_calculators.py # الحاسبات القانونية (حاسبة الإرث — الفرائض)
 │   ├── services_procedures.py  # مساعد المساطر + تتبع تقدم المستخدم
 │   ├── services_ai.py          # واجهة الذكاء الاصطناعي (موجَّه + تعليم عام)
+│   ├── services_documents.py   # مولّد الوثائق (قوالب + تحقق + توليد + تصدير PDF/DOCX)
 │   ├── create_admin.py     # CLI إنشاء أول حساب مسؤول (python -m app.create_admin)
 │   ├── middleware/
 │   │   └── auth_middleware.py  # require_auth و require_role(*roles)
@@ -34,7 +35,8 @@ nibras-backend/
 │       ├── auth.py         # نقاط نهاية المصادقة (Blueprint)
 │       ├── calculators.py  # نقاط نهاية الحاسبات القانونية (Blueprint)
 │       ├── procedures.py   # نقاط نهاية المساطر وتقدمها (Blueprint)
-│       └── ai.py           # نقاط نهاية واجهة الذكاء الاصطناعي (Blueprint)
+│       ├── ai.py           # نقاط نهاية واجهة الذكاء الاصطناعي (Blueprint)
+│       └── documents.py    # نقاط نهاية مولّد الوثائق (Blueprint)
 ├── admin.html           # لوحة إدارة داخلية مستقلة (دخول + محتوى + طابور التحقق)
 ├── tests/               # اختبارات الوحدة والتكامل (pytest)
 ├── scripts/run_checks.py # بوابة الفحص المحلية (ruff + pytest)
@@ -71,6 +73,9 @@ python -m pytest -q                    # الاختبارات مباشرة
 | `NIBRAS_AI_RETRIEVAL_LIMIT` | `5` | عدد المواد المسترجعة لبناء سياق الرد الموجَّه. |
 | `NIBRAS_AI_RATE_LIMIT_MAX_REQUESTS` | `20` | حد طلبات `/api/ai/explain` لكل مستخدم لكل نافذة. |
 | `NIBRAS_AI_RATE_LIMIT_WINDOW_SECONDS` | `3600` | نافذة حد طلبات الذكاء الاصطناعي بالثواني. |
+| `NIBRAS_PDF_FONT` | (تلقائي) | مسار خط عربي لتصدير PDF — فارغ = حل تلقائي من مسارات شائعة (ويندوز Arial، لينكس Noto Naskh/Amiri). |
+| `NIBRAS_DOC_RATE_LIMIT_MAX_REQUESTS` | `10` | حد توليد الوثائق لكل مستخدم لكل نافذة. |
+| `NIBRAS_DOC_RATE_LIMIT_WINDOW_SECONDS` | `3600` | نافذة حد توليد الوثائق بالثواني. |
 
 ## التشغيل
 
@@ -112,6 +117,12 @@ python3 run.py              # يشتغل على http://localhost:8000
 | GET | `/api/procedures/<slug>` | تفاصيل مسطرة + خطواتها مرتبة |
 | POST | `/api/procedures/<slug>/progress` | تحديث تقدم خطوة (يتطلب JWT) |
 | POST | `/api/ai/explain` | شرح موجَّه من المواد المسترجعة أو تعليم عام (يتطلب JWT + حد معدل) |
+| GET | `/api/documents/templates?category=` | قائمة قوالب الوثائق (عام) |
+| GET | `/api/documents/templates/<slug>` | تفاصيل قالب: الحقول (field_schema) + هيكل الوثيقة (عام) |
+| POST | `/api/documents/generate` | توليد وثيقة `{template_id, answers}` (يتطلب JWT + حد معدل) |
+| GET | `/api/documents/my` | وثائق المستخدم المولَّدة (يتطلب JWT) |
+| POST | `/api/documents/<id>/regenerate` | إعادة توليد بنسخة +1 عند التعديل (يتطلب JWT + مالك) |
+| GET | `/api/documents/<id>/export?format=pdf\|docx` | تنزيل الوثيقة PDF/DOCX (يتطلب JWT + مالك) |
 
 مثال تنفيذ حاسبة الإرث (زوجة + ابن، تركة 120000):
 ```bash
@@ -126,6 +137,16 @@ curl -X POST http://localhost:8000/api/ai/explain \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <JWT>" \
   -d '{"question": "ماذا يقع للزوجة عند وجود أبناء؟", "mode": "grounded"}'
+```
+
+مثال توليد وثيقة (عقد كراء سكني — يتطلب التوكن):
+```bash
+curl -X POST http://localhost:8000/api/documents/generate \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <JWT>" \
+  -d '{"template_id": 1, "answers": {"landlord_name": "علي", "tenant_name": "فاطمة",
+       "property_address": "الدار البيضاء", "monthly_rent": 2500,
+       "start_date": "2026-09-01", "duration_months": 12, "deposit_amount": 5000}}'
 ```
 
 كل إجراء إداري (إنشاء/تعديل/حذف محتوى، قبول/رفض تحقق) يُسجَّل في `admin_audit_log`
@@ -199,3 +220,6 @@ curl -X POST http://localhost:8000/api/admin/texts \
    Elasticsearch) عند نمو الحجم.
 4. **مزيد من الحاسبات القانونية**: حاسبة الإرث شغّالة (الفروض، العول، الرد، التعصيب،
    الحجب)، وتُضاف حاسبات أخرى (الطلاق، التعويض...) بنفس نمط الحاسبة المفردة.
+5. **الاشتراكات/الفواتير والفتح المتميز لمولّد الوثائق**: المولّد شغّال بلا قيود؛
+   فتح الميزة المتميزة (gating عبر `has_premium_access`) يُربط بقرار بوابة الدفع
+   (BRD §5) — إضافة دالة واحدة عند بناء وحدة الفوترة.

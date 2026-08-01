@@ -304,3 +304,59 @@
   §3/§4/§6؛ AI Architecture 13؛ Security 12 §6؛ Technical Spec §5؛
   materielles القانونية: مدونة الأسرة (المواد 334-356) — fiscamaroc.com و
   fasl.ma/عدالة.
+
+---
+
+## المرحلة 4 — مولّد الوثائق (Roadmap Phase 3)
+
+## D-022 — نطاق مولّد الوثائق وقراراتها
+- **القرار (النطاق):** تُبنى في المرحلة 4 ميزة توليد الوثائق القانونية
+  (المواصفة الوظيفية §5، SRS FR-5.1→5.4) — الميزة الرئيسية الفاخرة المذكورة
+  في الموجز الأصلي (PRD P1 "Core premium value proposition"). المسار:
+  اختيار قالب ← سؤال موجَّه منظم (حقول مُعرَّفة بخطة JSON) ← تحقق صارم من
+  كل إجابة ← توليد باستبدال في هيكل ثابت (Jinja2) ← حفظ لكل مستخدم متدرج
+  (version) ← تصدير PDF وDOCX. **الاشتراكات/الفواتير تبقى مؤجَّلة** حتى
+  حسم قرار بوابة الدفع (BRD §5)؛ الفتح (gating) المتميز يُضاف لاحقًا عبر
+  دالة `has_premium_access(user_id)` — لا تُبنى الآن. **مساعدة الذكاء
+  الاصطناعي في صياغة الفقرات الحرة (Use Case 3 — وثيقة 13 §4) خارج
+  النطاق**: الهيكل ثابت بالقالب، والاستبدال هو الآلية (وثيقة 13 §4، المواصفة
+  التقنية §6)؛ الحقول النصية الحرة يملؤها المستخدم بنفسه.
+- **قرار التصميم (القوالب بيانات لا كود):** القوالب صفوف في
+  `document_templates`: `field_schema` (قائمة حقول مرتبة: name, label, type,
+  required, قيود اختيارية) و`body_template` نص Jinja2 — تتيح إضافة أنواع
+  وثائق جديدة عبر البيانات لا إعادة نشر (المواصفة التقنية §6؛ Architecture
+  §6.4). أنواع الحقول: text, textarea, number, date, select, boolean.
+  التوليد بـ Jinja2 مع `StrictUndefined` (أي متغير مفقود في القالب خطأ صريح
+  لا فراغ صامت). تُبذَر 3 قوالب عربية نموذجية (عقد كراء سكني، وكالة خاصة،
+  إقرار بالدين) عبر `ensure_defaults()` بنمط D-021.
+- **قرار التصدير (PDF عربي بلا تبعيات نظام):** WeasyPrint (HTML→PDF) غير
+  قابل للتشغيل على ويندوز هنا (يتطلب runtime GTK/Pango خارجي، فشل تحميل
+  libgobject) — جُرِّب واستُبعد. المعتمد: **DOCX** عبر python-docx (يعالج
+  العربية محليًا، مع ضبط اتجاه الفقرة RTL) و**PDF** عبر reportlab +
+  arabic-reshaper + python-bidi (بايثون خالص) مع خط عربي يُحلَّل من قائمة
+  مسارات (ويندوز Arial؛ لينكس Noto Naskh/Amiri) قابل للتجاوز عبر
+  `NIBRAS_PDF_FONT`. PDF يُبنى في الذاكرة (BytesIO) ويُعاد كتنزيل — لا ملفات
+  على القرص ولا حاجة لتنظيف.
+- **قرار المخطط:** جدولان جديدان في SCHEMA (وثيقة 06 §5): `document_templates`
+  (slug UNIQUE, name, category, field_schema نص JSON, body_template) و
+  `generated_documents` (user_id FK CASCADE, template_id FK, answers_json
+  نص JSON, version int, **doc_text** — النص المولَّد الكامل مخزَّن لتكرار
+  التصدير بدون إعادة توليد، created_at, updated_at). **انحرافان عن وثيقة
+  06 §5:** (1) جدول `document_answers` مستغنى عنه — الإجابات مدمجة في
+  `answers_json` (وثيقة 06 تعرض الاثنين معًا وبينهما تكرار)، (2) بدل
+  `storage_key` لمخزن الكائنات (غير متوفر محليًا) نُخزِّن النص المولَّد في
+  `doc_text` ونُولّد ملفات التصدير عند الطلب في الذاكرة؛ يبقى نقل الملفات
+  لمخزن S3-compatible لاحقًا وفق Architecture §10 قرارًا قائمًا لا يُبنى الآن.
+- **قرار المسارات (API doc § Documents):** `GET /api/documents/templates` +
+  `GET /api/documents/templates/<slug>` عامان (التصفح مجاني)؛
+  `POST /api/documents/generate` و`GET /api/documents/my` و
+  `GET /api/documents/<id>/export?format=pdf|docx` بمصادقة، والوصول
+  للمالك فقط (owner-only — Security 12). إضافة: `POST
+  /api/documents/<id>/regenerate` (مالك فقط) لتحقيق FR-5.3 "متدرج عند
+  التعديل" (نسخة +1 مع تحديث doc_text) — إضافة صغيرة موثقة في README.
+  حد معدل لكل مستخدم على التوليد (نمط routes/auth.py) لأن التوليد حساب
+  وتخزين.
+- **المصدر:** Functional Specification §5؛ SRS FR-5.1→5.4؛ API Documentation
+  § Documents؛ Database Design 06 §5؛ Technical Specification §6؛
+  Architecture 00 §6.4/§10؛ AI Architecture 13 §4 (خارج النطاق)؛ Security 12؛
+  PRD 02 §4.4؛ Roadmap 23 Phase 3.

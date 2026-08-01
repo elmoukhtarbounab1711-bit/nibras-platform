@@ -101,3 +101,17 @@ AI_RETRIEVAL_LIMIT = _env_int("NIBRAS_AI_RETRIEVAL_LIMIT", 5)
 # حد معدل طلبات الذكاء الاصطناعي لكل مستخدم (وثيقة 13 §7 / Security 12 §6)
 AI_RATE_LIMIT_MAX_REQUESTS = _env_int("NIBRAS_AI_RATE_LIMIT_MAX_REQUESTS", 20)
 AI_RATE_LIMIT_WINDOW_SECONDS = _env_int("NIBRAS_AI_RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+# ---------------------------------------------------------------------------
+# مولّد الوثائق (المرحلة 4) — وفق المواصفة التقنية §6 وقرار D-022
+# ---------------------------------------------------------------------------
+
+# مسار خط PDF عربي (reportlab). فارغ = حل تلقائي من قائمة مسارات شائعة:
+# ويندوز Arial؛ لينكس Noto Naskh Arabic / Amiri. يَتعيّن في
+# services_documents._resolve_pdf_font(). (وثيقة D-022 — قرار التصدير)
+PDF_FONT_PATH = os.environ.get("NIBRAS_PDF_FONT", "")
+
+# حد معدل التوليد لكل مستخدم (التوليد حساب + تخزين — نمط حدّ الذكاء
+# الاصطناعي في D-021)
+DOC_RATE_LIMIT_MAX_REQUESTS = _env_int("NIBRAS_DOC_RATE_LIMIT_MAX_REQUESTS", 10)
+DOC_RATE_LIMIT_WINDOW_SECONDS = _env_int("NIBRAS_DOC_RATE_LIMIT_WINDOW_SECONDS", 3600)
