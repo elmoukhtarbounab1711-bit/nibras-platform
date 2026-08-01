@@ -1,0 +1,18 @@
+# قاعدة بيانات SQLite المحلية (تُنشأ بالتشغيل/البذر)
+nibras.db
+
+# بايثون
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# اختبارات
+.pytest_cache/
+.ruff_cache/
+
+# أدوات/بيئة
+.vscode/
+.idea/
+.DS_Store
