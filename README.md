@@ -22,13 +22,19 @@ nibras-backend/
 │   ├── services.py         # منطق المكتبة (معزول عن HTTP)
 │   ├── services_auth.py    # منطق المصادقة: argon2id, JWT, refresh, استعادة كلمة المرور
 │   ├── services_admin.py   # منطق لوحة الإدارة: إدارة المحتوى + طابور التحقق + التدقيق
+│   ├── services_calculators.py # الحاسبات القانونية (حاسبة الإرث — الفرائض)
+│   ├── services_procedures.py  # مساعد المساطر + تتبع تقدم المستخدم
+│   ├── services_ai.py          # واجهة الذكاء الاصطناعي (موجَّه + تعليم عام)
 │   ├── create_admin.py     # CLI إنشاء أول حساب مسؤول (python -m app.create_admin)
 │   ├── middleware/
 │   │   └── auth_middleware.py  # require_auth و require_role(*roles)
 │   └── routes/
 │       ├── library.py      # نقاط نهاية المكتبة العامة (Blueprint)
 │       ├── admin.py        # نقاط نهاية الإدارة — محمية بـ require_role("admin")
-│       └── auth.py         # نقاط نهاية المصادقة (Blueprint)
+│       ├── auth.py         # نقاط نهاية المصادقة (Blueprint)
+│       ├── calculators.py  # نقاط نهاية الحاسبات القانونية (Blueprint)
+│       ├── procedures.py   # نقاط نهاية المساطر وتقدمها (Blueprint)
+│       └── ai.py           # نقاط نهاية واجهة الذكاء الاصطناعي (Blueprint)
 ├── admin.html           # لوحة إدارة داخلية مستقلة (دخول + محتوى + طابور التحقق)
 ├── tests/               # اختبارات الوحدة والتكامل (pytest)
 ├── scripts/run_checks.py # بوابة الفحص المحلية (ruff + pytest)
@@ -58,6 +64,13 @@ python -m pytest -q                    # الاختبارات مباشرة
 | `NIBRAS_RATE_LIMIT_MAX_ATTEMPTS` | `5` | حد المحاولات على نقاط المصادقة والاستعادة. |
 | `NIBRAS_RATE_LIMIT_WINDOW_SECONDS` | `900` | نافذة حد المحاولات بالثواني. |
 | `NIBRAS_FRONTEND_BASE_URL` | `http://localhost:3000` | أساس رابط استعادة كلمة المرور في البريد. |
+| `NIBRAS_AI_PROVIDER` | `noop` | مزوّد الذكاء الاصطناعي: `noop` (تطوير حتمي بلا شبكة) أو `anthropic`. |
+| `ANTHROPIC_API_KEY` | (فارغ) | مفتاح Anthropic API — إلزامي عند ضبط `NIBRAS_AI_PROVIDER=anthropic`. |
+| `NIBRAS_AI_MODEL` | `claude-sonnet-4-5` | نموذج Anthropic المستخدم. |
+| `NIBRAS_AI_MAX_TOKENS` | `1024` | الحد الأقصى لرموز الرد. |
+| `NIBRAS_AI_RETRIEVAL_LIMIT` | `5` | عدد المواد المسترجعة لبناء سياق الرد الموجَّه. |
+| `NIBRAS_AI_RATE_LIMIT_MAX_REQUESTS` | `20` | حد طلبات `/api/ai/explain` لكل مستخدم لكل نافذة. |
+| `NIBRAS_AI_RATE_LIMIT_WINDOW_SECONDS` | `3600` | نافذة حد طلبات الذكاء الاصطناعي بالثواني. |
 
 ## التشغيل
 
@@ -93,6 +106,27 @@ python3 run.py              # يشتغل على http://localhost:8000
 | GET | `/api/admin/verification-queue` | طلبات التحقق المهنية في الانتظار (يتطلب دور `admin`) |
 | POST | `/api/admin/verification/<user_id>/approve` | قبول طلب تحقق وتفعيل الدور (يتطلب دور `admin`) |
 | POST | `/api/admin/verification/<user_id>/reject` | رفض طلب تحقق مع سبب مطلوب (يتطلب دور `admin`) |
+| GET | `/api/calculators` | قائمة الحاسبات القانونية المتاحة |
+| POST | `/api/calculators/<slug>/run` | تنفيذ حاسبة (مثلًا `inheritance`) — المدخلات/المخرجات JSON |
+| GET | `/api/procedures?category=` | قائمة مساطر الحياة (تصفية اختيارية حسب الفئة) |
+| GET | `/api/procedures/<slug>` | تفاصيل مسطرة + خطواتها مرتبة |
+| POST | `/api/procedures/<slug>/progress` | تحديث تقدم خطوة (يتطلب JWT) |
+| POST | `/api/ai/explain` | شرح موجَّه من المواد المسترجعة أو تعليم عام (يتطلب JWT + حد معدل) |
+
+مثال تنفيذ حاسبة الإرث (زوجة + ابن، تركة 120000):
+```bash
+curl -X POST http://localhost:8000/api/calculators/inheritance/run \
+  -H "Content-Type: application/json" \
+  -d '{"estate_value": 120000, "spouse": "wife", "sons": 1}'
+```
+
+مثال شرح موجَّه (يتطلب التوكن):
+```bash
+curl -X POST http://localhost:8000/api/ai/explain \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <JWT>" \
+  -d '{"question": "ماذا يقع للزوجة عند وجود أبناء؟", "mode": "grounded"}'
+```
 
 كل إجراء إداري (إنشاء/تعديل/حذف محتوى، قبول/رفض تحقق) يُسجَّل في `admin_audit_log`
 (المسؤول، الفعل، الهدف، التوقيت) وفق Security Architecture §8.
@@ -156,11 +190,12 @@ curl -X POST http://localhost:8000/api/admin/texts \
 
 ## الخطوات التالية المقترحة (بحسب رؤية نبراس)
 
-1. **المستكشف الذكي الفعلي**: ربط `plain_explanation` بنموذج ذكاء اصطناعي حقيقي عبر
-   Anthropic API، مع الاحتفاظ بالاستشهاد الإلزامي بالمصدر ومنع اختلاق النصوص.
+1. **تفعيل الاستشعار الفعلي**: واجهة الذكاء الاصطناعي جاهزة (استرجاع ثم توليد موجَّه
+   مع استشهاد حصري بالمسترجَع)، وتبقى خطوة ربطها بمزوّد Anthropic حقيقي
+   (`NIBRAS_AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`) وضبط prompts حسب النتائج.
 2. **محرك رفع المستندات**: نقطة نهاية لرفع PDF/DOCX وتحويلها تلقائيًا لمواد مفهرَسة
    (يتطلب مكتبة استخراج نصوص + معالجة غير متزامنة).
 3. **الترقية لقاعدة بيانات إنتاجية**: PostgreSQL مع امتداد بحث نصي عربي (pg_trgm أو
    Elasticsearch) عند نمو الحجم.
-4. **الحاسبات القانونية**: نقاط نهاية منفصلة (`/api/calculators/inheritance` إلخ)
-   بمنطق حسابي مبني على نصوص مدونة الأسرة الفعلية، لا تقديرات عامة.
+4. **مزيد من الحاسبات القانونية**: حاسبة الإرث شغّالة (الفروض، العول، الرد، التعصيب،
+   الحجب)، وتُضاف حاسبات أخرى (الطلاق، التعويض...) بنفس نمط الحاسبة المفردة.

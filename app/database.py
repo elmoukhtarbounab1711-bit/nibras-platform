@@ -150,10 +150,84 @@ CREATE TABLE IF NOT EXISTS admin_audit_log (
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin_id ON admin_audit_log(admin_id);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_log_created_at ON admin_audit_log(created_at);
 
+-- =====================================================================
+-- الذكاء الاصطناعي (المرحلة 3): سجل طلبات الشرح الموجَّه/العام
+-- وفق وثيقة 13 §6 (observability) وقاعدة البيانات 06 §3. أرقام المواد
+-- المسترجعة تُخزَّن نصًا JSON (SQLite بلا JSONB — قرار D-021).
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS ai_queries (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    question    TEXT NOT NULL,
+    retrieved_article_ids TEXT,      -- نص JSON [id, ...] أو NULL
+    response    TEXT NOT NULL,
+    mode        TEXT NOT NULL,       -- grounded | general
+    provider    TEXT NOT NULL,
+    latency_ms  INTEGER,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- =====================================================================
+-- الحاسبات القانونية (المرحلة 3): بيانات إسناد الحاسبات + سجل التنفيذ
+-- وفق قاعدة البيانات 06 §4. المنطق في دوال مستقلة في services_calculators
+-- (المواصفة الوظيفية §4) والجدولان وصف إداري فقط.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS calculators (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug        TEXT UNIQUE NOT NULL,   -- 'inheritance' ...
+    name        TEXT NOT NULL,
+    legal_basis TEXT                    -- مرجع المواد/النصوص
+);
+
+CREATE TABLE IF NOT EXISTS calculator_runs (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    calculator_id INTEGER REFERENCES calculators(id),
+    user_id       INTEGER REFERENCES users(id) ON DELETE SET NULL,  -- null = استخدام مجهول
+    input_json    TEXT NOT NULL,
+    result_json   TEXT NOT NULL,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- =====================================================================
+-- مساعد المساطر (المرحلة 3): المساطر وخطواتها وتقدم المستخدم
+-- وفق قاعدة البيانات 06 §6 (FR-6.1/6.2). خطوات مرتبة بـ step_number
+-- والوثائق المطلوبة نص حر مفصول بأسطر.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS procedures (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug                 TEXT UNIQUE NOT NULL,
+    title                TEXT NOT NULL,
+    category             TEXT,
+    responsible_authority TEXT,
+    typical_timeframe    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS procedure_steps (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    procedure_id       INTEGER NOT NULL REFERENCES procedures(id) ON DELETE CASCADE,
+    step_number        INTEGER NOT NULL,
+    title              TEXT NOT NULL,
+    description        TEXT NOT NULL,
+    required_documents TEXT
+);
+
+CREATE TABLE IF NOT EXISTS procedure_progress (
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    procedure_id INTEGER NOT NULL REFERENCES procedures(id) ON DELETE CASCADE,
+    step_id      INTEGER NOT NULL REFERENCES procedure_steps(id) ON DELETE CASCADE,
+    completed_at TEXT,
+    PRIMARY KEY (user_id, procedure_id, step_id)
+);
+
 -- فهارس مفاتيح أجنبية: حذف تسلسلي فعّال وبحث عن جلسات مستخدم/توكنات استعادته
 CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles(role_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_queries_user_id ON ai_queries(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_queries_created_at ON ai_queries(created_at);
+CREATE INDEX IF NOT EXISTS idx_calculator_runs_calculator_id ON calculator_runs(calculator_id);
+CREATE INDEX IF NOT EXISTS idx_procedure_steps_procedure_id ON procedure_steps(procedure_id);
+CREATE INDEX IF NOT EXISTS idx_procedure_progress_user ON procedure_progress(user_id);
 """
 
 
@@ -191,7 +265,10 @@ def init_db(reset: bool = False):
         conn.executescript(SCHEMA)
         # ترحيل خفيف للجداول القائمة (قواعد بيانات أُنشئت قبل المرحلة 2):
         _ensure_column(conn, "user_roles", "rejection_reason", "TEXT")
-    # بذر الأدوار الثابتة بعد إنشاء المخطط (من services_auth لتجنب الاستيراد الدائري)
-    from . import services_auth
+    # بذر الأدوار الثابتة وبيانات الإسناد بعد إنشاء المخطط (استيراد مؤجَّل
+    # لكسر الدورة الظاهرية — نمط ensure_roles القائم في D-021)
+    from . import services_auth, services_calculators, services_procedures
 
     services_auth.ensure_roles()
+    services_calculators.ensure_defaults()
+    services_procedures.ensure_defaults()

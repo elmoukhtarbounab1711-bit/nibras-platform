@@ -80,3 +80,24 @@ RATE_LIMIT_WINDOW_SECONDS = _env_int("NIBRAS_RATE_LIMIT_WINDOW_SECONDS", 900)
 
 # عنوان الواجهة لبناء رابط استعادة كلمة المرور المرسَل (واجهة قابلة للتغيير)
 FRONTEND_BASE_URL = os.environ.get("NIBRAS_FRONTEND_BASE_URL", "http://localhost:3000")
+
+# ---------------------------------------------------------------------------
+# الذكاء الاصطناعي (المرحلة 3) — وفق وثيقة 13 (AI Architecture)
+# ---------------------------------------------------------------------------
+
+# المزوّد: "noop" افتراضي للتطوير والاختبار (استجابة حتمية بلا شبكة)، و
+# "anthropic" للإنتاج (يتطلب ANTHROPIC_API_KEY). المزوّد قابل للاستبدال
+# بواجهة generate() موحّدة (قرار D-021).
+AI_PROVIDER = os.environ.get("NIBRAS_AI_PROVIDER", "noop")
+
+# نموذج فئة Sonnet وفق وثيقة 13 §5 (يُعاود التحقق من المستوى في الإنتاج).
+AI_MODEL = os.environ.get("NIBRAS_AI_MODEL", "claude-sonnet-4-5")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+AI_MAX_TOKENS = _env_int("NIBRAS_AI_MAX_TOKENS", 1024)
+
+# عدد المواد المسترجعة كسياق موجَّه لكل سؤال (وثيقة 13 §2)
+AI_RETRIEVAL_LIMIT = _env_int("NIBRAS_AI_RETRIEVAL_LIMIT", 5)
+
+# حد معدل طلبات الذكاء الاصطناعي لكل مستخدم (وثيقة 13 §7 / Security 12 §6)
+AI_RATE_LIMIT_MAX_REQUESTS = _env_int("NIBRAS_AI_RATE_LIMIT_MAX_REQUESTS", 20)
+AI_RATE_LIMIT_WINDOW_SECONDS = _env_int("NIBRAS_AI_RATE_LIMIT_WINDOW_SECONDS", 3600)
