@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة إدارة نبراس</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#161d26; --panel2:#1c2530; --line:#2a3542;
+    --text:#e8edf2; --muted:#9fb0c0; --accent:#3b6b4f; --accent2:#7FBF9A;
+    --danger:#b83c3c; --warn:#d9a13b;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--text);
+    font-family:"IBM Plex Sans Arabic","Segoe UI",system-ui,sans-serif;
+    line-height:1.6; padding:0 16px 60px;}
+  header{padding:20px 0 14px; border-bottom:1px solid var(--line); margin-bottom:18px;
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;}
+  header h1{font-size:20px; font-weight:700;}
+  header .sub{color:var(--muted); font-size:12px;}
+  nav{display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;}
+  nav button{background:var(--panel); color:var(--text); border:1px solid var(--line);
+    padding:8px 16px; border-radius:8px; cursor:pointer; font-size:14px;}
+  nav button.active{background:var(--accent); border-color:var(--accent); color:#fff;}
+  nav button:hover{border-color:var(--accent2);}
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:18px; margin-bottom:18px;}
+  .panel h2{font-size:16px; margin-bottom:12px; color:var(--accent2);}
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th,td{text-align:right; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top;}
+  th{color:var(--muted); font-weight:600; white-space:nowrap;}
+  tr:hover td{background:var(--panel2);}
+  input,select,textarea{width:100%; background:var(--panel2); border:1px solid var(--line);
+    color:var(--text); padding:8px 10px; border-radius:8px; font-size:13px; font-family:inherit;}
+  input:focus,select:focus,textarea:focus{outline:none; border-color:var(--accent2);}
+  textarea{min-height:90px; resize:vertical;}
+  label{display:block; font-size:12px; color:var(--muted); margin:10px 0 4px;}
+  .row{display:flex; gap:10px; flex-wrap:wrap;}
+  .row > div{flex:1; min-width:150px;}
+  .btn{background:var(--panel2); border:1px solid var(--line); color:var(--text);
+    padding:6px 14px; border-radius:8px; cursor:pointer; font-size:13px;}
+  .btn:hover{border-color:var(--accent2);}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .btn.danger{background:transparent; border-color:var(--danger); color:#e39b9b;}
+  .btn.small{padding:3px 10px; font-size:12px;}
+  .btn:disabled{opacity:.5; cursor:not-allowed;}
+  .actions{display:flex; gap:6px; flex-wrap:wrap;}
+  .muted{color:var(--muted); font-size:12px;}
+  .badge{display:inline-block; padding:2px 10px; border-radius:20px; font-size:11px;
+    background:var(--panel2); border:1px solid var(--line);}
+  .badge.pending{color:var(--warn); border-color:var(--warn);}
+  #login{max-width:380px; margin:60px auto 0;}
+  #login h1{text-align:center; margin-bottom:22px; font-size:22px;}
+  .form-actions{margin-top:16px; display:flex; gap:8px; justify-content:flex-start;}
+  #toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    background:#1c2530; border:1px solid var(--accent2); color:var(--text);
+    padding:10px 20px; border-radius:8px; display:none; z-index:10; max-width:90%;}
+  #toast.show{display:block;}
+  #toast.error{border-color:var(--danger);}
+  .empty{color:var(--muted); text-align:center; padding:24px 0;}
+  .article-content{max-width:480px; white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>لوحة إدارة منصة نبراس</h1>
+    <div class="sub" id="whoami"></div>
+  </div>
+  <button class="btn danger" id="logoutBtn" hidden>تسجيل الخروج</button>
+</header>
+
+<div id="login" class="panel">
+  <h1>دخول المسؤول</h1>
+  <label>البريد الإلكتروني</label>
+  <input type="email" id="loginEmail" autocomplete="username">
+  <label>كلمة المرور</label>
+  <input type="password" id="loginPassword" autocomplete="current-password">
+  <div class="form-actions">
+    <button class="btn primary" id="loginBtn">دخول</button>
+  </div>
+  <p class="muted" style="margin-top:10px">يتطلب الدور الإداري (admin) — لا يُمنح عبر التسجيل العام.</p>
+</div>
+
+<div id="app" hidden>
+  <nav>
+    <button id="tabContent" class="active">إدارة المحتوى</button>
+    <button id="tabVerification">طابور التحقق</button>
+  </nav>
+
+  <section id="viewContent">
+    <div class="panel">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <h2>النصوص القانونية</h2>
+        <div class="actions">
+          <button class="btn primary" id="newTextBtn">+ نص جديد</button>
+          <button class="btn" id="refreshTextsBtn">تحديث</button>
+        </div>
+      </div>
+      <div id="textsTableWrap" style="margin-top:12px"><div class="empty">جارٍ التحميل…</div></div>
+    </div>
+
+    <div class="panel" id="textFormPanel" hidden>
+      <h2 id="textFormTitle">نص جديد</h2>
+      <div class="row">
+        <div><label>القسم (مطلوب)</label><select id="textCategory"></select></div>
+        <div><label>النوع (مطلوب)</label><select id="textType"></select></div>
+      </div>
+      <label>العنوان (مطلوب)</label>
+      <input type="text" id="textTitle">
+      <div class="row">
+        <div><label>المرجع الرسمي</label><input type="text" id="textOfficialRef"></div>
+        <div><label>تاريخ الصدور</label><input type="text" id="textEnactedDate" placeholder="YYYY-MM-DD"></div>
+        <div><label>آخر تعديل</label><input type="text" id="textLastAmended" placeholder="YYYY-MM-DD"></div>
+      </div>
+      <label>ملاحظة المصدر</label>
+      <input type="text" id="textSourceNote">
+      <label style="display:flex; gap:8px; align-items:center; margin-top:12px;">
+        <input type="checkbox" id="textIsSample" style="width:auto" checked> بيانات نموذجية للعرض (is_sample_data)
+      </label>
+      <div class="form-actions">
+        <button class="btn primary" id="saveTextBtn">حفظ</button>
+        <button class="btn" id="cancelTextBtn">إلغاء</button>
+      </div>
+    </div>
+
+    <div class="panel" id="textDetailPanel" hidden>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <h2 id="detailTitle"></h2>
+        <button class="btn" id="backToTextsBtn">← رجوع للقائمة</button>
+      </div>
+      <p class="muted" id="detailMeta"></p>
+
+      <div class="panel" id="articleFormPanel" style="margin-top:14px">
+        <h2 id="articleFormTitle">إضافة مادة</h2>
+        <div class="row">
+          <div><label>الرقم (مطلوب)</label><input type="text" id="artNumber"></div>
+          <div><label>التسمية (مطلوب)</label><input type="text" id="artLabel"></div>
+        </div>
+        <label>المحتوى (مطلوب)</label>
+        <textarea id="artContent"></textarea>
+        <label>الشرح المبسّط</label>
+        <textarea id="artExplanation"></textarea>
+        <label>الكلمات المفتاحية (مفصولة بفواصل)</label>
+        <input type="text" id="artKeywords">
+        <div class="form-actions">
+          <button class="btn primary" id="saveArticleBtn">إضافة</button>
+          <button class="btn" id="cancelArticleBtn">إلغاء</button>
+        </div>
+      </div>
+
+      <div id="articlesTableWrap"><div class="empty">لا مواد بعد.</div></div>
+    </div>
+  </section>
+
+  <section id="viewVerification" hidden>
+    <div class="panel">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <h2>طلبات التحقق من الأدوار المهنية</h2>
+        <button class="btn" id="refreshVerificationBtn">تحديث</button>
+      </div>
+      <div id="verificationTableWrap" style="margin-top:12px"><div class="empty">جارٍ التحميل…</div></div>
+    </div>
+  </section>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API_BASE = 'http://localhost:8000/api';
+const TEXT_TYPES = ['constitution', 'code', 'law', 'decree', 'gazette', 'treaty', 'ruling'];
+
+let accessToken = sessionStorage.getItem('nibras_admin_token') || null;
+let categories = [];
+let texts = [];
+let currentText = null;       // النص المفتوح لتفاصيله
+let editTextId = null;        // لا null = تعديل نص
+let editArticleId = null;     // لا null = تعديل مادة
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function toast(msg, isError = false) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = 'show' + (isError ? ' error' : '');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => (el.className = ''), 3500);
+}
+
+async function api(path, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
+  if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+  const res = await fetch(API_BASE + path, { ...options, headers });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) {
+    showLogin();
+    throw new Error('انتهت الجلسة — سجّل الدخول مجددًا');
+  }
+  if (!res.ok) throw new Error(data.error || 'خطأ غير متوقع (' + res.status + ')');
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// الدخول والخروج
+// ---------------------------------------------------------------------------
+function showLogin() {
+  accessToken = null;
+  sessionStorage.removeItem('nibras_admin_token');
+  $('app').hidden = true;
+  $('logoutBtn').hidden = true;
+  $('login').hidden = false;
+}
+
+function enterApp() {
+  $('login').hidden = true;
+  $('logoutBtn').hidden = false;
+  $('app').hidden = false;
+  renderWhoami();
+  renderContent();
+  renderVerification();
+}
+
+async function renderWhoami() {
+  try {
+    const data = await api('/auth/me');
+    const user = data.user;
+    $('whoami').textContent = 'مسجل الدخول: ' + user.full_name + ' (' + user.email + ')';
+  } catch (e) { /* 401 يعيد عرض تسجيل الدخول */ }
+}
+
+async function doLogin() {
+  const email = $('loginEmail').value.trim();
+  const password = $('loginPassword').value;
+  if (!email || !password) return toast('أدخل البريد وكلمة المرور', true);
+  $('loginBtn').disabled = true;
+  try {
+    const res = await fetch(API_BASE + '/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'تعذر الدخول');
+    accessToken = data.access_token;
+    sessionStorage.setItem('nibras_admin_token', accessToken);
+    const roles = data.user.roles || [];
+    if (!roles.includes('admin')) {
+      accessToken = null;
+      sessionStorage.removeItem('nibras_admin_token');
+      toast('هذا الحساب لا يملك الدور الإداري', true);
+      return;
+    }
+    enterApp();
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    $('loginBtn').disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// إدارة المحتوى: القوائم
+// ---------------------------------------------------------------------------
+function fillTextForm(text) {
+  $('textFormTitle').textContent = text ? 'تعديل النص' : 'نص جديد';
+  $('textTitle').value = text ? text.title : '';
+  $('textCategory').value = text ? text.category_id : (categories[0]?.id ?? '');
+  $('textType').value = text ? text.type : TEXT_TYPES[1];
+  $('textOfficialRef').value = text ? (text.official_ref ?? '') : '';
+  $('textEnactedDate').value = text ? (text.enacted_date ?? '') : '';
+  $('textLastAmended').value = text ? (text.last_amended ?? '') : '';
+  $('textSourceNote').value = text ? (text.source_note ?? '') : '';
+  $('textIsSample').checked = !text ? true : !!text.is_sample_data;
+  $('textFormPanel').hidden = false;
+  $('textFormPanel').scrollIntoView({ behavior: 'smooth' });
+}
+
+async function renderTexts() {
+  const wrap = $('textsTableWrap');
+  try {
+    texts = await api('/texts');
+    if (!texts.length) {
+      wrap.innerHTML = '<div class="empty">لا توجد نصوص بعد.</div>';
+      return;
+    }
+    wrap.innerHTML =
+      '<div style="overflow-x:auto"><table><thead><tr>' +
+      '<th>العنوان</th><th>القسم</th><th>النوع</th><th>المواد</th><th>إجراءات</th>' +
+      '</tr></thead><tbody>' +
+      texts.map((t) =>
+        '<tr><td>' + esc(t.title) +
+        '<div class="muted">#' + t.id + '</div></td>' +
+        '<td>' + esc(t.category_name) + '</td>' +
+        '<td>' + esc(t.type) + '</td>' +
+        '<td>' + t.article_count + '</td>' +
+        '<td><div class="actions">' +
+        '<button class="btn small primary" onclick="openText(' + t.id + ')">مواد</button>' +
+        '<button class="btn small" onclick="editText(' + t.id + ')">تعديل</button>' +
+        '<button class="btn small danger" onclick="deleteText(' + t.id + ')">حذف</button>' +
+        '</div></td></tr>'
+      ).join('') +
+      '</tbody></table></div>';
+  } catch (e) {
+    wrap.innerHTML = '<div class="empty">تعذر التحميل: ' + esc(e.message) + '</div>';
+  }
+}
+
+async function renderContent() {
+  try {
+    categories = await api('/categories');
+    $('textCategory').innerHTML = categories
+      .map((c) => '<option value="' + c.id + '">' + esc(c.name) + '</option>')
+      .join('');
+  } catch (e) { /* تُعرض لاحقًا عبر toast عند الحفظ */ }
+  await renderTexts();
+}
+
+// ---------------------------------------------------------------------------
+// إدارة المحتوى: النصوص
+// ---------------------------------------------------------------------------
+async function saveText() {
+  const payload = {
+    category_id: parseInt($('textCategory').value, 10),
+    type: $('textType').value,
+    title: $('textTitle').value.trim(),
+    official_ref: $('textOfficialRef').value.trim() || null,
+    enacted_date: $('textEnactedDate').value.trim() || null,
+    last_amended: $('textLastAmended').value.trim() || null,
+    source_note: $('textSourceNote').value.trim() || null,
+    is_sample_data: $('textIsSample').checked ? 1 : 0,
+  };
+  try {
+    if (editTextId === null) {
+      const r = await api('/admin/texts', {
+        method: 'POST', body: JSON.stringify(payload),
+      });
+      toast('تم إنشاء النص #' + r.id);
+    } else {
+      await api('/admin/texts/' + editTextId, {
+        method: 'PUT', body: JSON.stringify(payload),
+      });
+      toast('تم تحديث النص #' + editTextId);
+    }
+    editTextId = null;
+    $('textFormPanel').hidden = true;
+    await renderTexts();
+  } catch (e) { toast(e.message, true); }
+}
+
+function editText(id) {
+  const t = texts.find((x) => x.id === id);
+  if (!t) return;
+  editTextId = id;
+  fillTextForm(t);
+}
+
+async function deleteText(id) {
+  const t = texts.find((x) => x.id === id);
+  if (!confirm('حذف النص «' + (t ? t.title : id) + '» نهائيًا مع جميع مواده؟')) return;
+  try {
+    await api('/admin/texts/' + id, { method: 'DELETE' });
+    toast('تم حذف النص #' + id);
+    if (currentText && currentText.id === id) closeText();
+    await renderTexts();
+  } catch (e) { toast(e.message, true); }
+}
+
+function cancelTextForm() {
+  editTextId = null;
+  $('textFormPanel').hidden = true;
+}
+
+// ---------------------------------------------------------------------------
+// إدارة المحتوى: المواد
+// ---------------------------------------------------------------------------
+async function openText(id) {
+  try {
+    currentText = await api('/texts/' + id);
+    $('detailTitle').textContent = currentText.title;
+    $('detailMeta').textContent =
+      (currentText.category_name || '') + ' — النوع: ' + currentText.type +
+      (currentText.official_ref ? ' — المرجع: ' + currentText.official_ref : '');
+    $('textDetailPanel').hidden = false;
+    $('textDetailPanel').scrollIntoView({ behavior: 'smooth' });
+    resetArticleForm();
+    renderArticles();
+  } catch (e) { toast(e.message, true); }
+}
+
+function closeText() {
+  currentText = null;
+  editArticleId = null;
+  $('textDetailPanel').hidden = true;
+  renderTexts();
+}
+
+function renderArticles() {
+  const wrap = $('articlesTableWrap');
+  if (!currentText || !currentText.articles.length) {
+    wrap.innerHTML = '<div class="empty">لا مواد بعد.</div>';
+    return;
+  }
+  wrap.innerHTML =
+    '<div style="overflow-x:auto"><table><thead><tr>' +
+    '<th>التسمية</th><th>المحتوى</th><th>الشرح</th><th>إجراءات</th>' +
+    '</tr></thead><tbody>' +
+    currentText.articles.map((a) =>
+      '<tr><td>' + esc(a.label) +
+      '<div class="muted">#' + a.id + '</div></td>' +
+      '<td class="article-content">' + esc(a.content) + '</td>' +
+      '<td class="muted">' + esc(a.plain_explanation || '—') + '</td>' +
+      '<td><div class="actions">' +
+      '<button class="btn small" onclick="editArticle(' + a.id + ')">تعديل</button>' +
+      '<button class="btn small danger" onclick="deleteArticle(' + a.id + ')">حذف</button>' +
+      '</div></td></tr>'
+    ).join('') +
+    '</tbody></table></div>';
+}
+
+function resetArticleForm() {
+  editArticleId = null;
+  $('articleFormTitle').textContent = 'إضافة مادة';
+  $('artNumber').value = '';
+  $('artLabel').value = '';
+  $('artContent').value = '';
+  $('artExplanation').value = '';
+  $('artKeywords').value = '';
+  $('saveArticleBtn').textContent = 'إضافة';
+}
+
+function editArticle(id) {
+  const a = currentText.articles.find((x) => x.id === id);
+  if (!a) return;
+  editArticleId = id;
+  $('articleFormTitle').textContent = 'تعديل المادة #' + id;
+  $('artNumber').value = a.number;
+  $('artLabel').value = a.label;
+  $('artContent').value = a.content;
+  $('artExplanation').value = a.plain_explanation || '';
+  $('artKeywords').value = a.keywords || '';
+  $('saveArticleBtn').textContent = 'حفظ التغييرات';
+  $('articleFormPanel').scrollIntoView({ behavior: 'smooth' });
+}
+
+async function saveArticle() {
+  const payload = {
+    number: $('artNumber').value.trim(),
+    label: $('artLabel').value.trim(),
+    content: $('artContent').value.trim(),
+    plain_explanation: $('artExplanation').value.trim() || null,
+    keywords: $('artKeywords').value.trim() || '',
+  };
+  try {
+    if (editArticleId === null) {
+      await api('/admin/texts/' + currentText.id + '/articles', {
+        method: 'POST', body: JSON.stringify(payload),
+      });
+      toast('تمت إضافة المادة');
+    } else {
+      await api('/admin/articles/' + editArticleId, {
+        method: 'PUT', body: JSON.stringify(payload),
+      });
+      toast('تم تحديث المادة #' + editArticleId);
+    }
+    resetArticleForm();
+    currentText = await api('/texts/' + currentText.id);
+    renderArticles();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function deleteArticle(id) {
+  if (!confirm('حذف المادة #' + id + ' نهائيًا؟')) return;
+  try {
+    await api('/admin/articles/' + id, { method: 'DELETE' });
+    toast('تم حذف المادة #' + id);
+    currentText = await api('/texts/' + currentText.id);
+    renderArticles();
+  } catch (e) { toast(e.message, true); }
+}
+
+// ---------------------------------------------------------------------------
+// طابور التحقق
+// ---------------------------------------------------------------------------
+async function renderVerification() {
+  const wrap = $('verificationTableWrap');
+  try {
+    const data = await api('/admin/verification-queue');
+    const items = data.requests || [];
+    if (!items.length) {
+      wrap.innerHTML = '<div class="empty">لا توجد طلبات في انتظار التحقق.</div>';
+      return;
+    }
+    wrap.innerHTML =
+      '<div style="overflow-x:auto"><table><thead><tr>' +
+      '<th>الاسم</th><th>البريد</th><th>الدور</th><th>تاريخ الطلب</th><th>إجراءات</th>' +
+      '</tr></thead><tbody>' +
+      items.map((u) =>
+        '<tr><td>' + esc(u.full_name) + '</td>' +
+        '<td>' + esc(u.email) + '</td>' +
+        '<td><span class="badge pending">' + esc(u.role_name || u.role_code) + '</span>' +
+        ' <span class="muted">(' + esc(u.role_code) + ')</span></td>' +
+        '<td class="muted">' + esc(u.requested_at || '—') + '</td>' +
+        '<td><div class="actions">' +
+        '<button class="btn small primary" onclick="approveVerification(' + u.user_id + ')">قبول</button>' +
+        '<button class="btn small danger" onclick="rejectVerification(' + u.user_id + ')">رفض</button>' +
+        '</div></td></tr>'
+      ).join('') +
+      '</tbody></table></div>';
+  } catch (e) {
+    wrap.innerHTML = '<div class="empty">تعذر التحميل: ' + esc(e.message) + '</div>';
+  }
+}
+
+async function approveVerification(userId) {
+  if (!confirm('قبول طلب التحقق لهذا المستخدم؟ سيُفعَّل دوره المهني فورًا.')) return;
+  try {
+    await api('/admin/verification/' + userId + '/approve', { method: 'POST' });
+    toast('تم قبول الطلب');
+    await renderVerification();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function rejectVerification(userId) {
+  const reason = prompt('سبب الرفض (مطلوب — سيُحفظ ويُظهر للمستخدم):');
+  if (reason === null) return;
+  if (!reason.trim()) return toast('السبب مطلوب للرفض', true);
+  try {
+    await api('/admin/verification/' + userId + '/reject', {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason.trim() }),
+    });
+    toast('تم رفض الطلب مع تسجيل السبب');
+    await renderVerification();
+  } catch (e) { toast(e.message, true); }
+}
+
+// ---------------------------------------------------------------------------
+// التبويبات والأحداث
+// ---------------------------------------------------------------------------
+function switchTab(name) {
+  const content = name === 'content';
+  $('viewContent').hidden = !content;
+  $('viewVerification').hidden = content;
+  $('tabContent').className = content ? 'active' : '';
+  $('tabVerification').className = content ? '' : 'active';
+  if (content) renderContent();
+  else renderVerification();
+}
+
+$('loginBtn').addEventListener('click', doLogin);
+$('loginPassword').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+$('logoutBtn').addEventListener('click', showLogin);
+
+$('tabContent').addEventListener('click', () => switchTab('content'));
+$('tabVerification').addEventListener('click', () => switchTab('verification'));
+
+$('newTextBtn').addEventListener('click', () => { editTextId = null; fillTextForm(null); });
+$('cancelTextBtn').addEventListener('click', cancelTextForm);
+$('saveTextBtn').addEventListener('click', saveText);
+$('refreshTextsBtn').addEventListener('click', renderTexts);
+$('backToTextsBtn').addEventListener('click', closeText);
+$('saveArticleBtn').addEventListener('click', saveArticle);
+$('cancelArticleBtn').addEventListener('click', resetArticleForm);
+$('refreshVerificationBtn').addEventListener('click', renderVerification);
+
+(function init() {
+  $('textType').innerHTML = TEXT_TYPES
+    .map((t) => '<option value="' + t + '">' + t + '</option>').join('');
+  if (accessToken) enterApp();
+})();
+</script>
+</body>
+</html>

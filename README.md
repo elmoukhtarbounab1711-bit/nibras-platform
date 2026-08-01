@@ -21,6 +21,7 @@ nibras-backend/
 │   ├── seed.py             # بيانات نموذجية (دستور، مدونات، قوانين + مواد فعلية)
 │   ├── services.py         # منطق المكتبة (معزول عن HTTP)
 │   ├── services_auth.py    # منطق المصادقة: argon2id, JWT, refresh, استعادة كلمة المرور
+│   ├── services_admin.py   # منطق لوحة الإدارة: إدارة المحتوى + طابور التحقق + التدقيق
 │   ├── create_admin.py     # CLI إنشاء أول حساب مسؤول (python -m app.create_admin)
 │   ├── middleware/
 │   │   └── auth_middleware.py  # require_auth و require_role(*roles)
@@ -28,6 +29,7 @@ nibras-backend/
 │       ├── library.py      # نقاط نهاية المكتبة العامة (Blueprint)
 │       ├── admin.py        # نقاط نهاية الإدارة — محمية بـ require_role("admin")
 │       └── auth.py         # نقاط نهاية المصادقة (Blueprint)
+├── admin.html           # لوحة إدارة داخلية مستقلة (دخول + محتوى + طابور التحقق)
 ├── tests/               # اختبارات الوحدة والتكامل (pytest)
 ├── scripts/run_checks.py # بوابة الفحص المحلية (ruff + pytest)
 ├── run.py              # نقطة تشغيل الخادم
@@ -83,7 +85,17 @@ python3 run.py              # يشتغل على http://localhost:8000
 | POST | `/api/auth/password-reset/request` | طلب رابط استعادة (رسالة موحدة لا تكشف البريد) |
 | POST | `/api/auth/password-reset/confirm` | تطبيق كلمة مرور جديدة بالتوكن |
 | POST | `/api/admin/texts` | إنشاء نص قانوني جديد (يتطلب دور `admin`) |
+| PUT | `/api/admin/texts/<id>` | تعديل نص قانوني (يتطلب دور `admin`) |
+| DELETE | `/api/admin/texts/<id>` | حذف نص قانوني مع مواده تسلسليًا (يتطلب دور `admin`) |
 | POST | `/api/admin/texts/<id>/articles` | إضافة مادة لنص قانوني (يتطلب دور `admin`) |
+| PUT | `/api/admin/articles/<id>` | تعديل مادة (يتطلب دور `admin`) |
+| DELETE | `/api/admin/articles/<id>` | حذف مادة (يتطلب دور `admin`) |
+| GET | `/api/admin/verification-queue` | طلبات التحقق المهنية في الانتظار (يتطلب دور `admin`) |
+| POST | `/api/admin/verification/<user_id>/approve` | قبول طلب تحقق وتفعيل الدور (يتطلب دور `admin`) |
+| POST | `/api/admin/verification/<user_id>/reject` | رفض طلب تحقق مع سبب مطلوب (يتطلب دور `admin`) |
+
+كل إجراء إداري (إنشاء/تعديل/حذف محتوى، قبول/رفض تحقق) يُسجَّل في `admin_audit_log`
+(المسؤول، الفعل، الهدف، التوقيت) وفق Security Architecture §8.
 
 مثال بحث:
 ```bash
@@ -121,6 +133,18 @@ curl -X POST http://localhost:8000/api/admin/texts \
 
 > عند النشر الفعلي على الإنترنت، يجب استبدال `http://localhost:8000/api`
 > في `nibras.html` برابط الخادم المنشور فعليًا (مثلًا `https://api.nibras.ma/api`).
+
+### لوحة الإدارة (`admin.html`)
+
+أداة داخلية مستقلة (Admin Panel Spec §5) تتصل بالـ API نفسه وتحمل عنوانه في
+`API_BASE`. تتيح تسجيل الدخول بحساب مسؤول ثم:
+
+- **إدارة المحتوى**: عرض/إنشاء/تعديل/حذف النصوص القانونية وموادها.
+- **طابور التحقق**: عرض طلبات الأدوار المهنية في الانتظار وقبولها أو رفضها
+  مع سبب إلزامي يُحفظ.
+
+تُفتح مباشرة في المتصفح بجانب الخادم المشغّل (`python3 run.py`) بنفس طريقة
+`nibras.html`. تُستبدل قيمة `API_BASE` بالرابط المنشور عند النشر الفعلي.
 
 ## لماذا Flask بدل FastAPI؟
 

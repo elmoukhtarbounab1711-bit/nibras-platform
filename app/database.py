@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS user_roles (
     user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role_id     INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
     role_status TEXT NOT NULL DEFAULT 'active', -- active | pending_verification | rejected
+    rejection_reason TEXT,                      -- سبب الرفض (وثيقة المصادقة §3: رفض مع سبب)
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (user_id, role_id)
 );
@@ -129,11 +130,38 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     used_at     TEXT
 );
 
+-- =====================================================================
+-- سجل تدقيق الإجراءات الإدارية (المرحلة 2 — لوحة الإدارة):
+-- يُسجَّل كل إجراء إداري (إنشاء/تعديل/حذف محتوى، قبول/رفض تحقق)
+-- بالمسؤول والفعل والهدف والتوقيت، وفق وثيقة الأمان §8 (المساءلة
+-- وتسوية النزاعات). لم تُحدَّد الوثيقة شكل الجدول — هذا أدنى تنفيذ
+-- يفي بالمتطلب (يُوثَّق في D-018).
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,  -- يُبقى السجل حتى لو حُذف المسؤول
+    action      TEXT NOT NULL,          -- text.create | text.update | text.delete | article.create | article.update | article.delete | verification.approve | verification.reject
+    target_type TEXT NOT NULL,          -- legal_text | article | user
+    target_id   INTEGER,
+    details     TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_log_admin_id ON admin_audit_log(admin_id);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_log_created_at ON admin_audit_log(created_at);
+
 -- فهارس مفاتيح أجنبية: حذف تسلسلي فعّال وبحث عن جلسات مستخدم/توكنات استعادته
 CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles(role_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
 """
+
+
+def _ensure_column(conn, table: str, column: str, definition: str) -> None:
+    """ترحيل خفيف: يضيف عمودًا للجداول القائمة إن لم يكن موجودًا (idempotent)."""
+    cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 def get_connection():
@@ -161,6 +189,8 @@ def init_db(reset: bool = False):
         DB_PATH.unlink()
     with db_session() as conn:
         conn.executescript(SCHEMA)
+        # ترحيل خفيف للجداول القائمة (قواعد بيانات أُنشئت قبل المرحلة 2):
+        _ensure_column(conn, "user_roles", "rejection_reason", "TEXT")
     # بذر الأدوار الثابتة بعد إنشاء المخطط (من services_auth لتجنب الاستيراد الدائري)
     from . import services_auth
 
