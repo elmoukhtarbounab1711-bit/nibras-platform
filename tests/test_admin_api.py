@@ -86,6 +86,7 @@ def test_verification_queue_lists_only_pending_professionals(client, admin_heade
     assert set(items[0].keys()) == {
         "user_id", "email", "full_name", "role_code", "role_name",
         "role_status", "rejection_reason", "requested_at",
+        "has_profile", "profile_status", "has_document", "document_name",
     }
 
 

@@ -26,6 +26,7 @@ nibras-backend/
 │   ├── services_procedures.py  # مساعد المساطر + تتبع تقدم المستخدم
 │   ├── services_ai.py          # واجهة الذكاء الاصطناعي (موجَّه + تعليم عام)
 │   ├── services_documents.py   # مولّد الوثائق (قوالب + تحقق + توليد + تصدير PDF/DOCX)
+│   ├── services_professionals.py # النظام البيئي المهني: دليل + ملفات + وثائق تحقق + تقييمات
 │   ├── create_admin.py     # CLI إنشاء أول حساب مسؤول (python -m app.create_admin)
 │   ├── middleware/
 │   │   └── auth_middleware.py  # require_auth و require_role(*roles)
@@ -36,7 +37,9 @@ nibras-backend/
 │       ├── calculators.py  # نقاط نهاية الحاسبات القانونية (Blueprint)
 │       ├── procedures.py   # نقاط نهاية المساطر وتقدمها (Blueprint)
 │       ├── ai.py           # نقاط نهاية واجهة الذكاء الاصطناعي (Blueprint)
-│       └── documents.py    # نقاط نهاية مولّد الوثائق (Blueprint)
+│       ├── documents.py    # نقاط نهاية مولّد الوثائق (Blueprint)
+│       └── professionals.py # نقاط نهاية النظام البيئي المهني (Blueprint)
+├── uploads/              # وثائق التحقق المهنية (مجلد محلي مؤقت — يُنقل لمخزن كائنات لاحقًا)
 ├── admin.html           # لوحة إدارة داخلية مستقلة (دخول + محتوى + طابور التحقق)
 ├── tests/               # اختبارات الوحدة والتكامل (pytest)
 ├── scripts/run_checks.py # بوابة الفحص المحلية (ruff + pytest)
@@ -76,6 +79,8 @@ python -m pytest -q                    # الاختبارات مباشرة
 | `NIBRAS_PDF_FONT` | (تلقائي) | مسار خط عربي لتصدير PDF — فارغ = حل تلقائي من مسارات شائعة (ويندوز Arial، لينكس Noto Naskh/Amiri). |
 | `NIBRAS_DOC_RATE_LIMIT_MAX_REQUESTS` | `10` | حد توليد الوثائق لكل مستخدم لكل نافذة. |
 | `NIBRAS_DOC_RATE_LIMIT_WINDOW_SECONDS` | `3600` | نافذة حد توليد الوثائق بالثواني. |
+| `NIBRAS_UPLOAD_DIR` | (فارغ = `repo/uploads/`) | مجلد رفع وثائق التحقق المهنية (تخزين محلي ريثما يُنقل لمخزن كائنات). |
+| `NIBRAS_MAX_UPLOAD_BYTES` | `5242880` (5MB) | الحد الأقصى لحجم وثيقة التحقق بالبايت. |
 
 ## التشغيل
 
@@ -123,6 +128,12 @@ python3 run.py              # يشتغل على http://localhost:8000
 | GET | `/api/documents/my` | وثائق المستخدم المولَّدة (يتطلب JWT) |
 | POST | `/api/documents/<id>/regenerate` | إعادة توليد بنسخة +1 عند التعديل (يتطلب JWT + مالك) |
 | GET | `/api/documents/<id>/export?format=pdf\|docx` | تنزيل الوثيقة PDF/DOCX (يتطلب JWT + مالك) |
+| GET | `/api/professionals?type=&specialty=&city=&limit=&offset=` | دليل مهني عام — **المحقَّقون فقط** (تفرضه طبقة الاستعلام) |
+| GET | `/api/professionals/<id>` | تفاصيل ملف محترف + تقييماته (المحقَّقون فقط) |
+| POST | `/api/professionals/profile` | إنشاء/تحديث الملف المهني الذاتي `{profession_type, bio, city, phone, contact_preference, specialties}` (يتطلب دورًا مهنيًا) |
+| POST | `/api/professionals/verify-document` | رفع وثيقة التحقق multipart (حقل `document` — pdf/jpg/png حتى 5MB) |
+| POST | `/api/professionals/<id>/reviews` | تقييم محترف `{rating: 1-5, comment}` — upsert بلا تقييم ذاتي (يتطلب JWT) |
+| GET | `/api/admin/verification/<user_id>/document` | تنزيل وثيقة التحقق لمستخدم (يتطلب دور `admin`) |
 
 مثال تنفيذ حاسبة الإرث (زوجة + ابن، تركة 120000):
 ```bash
@@ -147,6 +158,28 @@ curl -X POST http://localhost:8000/api/documents/generate \
   -d '{"template_id": 1, "answers": {"landlord_name": "علي", "tenant_name": "فاطمة",
        "property_address": "الدار البيضاء", "monthly_rent": 2500,
        "start_date": "2026-09-01", "duration_months": 12, "deposit_amount": 5000}}'
+```
+
+مثال النظام البيئي المهني (التسجيل بدور مهني ثم إنشاء الملف ورفع وثيقة التحقق):
+```bash
+# 1) التسجيل بدور "محامٍ" — يُنشأ بانتظار التحقق
+curl -X POST http://localhost:8000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "lawyer@nibras.ma", "password": "قوية-طويلة", "full_name": "محامٍ", "role": "lawyer"}'
+
+# 2) إنشاء الملف المهني (يظهر في الدليل فقط بعد قبول الأدمن للتحقق)
+curl -X POST http://localhost:8000/api/professionals/profile \
+  -H "Content-Type: application/json" -H "Authorization: Bearer <JWT>" \
+  -d '{"profession_type": "lawyer", "city": "الدار البيضاء",
+       "bio": "محامٍ معتمد", "specialties": ["مدني", "أسر"],
+       "contact_preference": "visible", "phone": "0612345678"}'
+
+# 3) رفع وثيقة التحقق (multipart)
+curl -X POST http://localhost:8000/api/professionals/verify-document \
+  -H "Authorization: Bearer <JWT>" -F "document=@carton.pdf"
+
+# 4) تصفح الدليل العام (المحقَّقون فقط)
+curl "http://localhost:8000/api/professionals?type=lawyer&city=الدار البيضاء"
 ```
 
 كل إجراء إداري (إنشاء/تعديل/حذف محتوى، قبول/رفض تحقق) يُسجَّل في `admin_audit_log`
@@ -223,3 +256,7 @@ curl -X POST http://localhost:8000/api/admin/texts \
 5. **الاشتراكات/الفواتير والفتح المتميز لمولّد الوثائق**: المولّد شغّال بلا قيود؛
    فتح الميزة المتميزة (gating عبر `has_premium_access`) يُربط بقرار بوابة الدفع
    (BRD §5) — إضافة دالة واحدة عند بناء وحدة الفوترة.
+6. **النظام البيئي المهني**: الدليل (المحقَّقون فقط) والملفات الذاتية ووثائق التحقق
+   والتقييمات مكتملة (قرار D-023). المؤجَّل لحسم بوابة الدفع: تدرجات الاشتراك المهنية
+   (FR-7.2) والميزات المدفوعة للدليل؛ وللمرحلة المجتمعية: الإشراف والبلاغات
+   (التحقق من التفاعلات مرحلة لاحقة — v2).

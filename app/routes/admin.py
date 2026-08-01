@@ -6,7 +6,7 @@
 الخدمة services_admin (وثيقة الأمان §3/§5/§8). شكل الاستجابة للعمليات
 المعدِّلة: {id, message} وفق اصطلاحات وثيقة API.
 """
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 
 from .. import services_admin
 from ..middleware.auth_middleware import require_role
@@ -112,3 +112,16 @@ def verification_reject(user_id):
     except AdminError as exc:
         return _handle_admin_error(exc)
     return jsonify({"id": user_id, "message": "تم رفض طلب التحقق"}), 200
+
+
+@admin_bp.route("/api/admin/verification/<int:user_id>/document", methods=["GET"])
+@require_role("admin")
+def verification_document(user_id):
+    """تنزيل وثيقة التحقق المخزنة — دور admin فقط (قرار D-023)."""
+    try:
+        path, name, content_type = services_admin.get_verification_document(user_id)
+    except AdminError as exc:
+        return _handle_admin_error(exc)
+    return send_file(
+        path, mimetype=content_type, as_attachment=True, download_name=name
+    )

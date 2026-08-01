@@ -115,3 +115,17 @@ PDF_FONT_PATH = os.environ.get("NIBRAS_PDF_FONT", "")
 # الاصطناعي في D-021)
 DOC_RATE_LIMIT_MAX_REQUESTS = _env_int("NIBRAS_DOC_RATE_LIMIT_MAX_REQUESTS", 10)
 DOC_RATE_LIMIT_WINDOW_SECONDS = _env_int("NIBRAS_DOC_RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+# ---------------------------------------------------------------------------
+# النظام البيئي المهني (المرحلة 5) — وفق وثيقة 17 وقرار D-023
+# ---------------------------------------------------------------------------
+
+# مجلد رفع وثائق التحقق المهنية (تخزين محلي ريثما يُنقل إلى مخزن كائنات —
+# Architecture §10؛ قرار D-023)
+UPLOAD_DIR = os.environ.get("NIBRAS_UPLOAD_DIR", "")
+
+# حد الحجم الأقصى لوثيقة التحقق (بايت — افتراضيًا 5MB)
+MAX_UPLOAD_BYTES = _env_int("NIBRAS_MAX_UPLOAD_BYTES", 5 * 1024 * 1024)
+
+# الامتدادات المسموح بها لوثائق التحقق
+ALLOWED_UPLOAD_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}

@@ -226,10 +226,16 @@ def list_verification_queue():
             f"""SELECT u.id AS user_id, u.email, u.full_name,
                        r.code AS role_code, r.name AS role_name,
                        ur.role_status, ur.rejection_reason,
-                       ur.created_at AS requested_at
+                       ur.created_at AS requested_at,
+                       CASE WHEN p.id IS NULL THEN 0 ELSE 1 END AS has_profile,
+                       p.verification_status AS profile_status,
+                       CASE WHEN p.verification_document_key IS NULL
+                            THEN 0 ELSE 1 END AS has_document,
+                       p.verification_document_name AS document_name
                 FROM user_roles ur
                 JOIN users u ON u.id = ur.user_id
                 JOIN roles r ON r.id = ur.role_id
+                LEFT JOIN professional_profiles p ON p.user_id = ur.user_id
                 WHERE ur.role_status = 'pending_verification'
                   AND r.code IN ({placeholders})
                 ORDER BY ur.created_at, u.id""",
@@ -261,6 +267,12 @@ def approve_verification(admin_id, user_id):
             " WHERE user_id = ? AND role_id = ?",
             (user_id, row["role_id"]),
         )
+        # مزامنة مصدر الحقيقة لظهور الدليل (قرار D-023): إن وُجد ملف مهني
+        conn.execute(
+            "UPDATE professional_profiles SET verification_status = 'verified', "
+            "updated_at = datetime('now') WHERE user_id = ?",
+            (user_id,),
+        )
         _log_admin_action(
             conn, admin_id, "verification.approve", "user", user_id,
             f"role={row['code']}",
@@ -283,8 +295,27 @@ def reject_verification(admin_id, user_id, reason):
             " WHERE user_id = ? AND role_id = ?",
             (reason, user_id, row["role_id"]),
         )
+        conn.execute(
+            "UPDATE professional_profiles SET verification_status = 'rejected', "
+            "updated_at = datetime('now') WHERE user_id = ?",
+            (user_id,),
+        )
         _log_admin_action(
             conn, admin_id, "verification.reject", "user", user_id,
             f"role={row['code']}; reason={reason}",
         )
     return user_id
+
+
+def get_verification_document(user_id):
+    """وثيقة تحقق مخزَّنة لمستخدم — يُستدعى من مسار إداري مصادق فقط (دور admin).
+
+    التخزين محلي (uploads/verification) ريثما يُنقل لمخزن كائنات بمداخل
+    موقَّعة (قرار D-023 / Architecture §10)."""
+    from .services_professionals import ProfessionalError
+    from .services_professionals import get_verification_document as _document
+
+    try:
+        return _document(user_id)
+    except ProfessionalError as exc:
+        raise AdminError(exc.message, exc.status_code) from exc

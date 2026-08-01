@@ -244,6 +244,42 @@ CREATE TABLE IF NOT EXISTS generated_documents (
     updated_at  TEXT
 );
 
+-- النظام البيئي المهني (المرحلة 5 — قرار D-023، وثيقة 06 §10):
+-- ملف مهني واحد لكل مستخدم؛ verification_status هو مصدر الحقيقة لظهور
+-- الدليل فقط (الطابور يبقى بوابة الدور)، والوثيقة مخزَّنة محليًا ريثما
+-- يُنقل مخزن الكائنات (Architecture §10).
+CREATE TABLE IF NOT EXISTS professional_profiles (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    profession_type     TEXT NOT NULL,   -- lawyer|notary|adoul|judicial_commissioner|sworn_translator|judicial_expert
+    bio                 TEXT,
+    city                TEXT,
+    verification_status TEXT NOT NULL DEFAULT 'pending',  -- pending|verified|rejected
+    verification_document_key TEXT,
+    verification_document_name TEXT,
+    phone               TEXT,
+    contact_preference  TEXT NOT NULL DEFAULT 'platform', -- visible|platform
+    created_at          TEXT,
+    updated_at          TEXT
+);
+
+CREATE TABLE IF NOT EXISTS professional_specialties (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL REFERENCES professional_profiles(id) ON DELETE CASCADE,
+    specialty  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS professional_reviews (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id  INTEGER NOT NULL REFERENCES professional_profiles(id) ON DELETE CASCADE,
+    reviewer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    rating      INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    comment     TEXT,
+    created_at  TEXT,
+    updated_at  TEXT,
+    UNIQUE (profile_id, reviewer_id)
+);
+
 -- فهارس مفاتيح أجنبية: حذف تسلسلي فعّال وبحث عن جلسات مستخدم/توكنات استعادته
 CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles(role_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
@@ -255,6 +291,9 @@ CREATE INDEX IF NOT EXISTS idx_procedure_steps_procedure_id ON procedure_steps(p
 CREATE INDEX IF NOT EXISTS idx_procedure_progress_user ON procedure_progress(user_id);
 CREATE INDEX IF NOT EXISTS idx_generated_documents_user_id ON generated_documents(user_id);
 CREATE INDEX IF NOT EXISTS idx_generated_documents_template_id ON generated_documents(template_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_directory ON professional_profiles(verification_status, profession_type, city);
+CREATE INDEX IF NOT EXISTS idx_professional_specialties_profile ON professional_specialties(profile_id);
+CREATE INDEX IF NOT EXISTS idx_professional_reviews_profile ON professional_reviews(profile_id);
 """
 
 

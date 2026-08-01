@@ -360,3 +360,62 @@
   § Documents؛ Database Design 06 §5؛ Technical Specification §6؛
   Architecture 00 §6.4/§10؛ AI Architecture 13 §4 (خارج النطاق)؛ Security 12؛
   PRD 02 §4.4؛ Roadmap 23 Phase 3.
+
+---
+
+## المرحلة 5 — النظام البيئي المهني (Roadmap Phase 4)
+
+## D-023 — نطاق النظام البيئي المهني وقراراته
+- **القرار (النطاق):** يُبنى في المرحلة 5 الدليل المهني (وثيقة 17، SRS
+  FR-10.1→10.3، المواصفة الوظيفية §10): تصفح/بحث قابل للتصفية، ملفات مهنية
+  ذاتية (نوع المهنة، المدينة، سيرة، تخصصات، جهة اتصال)، رفع وثيقة التحقق،
+  وتقييمات (نجوم + تعليق). **تدرجات الاشتراك المهني (FR-7.2) وترقية ميزات
+  الدليل المدفوعة مؤجَّلة** لحسم قرار بوابة الدفع (BRD §5) — النمط ذاته في
+  D-021/D-022. **قائمة البلاغات المجتمعية (moderation-queue) مؤجَّلة** إلى
+  مرحلة المجتمع (Roadmap Phase 5)؛ تقييمات المرحلة 1 مفتوحة (التحقق من
+  التفاعل تحسين v2 — وثيقة 17 §5) واعتدالها عبر المسار المجتمعي المشترك.
+- **قرار مصدر الحقيقة للتحقق:** يبقى طابور التحقق القائم (مرحلة 2) هو
+  البوابة (role_status: pending_verification → active/rejected)، ويُضاف إليه
+  مصدر الحقيقة **لظهور الدليل** فقط: `professional_profiles.verification_status`
+  (pending|verified|rejected). قبول/رفض الأدمن يزامن الاثنين معًا
+  (role_status + verification_status إن وُجد ملف) — لا يتعارضان، الأول يمنح
+  الدور والثاني يتحكم بالظهور. أي ملف بلا طلب تحقق (لا role pending) لا
+  يمكن أن يظهر أبدًا. **الظهور في البحث العام مُنفَّذ عند مستوى الاستعلام**
+  (verified + user.status='active') لا في الواجهة فقط (وثيقة 17 §2/§7 —
+  يتعذر تجاوزه عبر API مباشر).
+- **قرار تدفق الملف:** تسجيل بدور مهني (role pending — الحالي) ←
+  `POST /api/professionals/profile` (ينشئ ملفًا verification_status='pending') ←
+  `POST /api/professionals/verify-document` (مرفوع multipart، يستبدل السابق) ←
+  قبول الأدمن (role active + ملف verified). المواصفة الوظيفية §2 تصف رفع
+  الوثيقة "عند التسجيل" لكن وثيقة API تفصلها في نقطة مستقلة — نعتمد
+  النقطة المستقلة (بعد إنشاء الملف أولًا) لضمان وجود profession_type لصف
+  الملف وعدم تعقيد تسجيل JSON بالمحتوى الثنائي.
+- **قرار التخزين المحلي للوثائق:** لا مخزن كائنات محليًا؛ الوثيقة تُخزَّن
+  في `uploads/verification/` (قابلة للتجاوز عبر NIBRAS_UPLOAD_DIR) باسم
+  `{user_id}_{random}.{ext}` مع حصر الامتدادات (pdf/jpg/png) وحد الحجم
+  (NIBRAS_MAX_UPLOAD_BYTES افتراضيًا 5MB). التنزيل للأدمن فقط عبر مسار
+  مصادق (دور admin) لا رابط موقَّع — النقل إلى S3 بمداخل موقَّعة يبقى
+  قرارًا قائمًا (Architecture §10) يُنفَّذ عند توفُّر المخزن.
+- **قرار نوع المهنة:** قائمة وثيقة 17 §1 حصرية للدليل:
+  lawyer|notary|adoul|judicial_commissioner|sworn_translator|judicial_expert؛
+  دورا company/institution مهنيان (نفس طابور التحقق) لكن بلا ملف دليل
+  (خارج القائمة). كل مستخدم ملف دليل واحد (user_id فريد). التخصصات جدول
+  مرتبط بالملف (≤10) وتُصفَّى بها في البحث.
+- **قرار جهة الاتصال:** `contact_preference` (visible|platform، افتراضي
+  platform). الهاتف اختياري ويُعرض للعام فقط عند visible — نفس القدرة
+  التقنية تدعم الخيارين (وثيقة 17 §4) بلا بناء نظام رسائل (v2).
+- **قرار التقييمات:** مراجعة واحدة لكل (مقيِّم، ملف) — إعادة التقييم تحديث
+  (upsert) لا تكرار. يُمنع تقييم الذات. التقييم على ملفات verified فقط.
+  الملف العام يضم المتوسط (ROUND 1) وعدد المراجعات وقائمة المراجعات.
+- **قرار المسارات (وثيقة API § Professionals):** `GET /api/professionals`
+  (type/specialty/city + limit/offset، verified فقط) و`GET
+  /api/professionals/<id>` (تفصيل + مراجعات) عامان؛ `POST
+  /api/professionals/profile` و`POST /api/professionals/verify-document`
+  بمصادقة ودور مهني غير مرفوض؛ `POST /api/professionals/<id>/reviews`
+  بمصادقة (أي مستخدم نشط). إضافة إدارية صغيرة: `GET
+  /api/admin/verification/<user_id>/document` (دور admin) لتنزيل وثيقة
+  الطلب، وطابور التحقق يُثري بحضور الملف/الوثيقة وحالة الدليل.
+- **المصدر:** Professional Directory Design 17؛ SRS FR-10؛ Functional Spec
+  §10/§12؛ API Documentation § Professionals؛ Database Design 06 §10؛ Auth
+  & Authorization §2.3/§3؛ Security Architecture §4؛ Roadmap 23 Phase 4؛
+  BRD §5 (تأجيل الفوترة).

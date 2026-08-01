@@ -47,6 +47,7 @@ def create_app():
     from .routes.documents import documents_bp
     from .routes.library import library_bp
     from .routes.procedures import procedures_bp
+    from .routes.professionals import professionals_bp
 
     app.register_blueprint(library_bp)
     app.register_blueprint(admin_bp)
@@ -54,6 +55,7 @@ def create_app():
     app.register_blueprint(calculators_bp)
     app.register_blueprint(procedures_bp)
     app.register_blueprint(documents_bp)
+    app.register_blueprint(professionals_bp)
     app.register_blueprint(ai_bp)
 
     @app.errorhandler(404)
