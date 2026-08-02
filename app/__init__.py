@@ -2,11 +2,17 @@
 تطبيق Flask الرئيسي لمنصة نبراس.
 
 ينشئ التطبيق ويسجّل Blueprints الوحدات ويضيف بنية تحتية عامة
-(health, CORS, error handlers). يُعدَّل المحتوى لكل وحدة في routes/<module>.
+(health/ready, CORS, أمن الرؤوس, سجلات مهيكلة, error handlers).
+يُعدَّل المحتوى لكل وحدة في routes/<module>.
 """
+import logging
+import sqlite3
+
 from flask import Flask, jsonify, request
 
 from . import config
+from . import logging_utils as nibras_logging
+from .database import db_session
 
 
 def _add_cors_headers(response):
@@ -24,20 +30,64 @@ def _add_cors_headers(response):
     return response
 
 
+def _add_security_headers(response):
+    """رؤوس أمن عامة على كل الاستجابات (المرحلة 11).
+
+    API يخدم JSON فقط (الواجهة خادم منفصل)، لذلك لا تُضاف CSP هنا — يُوصى
+    بضبطها في خادم الواجهة الأمامية عند تقديم HTML. الرؤوس هنا تمنع Sniffing
+    أنواع المحتوى والتضمين في frames (وثيقة 12 Security Architecture §7).
+    """
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=()"
+    )
+    return response
+
+
 def create_app():
     app = Flask(__name__)
     app.json.ensure_ascii = False  # لعرض النصوص العربية كما هي بدل ترميز \u
+
+    # السجلات المهيكلة + سجل الطلبات (يُهيَّأ قبل أي معالجة طلب)
+    nibras_logging.configure_logging(app)
 
     # ضمان وجود المخطط وجداول الهوية والأدوار عند الإقلاع (ترحيل خفيف)
     from .database import init_db
 
     init_db()
 
+    app.before_request(nibras_logging.log_request_start)
+    app.after_request(nibras_logging.log_request_end)
+    app.after_request(_add_security_headers)
     app.after_request(_add_cors_headers)
 
     @app.route("/api/health", methods=["GET"])
     def health():
+        # حيوية (liveness): استجابتها ثابتة — نقطة منفصلة /api/ready للجاهزية
         return jsonify({"status": "ok", "service": "nibras-backend"})
+
+    @app.route("/api/ready", methods=["GET"])
+    def ready():
+        """جاهزية (readiness): يتحقق من قابلية الوصول لقاعدة البيانات."""
+        try:
+            with db_session() as conn:
+                conn.execute("SELECT 1").fetchone()
+        except sqlite3.Error as exc:
+            logging.getLogger("nibras.ready").warning(
+                "readiness_failed", extra={"check": "database", "reason": str(exc)}
+            )
+            return jsonify({
+                "status": "not_ready",
+                "version": config.APP_VERSION,
+                "checks": {"database": "down"},
+            }), 503
+        return jsonify({
+            "status": "ready",
+            "version": config.APP_VERSION,
+            "checks": {"database": "up"},
+        }), 200
 
     # تسجيل Blueprints الوحدات — تُضاف وحدات جديدة بملف blueprint في routes/
     from .routes.admin import admin_bp
@@ -70,6 +120,10 @@ def create_app():
 
     @app.errorhandler(500)
     def server_error(e):
+        # تسجيل الاستثناء كاملاً (traceback) بدون كشف التفاصيل للمستجيب
+        logging.getLogger("nibras.app").exception(
+            "unhandled_error", extra={"path": request.path}
+        )
         return jsonify({"error": "خطأ داخلي في الخادم"}), 500
 
     return app

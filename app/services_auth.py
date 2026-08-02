@@ -360,7 +360,14 @@ class Mailer:
     """
 
     def send_password_reset(self, to_email: str, reset_url: str) -> None:
-        print(f"[mailer:dev] رابط استعادة كلمة المرور لـ {to_email}: {reset_url}")
+        # وضع التطوير: الرابط يُسجَّل مهيكلًا بدل إرسال بريد (مزوّد لاحق).
+        # لا يُسجَّل بريد المستخدم نصًا — يُسجَّل في حقل منفصل عند الحاجة.
+        import logging
+
+        logging.getLogger("nibras.mailer").warning(
+            "password_reset_dev_link",
+            extra={"to_email": to_email, "reset_url": reset_url},
+        )
 
 
 _mailer = Mailer()

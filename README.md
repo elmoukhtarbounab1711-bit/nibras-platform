@@ -96,6 +96,10 @@ python -m pytest -q                    # الاختبارات مباشرة
 | `NIBRAS_INGESTION_MAX_BYTES` | `20971520` (20MB) | الحد الأقصى لحجم ملف المستند المستورد (نصوص قانونية أطول من وثائق التحقق). |
 | `NIBRAS_INGESTION_MAX_ARTICLES` | `1000` | سقف المواد المستخرجة لكل استيعاب (حماية من ملف هائل). |
 | `NIBRAS_INGESTION_SINGLE_ARTICLE_MAX_CHARS` | `4000` | سقف حروف "المادة الواحدة" الاحتياطية عند غياب عناوين مواد. |
+| `NIBRAS_LOG_LEVEL` | `INFO` | مستوى سجل الجذر (DEBUG/INFO/WARNING/ERROR). |
+| `NIBRAS_LOG_FORMAT` | `json` | صيغة السجل: `json` (سطر JSON مهيكل) أو `text` (key=value). |
+| `NIBRAS_LOG_ACCESS` | `1` | تسجيل كل طلب HTTP (سجل `nibras.request`) — `0` يوقفه. |
+| `NIBRAS_APP_VERSION` | `1.0.0` | إصدار التطبيق المعروض في `/api/ready` والسجلات. |
 
 ## التشغيل
 
@@ -105,11 +109,33 @@ python3 -m app.seed        # تعبئة قاعدة البيانات (مرة وا
 python3 run.py              # يشتغل على http://localhost:8000
 ```
 
+## الصلابة التشغيلية (المرحلة 11)
+
+```bash
+# النسخ الاحتياطي والاستعادة (قاعدة SQLite — نسخة متسقة عبر sqlite3 backup API)
+python scripts/backup.py backup [--keep 7]        # ينشئ نسخة في backups/ مع دوران
+python scripts/backup.py list                     # عرض النسخ (الحجم/التاريخ)
+python scripts/backup.py restore --backup backups/nibras-*.sqlite
+
+# اختبار الحمل/الإجهاد (يُشغّل الخادم على نسخة مؤقتة من قاعدة البيانات)
+python scripts/load_test.py --concurrency 32 --requests 1000
+```
+
+- **السجلات المهيكلة:** سطر JSON لكل طلب (`nibras.request`) مع
+  `request_id/method/path/status/duration_ms/remote_addr/user_id`، ورأس
+  `X-Request-ID` في كل استجابة للتعقّب. الحقول الحساسة (كلمات المرور،
+  الرموز، الأسرار، البريد…) تُعمَّى `[REDACTED]` عند التسجيل. رؤوس أمن
+  عامة على كل الاستجابة (nosniff / X-Frame-Options DENY / Referrer-Policy /
+  Permissions-Policy).
+- **المراجعة الأمنية:** النتائج والأدلة والبنود المؤجلة في
+  `docs/SECURITY_REVIEW.md`.
+
 ## نقاط النهاية (API Endpoints)
 
 | الطريقة | المسار | الوصف |
 |---|---|---|
-| GET | `/api/health` | فحص حالة الخادم |
+| GET | `/api/health` | فحص حالة الخادم (حيوية — استجابة ثابتة) |
+| GET | `/api/ready` | جاهزية الخادم: فحص اتصال قاعدة البيانات (`200` جاهز / `503` غير جاهز) |
 | GET | `/api/categories` | قائمة الفروع القانونية |
 | GET | `/api/texts?category=&type=` | قائمة النصوص القانونية (قابلة للتصفية) |
 | GET | `/api/texts/<id>` | تفاصيل نص قانوني + قائمة مواده |

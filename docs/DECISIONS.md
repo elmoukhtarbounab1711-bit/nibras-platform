@@ -653,3 +653,34 @@
   Technical Architecture 00 (المكتبة والبحث)؛ Database Design 06 (بنية
   legal_texts/articles/FT5)؛ Security Architecture 08 §8؛ Admin Panel 20 §3.1؛
   قرار المستخدم (اختيار محرك رفع المستندات من خيارات ما بعد المراحل).
+
+## المرحلة 11 — الصلابة التشغيلية (مراجعة أمنية + سجلات + نسخ + حمل + CI)
+
+## D-029 — نطاق الصلابة التشغيلية وقراراته
+- **القرار (النطاق):** قبل أي مرحلة بناء جديدة، تُنفَّذ حزمة صلابة يطلبها
+  المستخدم: (1) مراجعة أمنية شاملة (موثقة في docs/SECURITY_REVIEW.md)،
+  (2) اختبار حمل/إجهاد (scripts/load_test.py)، (3) سجلات مهيكلة
+  (app/logging_utils.py)، (4) نسخ/استعادة (scripts/backup.py)،
+  (5) نقاط حيوية/جاهزية (تغيير `/api/health` **ممنوع** لثبات التعاقد —
+  أُضيف `/api/ready`)، (6) تعزيز CI القائم (لا إنشاء جديد).
+- **قرار السجلات:** سجل JSON واحد لكل طلب (nibras.request) مع
+  request_id/method/path/status/duration_ms/remote_addr/user_id؛ معرّف الطلب
+  يُؤخذ من X-Request-ID الوارد أو يولَّد ويُصدَر في الاستجابة للتعقّب؛
+  الحقول الحساسة (password/token/secret/api_key/email…) تُعمَّى
+  ([REDACTED]) عند التسجيل. السجل النصي بديل (LOG_FORMAT=text)؛
+  LOG_ACCESS=0 يوقف سجل الطلبات.
+- **قرار تسمية الوحدة:** تجنّبًا لتظليل stdlib `logging` داخل الحزمة، وحدة
+  السجلات اسمها `app/logging_utils.py` (لا `app/logging.py`).
+- **قرار الرؤوس الأمنية:** على كل الاستجابة: X-Content-Type-Options:
+  nosniff، X-Frame-Options: DENY، Referrer-Policy: strict-origin-when-cross-
+  origin، Permissions-Policy (camera/microphone/geolocation=()). CSP مؤجَّل
+  حتى جرد نطاقات الواجهة في الإنتاج.
+- **قرار النسخ:** sqlite3 backup API (نسخة متسقة حتى مع قاعدة نشطة) في
+  scripts/backup.py مع فحص سلامة quick_check قبل أي استعادة، ودوران يبقي
+  أحدث N (افتراضي 7)؛ أسماء النسخ بتمييز ميكروثانية (تفرد داخل الثانية).
+- **قرار الحمل:** اختبار قراءة-فقط على نسخة مؤقتة من قاعدة البيانات بلا
+  مصادقة، عبر werkzeug threaded على منفذ محلي؛ نتائج الإنتاجية تُمثّل خادم
+  dev أحادي العملية، والنشر الإنتاجي يتطلب WSGI متعدد العمال + HTTPS.
+- **المصدر:** طلب المستخدم (حزمة الصلابة قبل المرحلة التالية)؛
+  Security Architecture 12 §7/§8؛ Testing 21 §6؛ Deployment 22 §3/§5؛
+  docs/SECURITY_REVIEW.md.

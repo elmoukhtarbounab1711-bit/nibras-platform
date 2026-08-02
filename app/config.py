@@ -44,8 +44,33 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+# ---------------------------------------------------------------------------
+# السجلات المهيكلة والصحة (المرحلة 11 — الصلابة التشغيلية)
+# ---------------------------------------------------------------------------
+
+# مستوى سجلات الجذر (DEBUG|INFO|WARNING|ERROR)
+LOG_LEVEL = os.environ.get("NIBRAS_LOG_LEVEL", "INFO")
+
+# صيغة السجلات: "json" (سطر JSON مهيكل) أو "text" (key=value للمراجعة المحلية)
+LOG_FORMAT = os.environ.get("NIBRAS_LOG_FORMAT", "json")
+
+# تسجيل كل طلب HTTP (method/path/status/duration_ms/request_id/remote_addr/user_id)
+LOG_ACCESS = _env_bool("NIBRAS_LOG_ACCESS", "1")
+
+# إصدار التطبيق يُعرض في /api/ready (لمرجعية نشر سريعة في السجلات/المراقبة)
+APP_VERSION = os.environ.get("NIBRAS_APP_VERSION", "1.0.0")
+
+
 def _safe_warn(text: str) -> None:
-    """طباعة إنذار لا تنهار على وحدات تحكم لا تدعم العربية (مثل cp1252)."""
+    """طباعة إنذار لا ينهار على وحدات تحكم لا تدعم العربية (مثل cp1252)."""
+    import logging as _logging
+
+    if any(
+        getattr(h, "_nibras", False) for h in _logging.root.handlers
+    ):
+        # السجل المهيكل مفعّل (المرحلة 11) — معالجه آمن الترميز
+        _logging.getLogger("nibras.config").warning(text)
+        return
     try:
         print(text)
     except UnicodeEncodeError:
