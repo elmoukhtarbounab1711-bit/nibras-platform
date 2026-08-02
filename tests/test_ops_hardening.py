@@ -23,7 +23,8 @@ def test_ready_reports_database_up(client):
     assert r.status_code == 200
     body = r.get_json()
     assert body["status"] == "ready"
-    assert body["checks"] == {"database": "up"}
+    # المرحلة 17 (D-035): يُضاف فحص المستأجر الافتراضي إلى تقرير الجاهزية
+    assert body["checks"] == {"database": "up", "tenants": "up"}
     assert "version" in body
 
 

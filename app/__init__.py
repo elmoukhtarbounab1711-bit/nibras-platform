@@ -70,24 +70,43 @@ def create_app():
 
     @app.route("/api/ready", methods=["GET"])
     def ready():
-        """جاهزية (readiness): يتحقق من قابلية الوصول لقاعدة البيانات."""
+        """جاهزية (readiness): يتحقق من قابلية الوصول لقاعدة البيانات.
+
+        يتضمن فحص المستأجر الافتراضي (المرحلة 17 — D-035) لضمان جاهزية
+        البنية متعددة المستأجرين عند الإقلاع.
+        """
+        checks = {}
         try:
             with db_session() as conn:
                 conn.execute("SELECT 1").fetchone()
+            checks["database"] = "up"
         except sqlite3.Error as exc:
             logging.getLogger("nibras.ready").warning(
                 "readiness_failed", extra={"check": "database", "reason": str(exc)}
             )
+            checks["database"] = "down"
+        if checks["database"] == "up":
+            from .services_tenants import default_tenant_id
+
+            try:
+                default_tenant_id()
+                checks["tenants"] = "up"
+            except sqlite3.Error as exc:
+                logging.getLogger("nibras.ready").warning(
+                    "readiness_failed", extra={"check": "tenants", "reason": str(exc)}
+                )
+                checks["tenants"] = "down"
+        if all(status == "up" for status in checks.values()):
             return jsonify({
-                "status": "not_ready",
+                "status": "ready",
                 "version": config.APP_VERSION,
-                "checks": {"database": "down"},
-            }), 503
+                "checks": checks,
+            }), 200
         return jsonify({
-            "status": "ready",
+            "status": "not_ready",
             "version": config.APP_VERSION,
-            "checks": {"database": "up"},
-        }), 200
+            "checks": checks,
+        }), 503
 
     # تسجيل Blueprints الوحدات — تُضاف وحدات جديدة بملف blueprint في routes/
     from .routes.admin import admin_bp

@@ -212,3 +212,16 @@ NOTIFICATION_OUTBOX_LIMIT = _env_int("NIBRAS_NOTIFICATION_OUTBOX_LIMIT", 50)
 NOTIFICATION_OUTBOX_MAX_ATTEMPTS = _env_int(
     "NIBRAS_NOTIFICATION_OUTBOX_MAX_ATTEMPTS", 3
 )
+
+# ---------------------------------------------------------------------------
+# جاهزية multi-tenant (المرحلة 17 — قرار D-035): عزل الهوية فقط
+# ---------------------------------------------------------------------------
+
+# وضع متعدد المستأجرين: معطَّل افتراضيًا (سلوك أحادي المستأجر الحالي
+# تمامًا — يُتجاهل رأس X-Tenant-Id). عند التفعيل (1) يُتحقق المستأجر
+# من الرأس ويُرفض التعارض مع مستأجر المستخدم (403). عزل بيانات الوحدات
+# نفسه مؤجَّل لمرحلة multi-tenancy الفعلية — هذه الجاهزية البنيوية فقط.
+MULTI_TENANT = _env_bool("NIBRAS_MULTI_TENANT")
+
+# معرّف المستأجر الافتراضي (الرئيسي) المبذور تلقائيًا عند الإقلاع
+DEFAULT_TENANT_SLUG = os.environ.get("NIBRAS_DEFAULT_TENANT_SLUG", "nibras")

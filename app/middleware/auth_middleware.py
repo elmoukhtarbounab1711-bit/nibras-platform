@@ -10,7 +10,7 @@ from functools import wraps
 
 from flask import jsonify, request
 
-from .. import services_auth
+from .. import config, services_auth, services_tenants
 
 
 def _bearer_token() -> str | None:
@@ -21,6 +21,37 @@ def _bearer_token() -> str | None:
         token = parts[1].strip()
         return token or None
     return None
+
+
+class _TenantDenied(Exception):
+    """رفض نطاق المستأجر في طلب مُصادَق (يُترجم إلى 403)."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
+def _resolve_tenant(user_id: int) -> int:
+    """يحدد مستأجر الطلب الفعّال وفق وضع multi-tenant ورأس X-Tenant-Id.
+
+    الوضع غير مفعّل (الافتراضي): يُتجاهل الرأس — كل المستخدمين في
+    مستأجرهم (الافتراضي) كما في السلوك أحادي المستأجر الحالي.
+    الوضع مفعّل (NIBRAS_MULTI_TENANT=1): رأس X-Tenant-Id إلزامي —
+    غيابه، أو تعطله (غير معروف/معلّق)، أو تعارضه مع مستأجر المستخدم
+    يرفض الطلب (403) — يضبط request.tenant_id لاستخدامات المرحلة اللاحقة.
+    """
+    tenant_id = services_tenants.get_user_tenant_id(user_id)
+    if not config.MULTI_TENANT:
+        return tenant_id or services_tenants.default_tenant_id()
+    header = request.headers.get("X-Tenant-Id")
+    if not header:
+        raise _TenantDenied("رأس X-Tenant-Id مطلوب في الوضع متعدد المستأجرين.")
+    tenant = services_tenants.resolve_tenant(header)
+    if tenant is None or tenant["status"] != "active":
+        raise _TenantDenied("مستأجر غير معروف أو غير نشط.")
+    if tenant_id is not None and tenant["id"] != tenant_id:
+        raise _TenantDenied("لا تملك صلاحية داخل هذا المستأجر.")
+    return tenant["id"]
 
 
 def require_auth(fn):
@@ -37,6 +68,10 @@ def require_auth(fn):
         if profile is None or profile.status != "active":
             return jsonify({"error": "غير مصرح. الحساب غير نشط."}), 401
         request.user = profile
+        try:
+            request.tenant_id = _resolve_tenant(user_id)
+        except _TenantDenied as exc:
+            return jsonify({"error": exc.message}), 403
         return fn(*args, **kwargs)
     return wrapper
 

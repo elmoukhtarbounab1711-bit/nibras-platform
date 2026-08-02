@@ -15,12 +15,14 @@ from .. import (
     services_ingestion,
     services_marketplace,
     services_notifications,
+    services_tenants,
 )
 from ..middleware.auth_middleware import require_role
 from ..services_admin import AdminError
 from ..services_ads import AdError
 from ..services_ingestion import IngestionError
 from ..services_marketplace import MarketplaceError
+from ..services_tenants import TenantError
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -500,3 +502,27 @@ def notifications_deliver():
 @require_role("admin")
 def notifications_delivery_stats():
     return jsonify(services_notifications.delivery_stats()), 200
+
+
+# ---------------------------------------------------------------------------
+# إدارة المستأجرين (المرحلة 17 — قرار D-035): قائمة وإنشاء المستأجرين
+# (عزل هوية فقط). كل إنشاء يُسجَّل في admin_audit_log (Security §8).
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/api/admin/tenants", methods=["GET"])
+@require_role("admin")
+def tenants_list():
+    return jsonify({"tenants": services_tenants.list_tenants()}), 200
+
+
+@admin_bp.route("/api/admin/tenants", methods=["POST"])
+@require_role("admin")
+def tenants_create():
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        tenant = services_tenants.create_tenant(
+            _admin_id(), data.get("name"), data.get("slug")
+        )
+    except TenantError as exc:
+        return jsonify({"error": exc.message}), exc.status_code
+    return jsonify({"id": tenant["id"], "message": "تم إنشاء المستأجر."}), 201

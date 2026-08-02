@@ -9,7 +9,7 @@ import time
 
 from flask import Blueprint, jsonify, request
 
-from .. import config, services_auth
+from .. import config, services_auth, services_tenants
 from ..middleware.auth_middleware import require_auth
 from ..services_auth import AuthError
 
@@ -59,16 +59,35 @@ def register():
         return jsonify({"error": "طلبات كثيرة جدًا. حاول لاحقًا."}), 429
     data = request.get_json(force=True, silent=True) or {}
     try:
+        tenant_id = _register_tenant_id()
         profile = services_auth.create_user(
             email=data.get("email"),
             password=data.get("password"),
             full_name=data.get("full_name"),
             role_code=data.get("role", "citizen"),
+            tenant_id=tenant_id,
         )
     except AuthError as exc:
         return _handle_auth_error(exc)
     refresh_token, refresh_expires = services_auth.create_refresh_token(profile.id)
     return _auth_response(profile, refresh_token, refresh_expires, status_code=201)
+
+
+def _register_tenant_id() -> int | None:
+    """مستأجر التسجيل: رأس X-Tenant-Id في الوضع المفعّل، وإلا الافتراضي.
+
+    جاهزية multi-tenant (D-035): لا يُقبل رأس في الوضع أحادي المستأجر؛
+    وفي الوضع المفعّل يُرفض رأس لمستأجر غير معروف أو غير نشط (400).
+    """
+    if not config.MULTI_TENANT:
+        return None
+    header = request.headers.get("X-Tenant-Id")
+    if not header:
+        return None
+    tenant = services_tenants.resolve_tenant(header)
+    if tenant is None or tenant["status"] != "active":
+        raise AuthError("مستأجر غير معروف أو غير نشط.", 400)
+    return tenant["id"]
 
 
 @auth_bp.route("/api/auth/login", methods=["POST"])

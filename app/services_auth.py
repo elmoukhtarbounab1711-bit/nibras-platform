@@ -71,6 +71,7 @@ class UserProfile:
     full_name: str
     roles: list = field(default_factory=list)
     status: str = "active"
+    tenant_id: int | None = None
 
     def to_dict(self):
         return {
@@ -79,6 +80,7 @@ class UserProfile:
             "full_name": self.full_name,
             "roles": self.roles,
             "status": self.status,
+            "tenant_id": self.tenant_id,
         }
 
 
@@ -174,8 +176,9 @@ def validate_role_code(code: str) -> str:
     return code
 
 
-def create_user(email: str, password: str, full_name: str, role_code: str) -> UserProfile:
-    """ينشئ مستخدمًا بدور واحد ويعيد ملفه الشخصي (التسجيل العام).
+def create_user(email: str, password: str, full_name: str, role_code: str,
+                tenant_id=None) -> UserProfile:
+    """تسجيل عام وفق الشروط (§2.1) مع ربط المستأجر (الافتراضي إن لم يُحدَّد).
 
     يرفض الدور الإداري (يُمنح حصريًا عبر app.create_admin) ويطبق الحالة
     الافتراضية للتحقق (§2.1). يرمي AuthError عند تكرار البريد.
@@ -184,10 +187,21 @@ def create_user(email: str, password: str, full_name: str, role_code: str) -> Us
     return create_user_with_role(
         email=email, password=password, full_name=full_name, role_code=role_code,
         role_status=role_status_for_code(role_code), user_status="active",
+        tenant_id=tenant_id,
     )
 
 
-def create_user_with_role(email, password, full_name, role_code, role_status="active", user_status="active"):
+def _default_tenant_id() -> int:
+    """معرّف المستأجر الافتراضي (مبذور في init_db عبر services_tenants)."""
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT id FROM tenants WHERE slug = ?", (config.DEFAULT_TENANT_SLUG,)
+        ).fetchone()
+    return row["id"] if row else 1
+
+
+def create_user_with_role(email, password, full_name, role_code, role_status="active",
+                          user_status="active", tenant_id=None):
     """إنشاء مستخدم بدور محدد وحالة صريحة (للاستخدام الداخلي/CLI فقط)."""
     email = validate_email(email)
     validate_password(password)
@@ -195,13 +209,16 @@ def create_user_with_role(email, password, full_name, role_code, role_status="ac
     if not full_name:
         raise AuthError("الاسم الكامل مطلوب", 400)
     password_hash = hash_password(password)
+    if tenant_id is None:
+        tenant_id = _default_tenant_id()
     with db_session() as conn:
         exists = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
         if exists:
             raise AuthError("البريد الإلكتروني مسجل مسبقًا", 409)
         cur = conn.execute(
-            "INSERT INTO users (email, full_name, password_hash, status) VALUES (?,?,?,?)",
-            (email, full_name, password_hash, user_status),
+            "INSERT INTO users (email, full_name, password_hash, status, tenant_id)"
+            " VALUES (?,?,?,?,?)",
+            (email, full_name, password_hash, user_status, tenant_id),
         )
         user_id = cur.lastrowid
         role_id = conn.execute("SELECT id FROM roles WHERE code = ?", (role_code,)).fetchone()["id"]
@@ -215,27 +232,30 @@ def create_user_with_role(email, password, full_name, role_code, role_status="ac
 def get_user_profile(user_id: int) -> UserProfile | None:
     with db_session() as conn:
         row = conn.execute(
-            "SELECT id, email, full_name, status FROM users WHERE id = ?", (user_id,)
+            "SELECT id, email, full_name, status, tenant_id FROM users WHERE id = ?",
+            (user_id,),
         ).fetchone()
         if not row:
             return None
     return UserProfile(
         id=row["id"], email=row["email"], full_name=row["full_name"],
-        status=row["status"], roles=[r["code"] for r in get_user_roles(user_id)],
+        status=row["status"], tenant_id=row["tenant_id"],
+        roles=[r["code"] for r in get_user_roles(user_id)],
     )
 
 
 def get_user_by_email(email: str) -> UserProfile | None:
     with db_session() as conn:
         row = conn.execute(
-            "SELECT id, email, full_name, status FROM users WHERE email = ?",
+            "SELECT id, email, full_name, status, tenant_id FROM users WHERE email = ?",
             ((email or "").strip().lower(),),
         ).fetchone()
         if not row:
             return None
     return UserProfile(
         id=row["id"], email=row["email"], full_name=row["full_name"],
-        status=row["status"], roles=[r["code"] for r in get_user_roles(user_id=row["id"])],
+        status=row["status"], tenant_id=row["tenant_id"],
+        roles=[r["code"] for r in get_user_roles(user_id=row["id"])],
     )
 
 
@@ -271,9 +291,16 @@ def _now() -> datetime:
 
 
 def create_access_token(user_id: int) -> tuple[str, datetime]:
-    """ينشئ JWT قصير العمر (المواصفة التقنية §4) ويعيده مع زمن انتهائه."""
+    """ينشئ JWT قصير العمر (المواصفة التقنية §4) ويعيده مع زمن انتهائه.
+
+    يحمل Claim `tenant_id` لمستأجر المستخدم (جاهزية multi-tenant D-035)
+    لتمكين الربط/التحقق مستقبلًا دون تغيير صيغة التوكن.
+    """
     expires = _now() + timedelta(minutes=config.ACCESS_TOKEN_TTL_MINUTES)
     payload = {"sub": str(user_id), "type": "access", "exp": expires}
+    tenant_id = _user_tenant_id(user_id)
+    if tenant_id is not None:
+        payload["tenant_id"] = tenant_id
     token = pyjwt.encode(payload, config.JWT_SECRET, algorithm=config.JWT_ALGORITHM)
     return token, expires
 
@@ -290,6 +317,29 @@ def decode_access_token(token: str) -> int | None:
         return int(payload["sub"])
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def get_token_tenant_id(token: str) -> int | None:
+    """يعيد معرف مستأجر التوكن (إن حمله) دون فحص اشتراك المستخدم (D-035)."""
+    try:
+        payload = pyjwt.decode(token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM])
+    except pyjwt.InvalidTokenError:
+        return None
+    tenant_id = payload.get("tenant_id")
+    if tenant_id is None:
+        return None
+    try:
+        return int(tenant_id)
+    except (TypeError, ValueError):
+        return None
+
+
+def _user_tenant_id(user_id: int) -> int | None:
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT tenant_id FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+    return row["tenant_id"] if row else None
 
 
 def create_refresh_token(user_id: int) -> tuple[str, str]:

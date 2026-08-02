@@ -89,6 +89,18 @@ CREATE TABLE IF NOT EXISTS related_articles (
 -- وثيقة المصادقة والتفويض (§1، §2.1، §2.4، §2.6) وقاعدة البيانات (§2).
 -- =====================================================================
 
+-- المستأجرون (المرحلة 17 — قرار D-035): جاهزية multi-tenant. يُبذر
+-- مستأجر افتراضي واحد (slug من الإعداد، افتراضيًا nibras) ويرتبط به كل
+-- مستخدم عبر users.tenant_id (عمود يُضاف بترحيل آمن للموجودين). عزل
+-- بيانات الوحدات نفسه مؤجَّل لمرحلة multi-tenancy الفعلية.
+CREATE TABLE IF NOT EXISTS tenants (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug        TEXT UNIQUE NOT NULL COLLATE NOCASE,
+    name        TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'active',  -- active | suspended
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- المستخدمون
 CREATE TABLE IF NOT EXISTS users (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,6 +108,7 @@ CREATE TABLE IF NOT EXISTS users (
     full_name       TEXT NOT NULL,
     password_hash   TEXT NOT NULL,              -- argon2id
     status          TEXT NOT NULL DEFAULT 'active',  -- active | suspended | deleted
+    tenant_id       INTEGER REFERENCES tenants(id),  -- المستأجر (افتراضيًا الرئيسي)
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -360,6 +373,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 -- فهارس مفاتيح أجنبية: حذف تسلسلي فعّال وبحث عن جلسات مستخدم/توكنات استعادته
 CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles(role_id);
+CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_queries_user_id ON ai_queries(user_id);
@@ -506,6 +520,13 @@ def _ensure_column(conn, table: str, column: str, definition: str) -> None:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
+def _table_exists(conn, table: str) -> bool:
+    """هل الجدول موجود في قاعدة البيانات (لترحيل آمن للقواعد القديمة)؟"""
+    return conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+    ).fetchone() is not None
+
+
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -561,6 +582,20 @@ def init_db(reset: bool = False):
     if reset and DB_PATH.exists():
         DB_PATH.unlink()
     with db_session() as conn:
+        # ترحيل مسبق للقواعد القائمة (أُنشئت قبل المرحلة 17): يجب وجود جدول
+        # tenants وعمود users.tenant_id قبل تنفيذ SCHEMA لأن فهارسه تشير إليهما.
+        # للقواعد الجديدة يُنشئ SCHEMA نفسه الجدولين — نتخطى العمود هنا فقط.
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS tenants (
+                   id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                   slug        TEXT UNIQUE NOT NULL COLLATE NOCASE,
+                   name        TEXT NOT NULL,
+                   status      TEXT NOT NULL DEFAULT 'active',
+                   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+               )"""
+        )
+        if _table_exists(conn, "users"):
+            _ensure_column(conn, "users", "tenant_id", "INTEGER REFERENCES tenants(id)")
         conn.executescript(SCHEMA)
         # ترحيل خفيف للجداول القائمة (قواعد بيانات أُنشئت قبل المرحلة 2):
         _ensure_column(conn, "user_roles", "rejection_reason", "TEXT")
@@ -576,6 +611,7 @@ def init_db(reset: bool = False):
         services_documents,
         services_marketplace,
         services_procedures,
+        services_tenants,
     )
 
     services_auth.ensure_roles()
@@ -585,3 +621,6 @@ def init_db(reset: bool = False):
     services_community.ensure_defaults()
     services_marketplace.ensure_defaults()
     services_ads.ensure_defaults()
+    # المستأجر الافتراضي ثم إلحاق المستخدمين الموجودين به (idempotent)
+    services_tenants.ensure_defaults()
+    services_tenants.backfill_default_tenant()
