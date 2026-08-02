@@ -41,6 +41,25 @@ def require_auth(fn):
     return wrapper
 
 
+def optional_auth(fn):
+    """يمرِّر دائمًا؛ يضبط request.user فقط عند وجود توكن صالح وحساب نشط.
+
+    يستخدم في المسارات العامة التي تُثري الاستجابة بمعلومات المُصادَق إن
+    وُجد (مثل my_reactions في تفاصيل منشور المجتمع — قرار D-024).
+    """
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        token = _bearer_token()
+        if token is not None:
+            user_id = services_auth.decode_access_token(token)
+            if user_id is not None:
+                profile = services_auth.get_user_profile(user_id)
+                if profile is not None and profile.status == "active":
+                    request.user = profile
+        return fn(*args, **kwargs)
+    return wrapper
+
+
 def require_role(*roles):
     """يتطلب دورًا واحدًا على الأقل من الأدوار المعطاة بحالة active."""
     def decorator(fn):

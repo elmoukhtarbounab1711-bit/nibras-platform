@@ -27,6 +27,7 @@ nibras-backend/
 │   ├── services_ai.py          # واجهة الذكاء الاصطناعي (موجَّه + تعليم عام)
 │   ├── services_documents.py   # مولّد الوثائق (قوالب + تحقق + توليد + تصدير PDF/DOCX)
 │   ├── services_professionals.py # النظام البيئي المهني: دليل + ملفات + وثائق تحقق + تقييمات
+│   ├── services_community.py     # المجتمع: منشورات + تعليقات + تفاعلات + بلاغات + إشراف
 │   ├── create_admin.py     # CLI إنشاء أول حساب مسؤول (python -m app.create_admin)
 │   ├── middleware/
 │   │   └── auth_middleware.py  # require_auth و require_role(*roles)
@@ -38,7 +39,8 @@ nibras-backend/
 │       ├── procedures.py   # نقاط نهاية المساطر وتقدمها (Blueprint)
 │       ├── ai.py           # نقاط نهاية واجهة الذكاء الاصطناعي (Blueprint)
 │       ├── documents.py    # نقاط نهاية مولّد الوثائق (Blueprint)
-│       └── professionals.py # نقاط نهاية النظام البيئي المهني (Blueprint)
+│       ├── professionals.py # نقاط نهاية النظام البيئي المهني (Blueprint)
+│       └── community.py    # نقاط نهاية المجتمع والإشراف (Blueprint)
 ├── uploads/              # وثائق التحقق المهنية (مجلد محلي مؤقت — يُنقل لمخزن كائنات لاحقًا)
 ├── admin.html           # لوحة إدارة داخلية مستقلة (دخول + محتوى + طابور التحقق)
 ├── tests/               # اختبارات الوحدة والتكامل (pytest)
@@ -81,6 +83,8 @@ python -m pytest -q                    # الاختبارات مباشرة
 | `NIBRAS_DOC_RATE_LIMIT_WINDOW_SECONDS` | `3600` | نافذة حد توليد الوثائق بالثواني. |
 | `NIBRAS_UPLOAD_DIR` | (فارغ = `repo/uploads/`) | مجلد رفع وثائق التحقق المهنية (تخزين محلي ريثما يُنقل لمخزن كائنات). |
 | `NIBRAS_MAX_UPLOAD_BYTES` | `5242880` (5MB) | الحد الأقصى لحجم وثيقة التحقق بالبايت. |
+| `NIBRAS_COMMUNITY_RATE_LIMIT_MAX_REQUESTS` | `30` | حد إنشاء المنشورات/التعليقات لكل مستخدم لكل نافذة (مكافحة الإساءة). |
+| `NIBRAS_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS` | `3600` | نافذة حد كتابة المجتمع بالثواني. |
 
 ## التشغيل
 
@@ -134,6 +138,17 @@ python3 run.py              # يشتغل على http://localhost:8000
 | POST | `/api/professionals/verify-document` | رفع وثيقة التحقق multipart (حقل `document` — pdf/jpg/png حتى 5MB) |
 | POST | `/api/professionals/<id>/reviews` | تقييم محترف `{rating: 1-5, comment}` — upsert بلا تقييم ذاتي (يتطلب JWT) |
 | GET | `/api/admin/verification/<user_id>/document` | تنزيل وثيقة التحقق لمستخدم (يتطلب دور `admin`) |
+| GET | `/api/community/categories` | فئات المجتمع (عدد المنشورات المرئية لكل فئة) |
+| GET | `/api/community/posts?category=&limit=&offset=` | منشورات مرئية (ترقيم) |
+| GET | `/api/community/posts/<id>` | تفاصيل منشور + تعليقات + تفاعلات (+ `my_reactions` للمُصادَق) |
+| POST | `/api/community/posts` | إنشاء منشور `{category_id, title, body}` (يتطلب JWT + حد معدل) |
+| PUT/DELETE | `/api/community/posts/<id>` | تعديل/حذف (removed) منشوراتك فقط (يتطلب JWT) |
+| POST | `/api/community/posts/<id>/comments` | إضافة تعليق (يتطلب JWT + حد معدل) |
+| PUT/DELETE | `/api/community/posts/<id>/comments/<comment_id>` | تعديل/حذف تعليقاتك فقط (يتطلب JWT) |
+| POST | `/api/community/posts/<id>/react` | تبديل تفاعل `{type: like\|helpful}` (يتطلب JWT) |
+| POST | `/api/community/report` | بلاغ `{target_type: post\|comment\|professional_profile, target_id, reason}` (يتطلب JWT) |
+| GET | `/api/admin/moderation-queue` | بلاغات الإشراف المفتوحة مع لمحة عن المحتوى (يتطلب دور `admin`) |
+| POST | `/api/admin/moderation/<report_id>/action` | `{action: dismiss\|hide\|remove}` على بلاغ مفتوح — مُسجَّل تدقيقًا (يتطلب دور `admin`) |
 
 مثال تنفيذ حاسبة الإرث (زوجة + ابن، تركة 120000):
 ```bash
@@ -182,7 +197,8 @@ curl -X POST http://localhost:8000/api/professionals/verify-document \
 curl "http://localhost:8000/api/professionals?type=lawyer&city=الدار البيضاء"
 ```
 
-كل إجراء إداري (إنشاء/تعديل/حذف محتوى، قبول/رفض تحقق) يُسجَّل في `admin_audit_log`
+كل إجراء إداري (إنشاء/تعديل/حذف محتوى، قبول/رفض تحقق، إجراءات إشراف
+hide/remove/dismiss) يُسجَّل في `admin_audit_log`
 (المسؤول، الفعل، الهدف، التوقيت) وفق Security Architecture §8.
 
 مثال بحث:
@@ -260,3 +276,8 @@ curl -X POST http://localhost:8000/api/admin/texts \
    والتقييمات مكتملة (قرار D-023). المؤجَّل لحسم بوابة الدفع: تدرجات الاشتراك المهنية
    (FR-7.2) والميزات المدفوعة للدليل؛ وللمرحلة المجتمعية: الإشراف والبلاغات
    (التحقق من التفاعلات مرحلة لاحقة — v2).
+7. **المجتمع**: الفئات والمنشورات والتعليقات والتفاعلات (like/helpful) وبلاغات
+   الإشراف مع إجراءات hide/remove/dismiss مُسجَّلة والشارة الخضراء للمحترفين
+   مكتملة (قرار D-024). المؤجَّل لحسم منتج: المتابعة (follows) والنقاط (reputation —
+   الصيغة قرار عمل غير محسوم، وثيقة 16 §2)؛ وحسم بوابة الدفع يفتح **سوق القوالب**
+   (شراء أحادي) من Roadmap Phase 5؛ وقيد عمر الحساب كمكافحة إساءة يبقى معايرة منتج.

@@ -280,6 +280,58 @@ CREATE TABLE IF NOT EXISTS professional_reviews (
     UNIQUE (profile_id, reviewer_id)
 );
 
+-- المجتمع (المرحلة 6 — قرار D-024، وثيقة 06 §9): فئات مستقلة عن مكتبة
+-- النصوص (وثيقة 16 §1)، منشورات وتعليقات بحالة (visible|hidden|removed)
+-- بلا حذف فعلي (أثر تدقيقي — وثيقة 16 §3)، تفاعلات per (user, post, type)،
+-- وبلاغات بنمط موحد (post|comment|professional_profile) لطابور الإشراف.
+CREATE TABLE IF NOT EXISTS community_categories (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS posts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category_id INTEGER NOT NULL REFERENCES community_categories(id),
+    title       TEXT NOT NULL,
+    body        TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'visible',  -- visible|hidden|removed
+    created_at  TEXT,
+    updated_at  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS comments (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    body       TEXT NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'visible',  -- visible|hidden|removed
+    created_at TEXT,
+    updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS reactions (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    type       TEXT NOT NULL,   -- like|helpful
+    created_at TEXT,
+    PRIMARY KEY (user_id, post_id, type)
+);
+
+CREATE TABLE IF NOT EXISTS reports (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    reporter_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    target_type TEXT NOT NULL,   -- post|comment|professional_profile
+    target_id   INTEGER NOT NULL,
+    reason      TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'open',  -- open|actioned|dismissed
+    created_at  TEXT,
+    resolved_at TEXT,
+    resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE (reporter_id, target_type, target_id, status)
+);
+
 -- فهارس مفاتيح أجنبية: حذف تسلسلي فعّال وبحث عن جلسات مستخدم/توكنات استعادته
 CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles(role_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
@@ -294,6 +346,9 @@ CREATE INDEX IF NOT EXISTS idx_generated_documents_template_id ON generated_docu
 CREATE INDEX IF NOT EXISTS idx_profiles_directory ON professional_profiles(verification_status, profession_type, city);
 CREATE INDEX IF NOT EXISTS idx_professional_specialties_profile ON professional_specialties(profile_id);
 CREATE INDEX IF NOT EXISTS idx_professional_reviews_profile ON professional_reviews(profile_id);
+CREATE INDEX IF NOT EXISTS idx_posts_category_status ON posts(category_id, status);
+CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id);
+CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
 """
 
 
@@ -336,6 +391,7 @@ def init_db(reset: bool = False):
     from . import (
         services_auth,
         services_calculators,
+        services_community,
         services_documents,
         services_procedures,
     )
@@ -344,3 +400,4 @@ def init_db(reset: bool = False):
     services_calculators.ensure_defaults()
     services_procedures.ensure_defaults()
     services_documents.ensure_defaults()
+    services_community.ensure_defaults()

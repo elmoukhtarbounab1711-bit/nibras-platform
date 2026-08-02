@@ -125,3 +125,24 @@ def verification_document(user_id):
     return send_file(
         path, mimetype=content_type, as_attachment=True, download_name=name
     )
+
+
+@admin_bp.route("/api/admin/moderation-queue", methods=["GET"])
+@require_role("admin")
+def moderation_queue():
+    """بلاغات الإشراف المفتوحة (مجتمع + ملفات مهنية) — قرار D-024."""
+    return jsonify({"reports": services_admin.list_moderation_queue()}), 200
+
+
+@admin_bp.route("/api/admin/moderation/<int:report_id>/action", methods=["POST"])
+@require_role("admin")
+def moderation_action(report_id):
+    """dismiss|hide|remove على بلاغ مفتوح، مع تسجيل تدقيقي (وثيقة 16 §3)."""
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        result = services_admin.moderate_report(
+            _admin_id(), report_id, data.get("action")
+        )
+    except AdminError as exc:
+        return _handle_admin_error(exc)
+    return jsonify(result), 200

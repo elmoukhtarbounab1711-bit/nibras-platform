@@ -129,3 +129,12 @@ MAX_UPLOAD_BYTES = _env_int("NIBRAS_MAX_UPLOAD_BYTES", 5 * 1024 * 1024)
 
 # الامتدادات المسموح بها لوثائق التحقق
 ALLOWED_UPLOAD_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
+
+# ---------------------------------------------------------------------------
+# المجتمع (المرحلة 6 — Roadmap Phase 5) — وفق وثيقة 16 وقرار D-024
+# ---------------------------------------------------------------------------
+
+# حد معدل إنشاء المنشورات/التعليقات لكل مستخدم (وثيقة 16 §4 — مكافحة
+# الإساءة، نمط حدّ الذكاء الاصطناعي في D-021)
+COMMUNITY_RATE_LIMIT_MAX_REQUESTS = _env_int("NIBRAS_COMMUNITY_RATE_LIMIT_MAX_REQUESTS", 30)
+COMMUNITY_RATE_LIMIT_WINDOW_SECONDS = _env_int("NIBRAS_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS", 3600)

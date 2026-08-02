@@ -419,3 +419,48 @@
   §10/§12؛ API Documentation § Professionals؛ Database Design 06 §10؛ Auth
   & Authorization §2.3/§3؛ Security Architecture §4؛ Roadmap 23 Phase 4؛
   BRD §5 (تأجيل الفوترة).
+
+## D-024 — نطاق مجتمع نبراس (المرحلة 5 — Roadmap Phase 5)
+- **القرار (النطاق):** في المرحلة الحالية يُبنى **المجتمع** فقط (وثيقة 16،
+  SRS FR-9/FR-12.3، المواصفة §9، API § Community، Database Design §9):
+  فئات مجتمعية، منشورات، تعليقات، تفاعلات (like/helpful مع تبديل)، بلاغات،
+  طابور إشراف إداري كامل مع إجراءات (hide/remove/dismiss) مسجَّلة تدقيقًا،
+  وشارة تحقُّق على منشورات وتعليقات المحترفين verified (ربط طبيعي بالدليل
+  المهني — وثيقة 16 §5). **سوق القوالب (عمليات الشراء أحادية) مؤجَّل** لحسم
+  بوابة الدفع (BRD §5) — النمط ذاته في D-021/22/23. **المتابعة (follows)
+  والنقاط (reputation) مؤجَّلتان**: الصيغة قرار منتج غير محسوم (وثيقة 16 §2)
+  ووثيقة API لا تُعرّف نقاطًا للمتابعة؛ تُضاف لاحقًا عند حسم الصيغة.
+- **قرار هيكل التعليقات:** قاعدة البيانات §9 تُعرّف comments مسطحة بلا
+  parent_id؛ "مترابطة" في وثيقة 16 §2 طموح UI — ننفذ مسطحة (أقدم أولًا)
+  وتُضاف الإشارات للآباء لاحقًا دون تغيير منطق الخدمة.
+- **قرار حالة المحتوى:** بلا حذف فعلي — المنشورات والتعليقات تحمل status
+  (visible|hidden|removed) (وثيقة 16 §3، أثر تدقيقي). الحذف الذاتي للمؤلف
+  = removed؛ إخفاء/إزالة المشرف = hidden/removed؛ التصفح العام يعرض
+  visible فقط، وصاحب المحتوى يرى محتواه بحالته في التفصيل.
+- **قرار البلاغات:** target_type في {post|comment|professional_profile}
+  (جدول reports §9) — يُستقبل من المجتمع والملفات المهنية معًا (ما أُجِّل
+  في D-023). بلاغ واحد مفتوح لكل (مبلِّغ، هدف) — التكرار يُعيد البلاغ
+  القائم لا يُنشئ جديدًا (مكافحة إساءة). يُمنع الإبلاغ عن محتوى الذات.
+  إجراءا hide/remove للمحتوى (post|comment) فقط؛ professional_profile
+  يُغلَق بـ dismiss فقط (إعادة الفحص/التدقيق المهني تحسين v2 خارج النطاق).
+- **قرار الإشراف:** `GET /api/admin/moderation-queue` (بلاغات open مع لمحة
+  عن المحتوى والمبلِّغ وحالة المحتوى) و`POST
+  /api/admin/moderation/<report_id>/action` {action: dismiss|hide|remove}
+  (وثيقة API). كل إجراء يُسجَّل في admin_audit_log (Security §8) بنمط
+  moderation.hide/remove/dismiss. "تحذير" (warn) مؤجَّل (يتطلب نظام إشعارات
+  — Future Expansion). 
+- **قرار مكافحة الإساءة:** حد معدل على إنشاء المنشورات والتعليقات لكل
+  مستخدم (نمط حدّ الذكاء الاصطناعي D-021). قيد عمر الحساب/النقاط مؤجَّل
+  كمعايرة منتج (وثيقة 16 §4) — البوابة الآن: حساب نشط + حد معدل.
+- **قرار الفئات:** جدول community_categories مستقل عن categories المكتبة
+  (وثيقة 16 §1) ويُبذر بذات تصنيف المكتبة (dostouri/madani/usra/jinai/
+  shughl/tijari) عبر ensure في init_db.
+- **قرار المسارات (وثيقة API § Community):** عامة GET /categories وGET
+  /posts?category= (ترقيم) وGET /posts/<id> (تفصيل + تعليقات + تفاعلات +
+  my_reactions للمُصادَق). بمصادقة: POST /posts، PUT/DELETE /posts/<id>
+  (مالك)، POST /posts/<id>/comments، PUT/DELETE
+  /posts/<id>/comments/<comment_id> (مالك)، POST /posts/<id>/react
+  (تبديل)، POST /report. إدارية: طابور الإشراف أعلاه.
+- **المصدر:** Community System Design 16؛ SRS FR-9/FR-12.3؛ Functional Spec
+  §9؛ API Documentation § Community؛ Database Design 06 §9؛ Security
+  Architecture §8؛ Roadmap 23 Phase 5؛ BRD §5 (تأجيل السوق).

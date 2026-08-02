@@ -319,3 +319,102 @@ def get_verification_document(user_id):
         return _document(user_id)
     except ProfessionalError as exc:
         raise AdminError(exc.message, exc.status_code) from exc
+
+
+# ---------------------------------------------------------------------------
+# طابور الإشراف المجتمعي (المرحلة 6 — قرار D-024، وثيقة 16 §3)
+# ---------------------------------------------------------------------------
+
+MODERATION_ACTIONS = ("dismiss", "hide", "remove")
+
+
+def list_moderation_queue():
+    """بلاغات open مع لمحة عن المحتوى والمبلِّغ — بنمط موحد لطابور الإشراف
+    (post|comment|professional_profile، وثيقة API § Admin)."""
+    with db_session() as conn:
+        rows = conn.execute(
+            """SELECT r.id, r.target_type, r.target_id, r.reason, r.status,
+                      r.created_at,
+                      u.email AS reporter_email, u.full_name AS reporter_name
+               FROM reports r JOIN users u ON u.id = r.reporter_id
+               WHERE r.status = 'open'
+               ORDER BY r.created_at, r.id"""
+        ).fetchall()
+        items = []
+        for row in rows:
+            item = dict(row)
+            item["target"] = _report_target_snapshot(conn, row)
+            items.append(item)
+        return items
+
+
+def _report_target_snapshot(conn, report) -> dict:
+    """لمحة عن الهدف المدان لإبلاغ المشرف بقراره — الحالة الحالية للمحتوى."""
+    target_id = report["target_id"]
+    if report["target_type"] == "post":
+        row = conn.execute(
+            """SELECT p.id AS content_id, p.status AS content_status,
+                      p.title, p.body, p.user_id AS author_id,
+                      u.full_name AS author_name
+               FROM posts p JOIN users u ON u.id = p.user_id WHERE p.id = ?""",
+            (target_id,),
+        ).fetchone()
+    elif report["target_type"] == "comment":
+        row = conn.execute(
+            """SELECT c.id AS content_id, c.status AS content_status,
+                      c.post_id, c.body, c.user_id AS author_id,
+                      u.full_name AS author_name
+               FROM comments c JOIN users u ON u.id = c.user_id WHERE c.id = ?""",
+            (target_id,),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """SELECT pp.id AS content_id, pp.verification_status AS content_status,
+                      pp.profession_type, u.full_name AS author_name
+               FROM professional_profiles pp JOIN users u ON u.id = pp.user_id
+               WHERE pp.id = ?""",
+            (target_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def moderate_report(admin_id, report_id, action):
+    """يتصرَّف في بلاغ: dismiss (إغلاق بلا تغيير) أو hide/remove (لمحتوى
+    post|comment فقط) — يُسجَّل في admin_audit_log (Security §8)."""
+    if action not in MODERATION_ACTIONS:
+        raise AdminError("action يجب أن يكون dismiss أو hide أو remove", 400)
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT * FROM reports WHERE id = ?", (report_id,)
+        ).fetchone()
+        if row is None:
+            raise AdminError("البلاغ غير موجود", 404)
+        if row["status"] != "open":
+            raise AdminError("البلاغ مُعالَج مسبقًا", 409)
+
+        if action == "dismiss":
+            new_status = "dismissed"
+        else:
+            if row["target_type"] not in ("post", "comment"):
+                raise AdminError(
+                    "hide/remove متاح لمحتوى المنشورات والتعليقات فقط", 400
+                )
+            new_status = "actioned"
+            table = row["target_type"] + "s"
+            updated = conn.execute(
+                f"UPDATE {table} SET status = ?, updated_at = datetime('now') "
+                "WHERE id = ?",
+                (action, row["target_id"]),
+            )
+            if updated.rowcount == 0:
+                raise AdminError("المحتوى الهدف غير موجود", 404)
+        conn.execute(
+            "UPDATE reports SET status = ?, resolved_at = datetime('now'), "
+            "resolved_by = ? WHERE id = ?",
+            (new_status, admin_id, report_id),
+        )
+        _log_admin_action(
+            conn, admin_id, f"moderation.{action}", "report", report_id,
+            f"target={row['target_type']}:{row['target_id']}",
+        )
+    return {"id": report_id, "status": new_status, "message": "تمت معالجة البلاغ."}
