@@ -32,6 +32,7 @@ nibras-backend/
 │   ├── services_analytics.py     # لوحة التحليلات الإدارية: ملخص قراءة-فقط من جداول الوحدات القائمة
 │   ├── services_ads.py           # نظام الإعلانات: خدمة فتحات + حملات (3 أنواع) + تتبع انطباع/نقرة
 │   ├── services_ingestion.py     # محرك رفع المستندات: استخراج PDF/DOCX + تقسيم إلى مواد + فهرسة
+│   ├── services_notifications.py # إشعارات داخل التطبيق: قائمة + تعليم مقروء + محفِّزات تلقائية
 │   ├── create_admin.py     # CLI إنشاء أول حساب مسؤول (python -m app.create_admin)
 │   ├── middleware/
 │   │   └── auth_middleware.py  # require_auth و require_role(*roles)
@@ -46,7 +47,8 @@ nibras-backend/
 │       ├── professionals.py # نقاط نهاية النظام البيئي المهني (Blueprint)
 │       ├── community.py    # نقاط نهاية المجتمع والإشراف (Blueprint)
 │       ├── marketplace.py  # نقاط نهاية سوق القوالب العامة (Blueprint)
-│       └── ads.py          # نقاط نهاية نظام الإعلانات العامة (Blueprint)
+│       ├── ads.py          # نقاط نهاية نظام الإعلانات العامة (Blueprint)
+│       └── notifications.py # نقاط نهاية الإشعارات (Blueprint — خاصة بالمستخدم)
 ├── uploads/              # وثائق التحقق المهنية + ملفات قوالب السوق (مجلد محلي — يُنقل لمخزن كائنات لاحقًا)
 ├── admin.html           # لوحة إدارة داخلية مستقلة (دخول + محتوى + طابور التحقق)
 ├── tests/               # اختبارات الوحدة والتكامل (pytest)
@@ -184,6 +186,10 @@ python scripts/load_test.py --concurrency 32 --requests 1000
 | PUT/DELETE | `/api/community/posts/<id>/comments/<comment_id>` | تعديل/حذف تعليقاتك فقط (يتطلب JWT) |
 | POST | `/api/community/posts/<id>/react` | تبديل تفاعل `{type: like\|helpful}` (يتطلب JWT) |
 | POST | `/api/community/report` | بلاغ `{target_type: post\|comment\|professional_profile, target_id, reason}` (يتطلب JWT) |
+| GET | `/api/notifications?unread=&limit=&offset=` | إشعاراتي مرتَّبة (الأحدث أولًا) + عدد غير المقروء (يتطلب JWT) |
+| GET | `/api/notifications/unread-count` | عداد الإشعارات غير المقروءة (يتطلب JWT) |
+| POST | `/api/notifications/<id>/read` | تعليم إشعار مقروءًا (يتطلب JWT) |
+| POST | `/api/notifications/read-all` | تعليم كل الإشعارات مقروءة (يتطلب JWT) |
 | GET | `/api/admin/moderation-queue` | بلاغات الإشراف المفتوحة مع لمحة عن المحتوى (يتطلب دور `admin`) |
 | POST | `/api/admin/moderation/<report_id>/action` | `{action: dismiss\|hide\|remove}` على بلاغ مفتوح — مُسجَّل تدقيقًا (يتطلب دور `admin`) |
 | GET | `/api/marketplace/categories` | فئات السوق (عدد القوالب لكل فئة) |
@@ -403,3 +409,9 @@ curl -X POST http://localhost:8000/api/admin/texts \
 11. **محرك رفع المستندات**: مكتمل (قرار D-028، انظر البند 2 أعلاه) — بقيت
     تحسينات لاحقة اختيارية: استيعاب OCR للمسح الضوئي، صفّ معالجة غير متزامن
     للملفات الضخمة، واستخراج كلمات مفتاحية تلقائي من المحتوى.
+12. **نظام الإشعارات (المرحلة 12 — اكتمل)**: مكتمل (قرار D-030): جدول
+    `notifications` + نقاط `GET /api/notifications` (قائمة مرتَّبة مع عدد
+    غير المقروء)، `unread-count` (شارة)، `POST .../<id>/read` و`read-all`،
+    ومحفِّزات تلقائية transactional: قبول/رفض التحقق المهني، تعليق/تفاعل
+    على منشورك (بلا إشعار لفعل الذات)، وحجب/إزالة بقرار الإشراف.
+    **المؤجَّل**: نقاط دفع خارجية (push/email) وإعدادات تفضيلات الإشعارات.

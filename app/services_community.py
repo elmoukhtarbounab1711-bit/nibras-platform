@@ -9,6 +9,7 @@ verified (وثيقة 16 §5). النقاط (reputation) والمتابعة (foll
 لحسم صيغة النقاط (وثيقة 16 §2) — قرار D-024.
 """
 from .database import db_session
+from .services_notifications import notify
 
 # أنواع التفاعل (وثيقة API § Community: like|helpful|etc)
 REACTION_TYPES = ("like", "helpful")
@@ -301,6 +302,18 @@ def add_comment(user_id: int, post_id: int, data: dict) -> dict:
             (post_id, user_id, body),
         )
         comment_id = cur.lastrowid
+        # إشعار صاحب المنشور بتعليق جديد (لا إشعار لفعل الذات)
+        owner = conn.execute(
+            "SELECT p.user_id, p.title FROM posts p WHERE p.id = ?", (post_id,)
+        ).fetchone()
+        if owner and owner["user_id"] != user_id:
+            notify(
+                conn, owner["user_id"], "community.comment",
+                "تعليق جديد على منشورك",
+                body=f"علَّق أحدهم على منشورك: «{owner['title']}»",
+                link=f"/posts/{post_id}",
+                actor_id=user_id,
+            )
     with db_session() as conn:
         row = conn.execute(
             """SELECT c.id, c.post_id, c.user_id, u.full_name AS author_name,
@@ -376,6 +389,18 @@ def toggle_reaction(user_id: int, post_id: int, reaction_type: str = "like") -> 
                 (user_id, post_id, reaction_type),
             )
             reacted = True
+            # إشعار صاحب المنشور بتفاعل جديد (لا إشعار لتفاعل الذات)
+            owner = conn.execute(
+                "SELECT p.user_id FROM posts p WHERE p.id = ?", (post_id,)
+            ).fetchone()
+            if owner and owner["user_id"] != user_id:
+                notify(
+                    conn, owner["user_id"], "community.reaction",
+                    "تفاعل مع منشورك",
+                    body=f"تفاعل أحدهم بعلامة «{reaction_type}» على منشورك.",
+                    link=f"/posts/{post_id}",
+                    actor_id=user_id,
+                )
         counts = conn.execute(
             "SELECT type, COUNT(*) AS c FROM reactions WHERE post_id = ? "
             "GROUP BY type",

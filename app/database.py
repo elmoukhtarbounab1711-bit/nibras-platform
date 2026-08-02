@@ -332,6 +332,25 @@ CREATE TABLE IF NOT EXISTS reports (
     UNIQUE (reporter_id, target_type, target_id, status)
 );
 
+-- =====================================================================
+-- الإشعارات داخل التطبيق (المرحلة 12): إشعارات دورية لكل مستخدم
+-- (نتائج التحقق المهني، تفاعلات المجتمع، قرارات الإشراف). تُنشأ
+-- تلقائيًا ضمن معاملة الفعل المُحفِّز (لا يُرسَل إشعار لفعل الذات).
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS notifications (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type        TEXT NOT NULL,    -- verification.approved | verification.rejected |
+                                  -- community.comment | community.reaction |
+                                  -- moderation.content_hidden | moderation.content_removed
+    title       TEXT NOT NULL,
+    body        TEXT,
+    link        TEXT,             -- رابط داخلي (مثل /posts/123)
+    actor_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,  -- مَن فعَّل الإشعار
+    is_read     INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- فهارس مفاتيح أجنبية: حذف تسلسلي فعّال وبحث عن جلسات مستخدم/توكنات استعادته
 CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles(role_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
@@ -349,6 +368,8 @@ CREATE INDEX IF NOT EXISTS idx_professional_reviews_profile ON professional_revi
 CREATE INDEX IF NOT EXISTS idx_posts_category_status ON posts(category_id, status);
 CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id);
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read);
 
 -- =====================================================================
 -- سوق القوالب (المرحلة 7 — قرار D-025، وثيقة 06 §8): فئات مستقلة (تُبذر

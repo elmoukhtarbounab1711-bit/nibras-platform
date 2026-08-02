@@ -13,6 +13,7 @@
 """
 from .database import db_session
 from .services_auth import PROFESSIONAL_ROLES
+from .services_notifications import notify
 
 # أنواع النصوص المقبولة (وثيقة API: constitution|code|law|decree|gazette|treaty|ruling)
 LEGAL_TEXT_TYPES = frozenset(
@@ -277,6 +278,13 @@ def approve_verification(admin_id, user_id):
             conn, admin_id, "verification.approve", "user", user_id,
             f"role={row['code']}",
         )
+        notify(
+            conn, user_id, "verification.approved",
+            "تم قبول طلب التحقق المهني",
+            body="أصبح دورك المهني فعالًا ويمكنك الظهور في الدليل.",
+            link=f"/professionals/{user_id}",
+            actor_id=admin_id,
+        )
     return user_id
 
 
@@ -303,6 +311,12 @@ def reject_verification(admin_id, user_id, reason):
         _log_admin_action(
             conn, admin_id, "verification.reject", "user", user_id,
             f"role={row['code']}; reason={reason}",
+        )
+        notify(
+            conn, user_id, "verification.rejected",
+            "تم رفض طلب التحقق المهني",
+            body=f"السبب: {reason}",
+            actor_id=admin_id,
         )
     return user_id
 
@@ -408,6 +422,23 @@ def moderate_report(admin_id, report_id, action):
             )
             if updated.rowcount == 0:
                 raise AdminError("المحتوى الهدف غير موجود", 404)
+            # إشعار صاحب المحتوى بقرار الإشراف (إزالة/حجب)
+            owner = conn.execute(
+                f"SELECT user_id FROM {table} WHERE id = ?", (row["target_id"],)
+            ).fetchone()
+            if owner:
+                if action == "remove":
+                    type_, title, body = (
+                        "moderation.content_removed", "إزالة محتوى بقرار الإشراف",
+                        "تمت إزالة محتواك من المجتمع بقرار من الإشراف.",
+                    )
+                else:
+                    type_, title, body = (
+                        "moderation.content_hidden", "حجب محتوى بقرار الإشراف",
+                        "تم حجب محتواك عن الظهور بقرار من الإشراف.",
+                    )
+                notify(conn, owner["user_id"], type_, title, body=body,
+                       actor_id=admin_id)
         conn.execute(
             "UPDATE reports SET status = ?, resolved_at = datetime('now'), "
             "resolved_by = ? WHERE id = ?",

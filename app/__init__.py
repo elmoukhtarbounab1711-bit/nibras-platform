@@ -99,6 +99,7 @@ def create_app():
     from .routes.documents import documents_bp
     from .routes.library import library_bp
     from .routes.marketplace import marketplace_bp
+    from .routes.notifications import notifications_bp
     from .routes.procedures import procedures_bp
     from .routes.professionals import professionals_bp
 
@@ -112,6 +113,7 @@ def create_app():
     app.register_blueprint(professionals_bp)
     app.register_blueprint(community_bp)
     app.register_blueprint(marketplace_bp)
+    app.register_blueprint(notifications_bp)
     app.register_blueprint(ai_bp)
 
     @app.errorhandler(404)
