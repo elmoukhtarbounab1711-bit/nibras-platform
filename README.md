@@ -31,6 +31,7 @@ nibras-backend/
 │   ├── services_marketplace.py   # سوق القوالب: كتالوج + إدارة قوالب/فئات + رفع/تنزيل الملف
 │   ├── services_analytics.py     # لوحة التحليلات الإدارية: ملخص قراءة-فقط من جداول الوحدات القائمة
 │   ├── services_ads.py           # نظام الإعلانات: خدمة فتحات + حملات (3 أنواع) + تتبع انطباع/نقرة
+│   ├── services_ingestion.py     # محرك رفع المستندات: استخراج PDF/DOCX + تقسيم إلى مواد + فهرسة
 │   ├── create_admin.py     # CLI إنشاء أول حساب مسؤول (python -m app.create_admin)
 │   ├── middleware/
 │   │   └── auth_middleware.py  # require_auth و require_role(*roles)
@@ -92,6 +93,9 @@ python -m pytest -q                    # الاختبارات مباشرة
 | `NIBRAS_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS` | `3600` | نافذة حد كتابة المجتمع بالثواني. |
 | `NIBRAS_AD_RATE_LIMIT_MAX_REQUESTS` | `100` | حد أحداث تتبع الإعلانات (انطباع/نقرة) لكل مفتاح (مستخدم نشط أو عنوان IP) لكل نافذة — منع تضخيم الإحصائيات. |
 | `NIBRAS_AD_RATE_LIMIT_WINDOW_SECONDS` | `3600` | نافذة حد تتبع الإعلانات بالثواني. |
+| `NIBRAS_INGESTION_MAX_BYTES` | `20971520` (20MB) | الحد الأقصى لحجم ملف المستند المستورد (نصوص قانونية أطول من وثائق التحقق). |
+| `NIBRAS_INGESTION_MAX_ARTICLES` | `1000` | سقف المواد المستخرجة لكل استيعاب (حماية من ملف هائل). |
+| `NIBRAS_INGESTION_SINGLE_ARTICLE_MAX_CHARS` | `4000` | سقف حروف "المادة الواحدة" الاحتياطية عند غياب عناوين مواد. |
 
 ## التشغيل
 
@@ -174,6 +178,7 @@ python3 run.py              # يشتغل على http://localhost:8000
 | GET | `/api/admin/ads/campaigns` | حملات الإعلانات مع إحصائيات (انطباعات/نقرات/CTR + اسم الفتحة) (يتطلب دور `admin`) |
 | POST | `/api/admin/ads/campaigns` | إنشاء حملة `{slot_id, campaign_type, advertiser_name, creative_url, target_url, starts_at?, ends_at?, status?, profile_id?}` (يتطلب دور `admin`) |
 | PUT/DELETE | `/api/admin/ads/campaigns/<id>` | تعديل/حذف حملة (حذف بحذف أحداثها تسلسليًا — يتطلب دور `admin`) |
+| POST | `/api/admin/ingestion/import` | استيعاب PDF/DOCX في المكتبة: multipart `{file, category_id, type, title, official_ref?, enacted_date?, last_amended?, source_note?, is_sample_data?, dry_run?}` — `dry_run=1` يعاين التقسيم بلا كتابة؛ بدونه يُنشئ النص ومواده مفهرسة (يتطلب دور `admin`) |
 
 مثال تنفيذ حاسبة الإرث (زوجة + ابن، تركة 120000):
 ```bash
@@ -245,6 +250,22 @@ curl -X POST http://localhost:8000/api/ads/1/impression
 curl -X POST http://localhost:8000/api/ads/1/click
 ```
 
+مثال محرك رفع المستندات (رفع نص قانوني PDF/DOCX من الأدمن وفهرسة مواده تلقائيًا
+— المعالجة متزامنة مع سقف حجم/مواد، قرار D-028):
+```bash
+# 1) معاينة التقسيم قبل الالتزام (dry_run=1 — بلا كتابة)
+curl -X POST http://localhost:8000/api/admin/ingestion/import \
+  -H "Authorization: Bearer <JWT>" \
+  -F "file=@madouna.docx" -F "category_id=3" -F "type=code" \
+  -F "title=مدونة الأسرة" -F "dry_run=1"
+
+# 2) الالتزام (ينشئ النص + مواده مفهرسة في FTS)
+curl -X POST http://localhost:8000/api/admin/ingestion/import \
+  -H "Authorization: Bearer <JWT>" \
+  -F "file=@madouna.docx" -F "category_id=3" -F "type=code" \
+  -F "title=مدونة الأسرة" -F "official_ref=ظهير 1.04.22"
+```
+
 كل إجراء إداري (إنشاء/تعديل/حذف محتوى، قبول/رفض تحقق، إجراءات إشراف
 hide/remove/dismiss، عمليات سوق marketplace.*، حملات إعلانية ads.*) يُسجَّل في
 `admin_audit_log` (المسؤول، الفعل، الهدف، التوقيت) وفق Security Architecture §8.
@@ -311,8 +332,13 @@ curl -X POST http://localhost:8000/api/admin/texts \
 1. **تفعيل الاستشعار الفعلي**: واجهة الذكاء الاصطناعي جاهزة (استرجاع ثم توليد موجَّه
    مع استشهاد حصري بالمسترجَع)، وتبقى خطوة ربطها بمزوّد Anthropic حقيقي
    (`NIBRAS_AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`) وضبط prompts حسب النتائج.
-2. **محرك رفع المستندات**: نقطة نهاية لرفع PDF/DOCX وتحويلها تلقائيًا لمواد مفهرَسة
-   (يتطلب مكتبة استخراج نصوص + معالجة غير متزامنة).
+2. **محرك رفع المستندات (المرحلة 10 — اكتمل)**: مكتمل (قرار D-028):
+   `POST /api/admin/ingestion/import` يستوعب PDF/DOCX (استخراج بـ
+   pdfminer.six/python-docx) ويقسّم تلقائيًا إلى مواد (`المادة`/`الفصل`
+   بأرقام لاتينية/هندية/ترتيبية) ويُفهرسها في المكتبة (FTS) بمعاملة واحدة
+   وسجل تدقيق، مع `dry_run=1` لمعاينة التقسيم بلا كتابة. المعالجة متزامنة
+   مع سقف حجم/مواد؛ **المعالجة غير المتزامنة (queue/worker) مؤجَّلة** كباقي
+   بنية تحتية (مثل هجرة PostgreSQL — لا تُبرمج مسبقًا).
 3. **الترقية لقاعدة بيانات إنتاجية**: PostgreSQL مع امتداد بحث نصي عربي (pg_trgm أو
    Elasticsearch) عند نمو الحجم.
 4. **مزيد من الحاسبات القانونية**: حاسبة الإرث شغّالة (الفروض، العول، الرد، التعصيب،
@@ -348,3 +374,6 @@ curl -X POST http://localhost:8000/api/admin/texts \
     استهداف v1: فتحة + تواريخ فقط (§5)؛ الاستهداف الفئوي (v2) والربط
     بالفوترة (فواتير/ميزانيات) لاحقًا. **بقي من Roadmap Phase 6**: هجرة
     PostgreSQL فقط (مؤقَّتة بالمحفّز، لا تُبرمج مسبقًا — Architecture §9).
+11. **محرك رفع المستندات**: مكتمل (قرار D-028، انظر البند 2 أعلاه) — بقيت
+    تحسينات لاحقة اختيارية: استيعاب OCR للمسح الضوئي، صفّ معالجة غير متزامن
+    للملفات الضخمة، واستخراج كلمات مفتاحية تلقائي من المحتوى.

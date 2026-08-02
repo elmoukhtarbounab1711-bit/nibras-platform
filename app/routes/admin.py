@@ -12,11 +12,13 @@ from .. import (
     services_admin,
     services_ads,
     services_analytics,
+    services_ingestion,
     services_marketplace,
 )
 from ..middleware.auth_middleware import require_role
 from ..services_admin import AdminError
 from ..services_ads import AdError
+from ..services_ingestion import IngestionError
 from ..services_marketplace import MarketplaceError
 
 admin_bp = Blueprint("admin", __name__)
@@ -31,6 +33,10 @@ def _handle_ad_error(exc: AdError):
 
 
 def _handle_marketplace_error(exc: MarketplaceError):
+    return jsonify({"error": exc.message}), exc.status_code
+
+
+def _handle_ingestion_error(exc: IngestionError):
     return jsonify({"error": exc.message}), exc.status_code
 
 
@@ -334,3 +340,27 @@ def ads_delete_campaign(campaign_id):
     except AdError as exc:
         return _handle_ad_error(exc)
     return jsonify({"id": campaign_id, "message": "تم حذف الحملة."}), 200
+
+
+# ---------------------------------------------------------------------------
+# محرك رفع المستندات (المرحلة 10 — قرار D-028): استيعاب PDF/DOCX في المكتبة.
+# multipart بـ file + حقول النص، مع dry_run=1 لمعاينة التقسيم بلا كتابة.
+# الملف لا يُخزَّن؛ يُستخرج نصه ويُفهرس في legal_texts/articles (FTS).
+# كل استيعاب مُلتزَم يُسجَّل في admin_audit_log (Security §8).
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/api/admin/ingestion/import", methods=["POST"])
+@require_role("admin")
+def ingestion_import():
+    file = request.files.get("file")
+    data = _admin_form_or_json()
+    dry_run = str(data.get("dry_run") or "").strip().lower() in (
+        "1", "true", "yes", "on"
+    )
+    try:
+        result = services_ingestion.import_document(
+            _admin_id(), data, file, dry_run=dry_run
+        )
+    except IngestionError as exc:
+        return _handle_ingestion_error(exc)
+    return jsonify(result), (200 if dry_run else 201)

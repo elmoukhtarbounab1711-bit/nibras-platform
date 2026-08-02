@@ -147,3 +147,19 @@ COMMUNITY_RATE_LIMIT_WINDOW_SECONDS = _env_int("NIBRAS_COMMUNITY_RATE_LIMIT_WIND
 # لمنع تضخيم الإحصائيات (وثيقة 15 §6 — حماية بيانات التقارير)
 AD_RATE_LIMIT_MAX_REQUESTS = _env_int("NIBRAS_AD_RATE_LIMIT_MAX_REQUESTS", 100)
 AD_RATE_LIMIT_WINDOW_SECONDS = _env_int("NIBRAS_AD_RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+# ---------------------------------------------------------------------------
+# محرك رفع المستندات (المرحلة 10 — قرار D-028): استيعاب PDF/DOCX إلى المكتبة
+# ---------------------------------------------------------------------------
+
+# حد الحجم الأقصى لملف المستند (بايت — أكبر من حد وثائق التحقق لأن النصوص
+# القانونية أطول؛ التوليد متزامن ضمن الطلب — قرار D-028)
+INGESTION_MAX_BYTES = _env_int("NIBRAS_INGESTION_MAX_BYTES", 20 * 1024 * 1024)
+
+# سقف المواد المستخرجة لكل استيعاب (حماية قاعدة البيانات من ملف هائل)
+INGESTION_MAX_ARTICLES = _env_int("NIBRAS_INGESTION_MAX_ARTICLES", 1000)
+
+# سقف حروف "المادة الواحدة" الاحتياطية عند غياب عناوين مواد (fallback)
+INGESTION_SINGLE_ARTICLE_MAX_CHARS = _env_int(
+    "NIBRAS_INGESTION_SINGLE_ARTICLE_MAX_CHARS", 4000
+)
