@@ -12,7 +12,7 @@ impressions/clicks/ctr). الإدارة تُسجَّل في admin_audit_log (Sec
 from urllib.parse import urlparse
 
 from .database import db_session
-from .services_admin import _log_admin_action
+from .services_admin import _log_admin_action, bulk_summary, parse_bulk_ids
 
 # فتحات الواجهة (وثيقة 15 §2) — تُبذر في ensure_defaults (قرار D-027)
 SLOT_SEED = (
@@ -337,3 +337,40 @@ def delete_campaign(admin_id: int, campaign_id: int) -> int:
             conn, admin_id, "ads.delete", "ad_campaign", campaign_id,
         )
     return campaign_id
+
+
+def set_campaign_status_bulk(admin_id: int, campaign_ids, status: str) -> dict:
+    """تغيير حالة جماعي للحملات (إيقاف/استئناف/إنهاء) — المرحلة 15 (D-033).
+
+    معاملة واحدة: كل حملة تُحدَّث حالتها مع تدقيق ads.update؛ حملة غير
+    موجودة تُسجَّل فشلًا جزئيًا دون إيقاف الباقي. state صالح فقط
+    (active|paused|ended) — يُرفض الطلب كله خلاف ذلك."""
+    if status not in CAMPAIGN_STATUSES:
+        raise AdError("status يجب أن يكون active أو paused أو ended.", 400)
+    ids = parse_bulk_ids(campaign_ids, "campaign_ids")
+    with db_session() as conn:
+        results = []
+        for campaign_id in ids:
+            row = conn.execute(
+                "SELECT 1 FROM ad_campaigns WHERE id = ?", (campaign_id,)
+            ).fetchone()
+            if row is None:
+                results.append(
+                    {"id": campaign_id, "status": "error",
+                     "message": "الحملة غير موجودة."}
+                )
+                continue
+            conn.execute(
+                "UPDATE ad_campaigns SET status = ?, "
+                "updated_at = datetime('now') WHERE id = ?",
+                (status, campaign_id),
+            )
+            _log_admin_action(
+                conn, admin_id, "ads.update", "ad_campaign", campaign_id,
+                f"status={status}",
+            )
+            results.append(
+                {"id": campaign_id, "status": "ok",
+                 "message": "تم تحديث حالة الحملة."}
+            )
+    return bulk_summary(f"ads.bulk_status.{status}", results)

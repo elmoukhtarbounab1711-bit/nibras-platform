@@ -83,6 +83,34 @@ def delete_text(text_id):
     return jsonify({"id": text_id, "message": "تم حذف النص القانوني"}), 200
 
 
+@admin_bp.route("/api/admin/texts/bulk-delete", methods=["POST"])
+@require_role("admin")
+def delete_texts_bulk():
+    """حذف جماعي لنصوص قانونية — المرحلة 15 (D-033). الحمولة: {ids: [...]}."""
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        result = services_admin.bulk_delete_texts(_admin_id(), data.get("ids"))
+    except AdminError as exc:
+        return _handle_admin_error(exc)
+    return jsonify(result), 200
+
+
+@admin_bp.route("/api/admin/texts/bulk-update", methods=["POST"])
+@require_role("admin")
+def update_texts_bulk():
+    """تحديث جماعي بحقول مشتركة — المرحلة 15 (D-033).
+
+    الحمولة: {ids: [...], ...الحقول} — تُطبَّق نفس الحقول على كل النصوص."""
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        result = services_admin.bulk_update_texts(
+            _admin_id(), data.get("ids"), {k: v for k, v in data.items() if k != "ids"}
+        )
+    except AdminError as exc:
+        return _handle_admin_error(exc)
+    return jsonify(result), 200
+
+
 @admin_bp.route("/api/admin/texts/<int:text_id>/articles", methods=["POST"])
 @require_role("admin")
 def create_article(text_id):
@@ -115,6 +143,18 @@ def delete_article(article_id):
     return jsonify({"id": article_id, "message": "تم حذف المادة"}), 200
 
 
+@admin_bp.route("/api/admin/articles/bulk-delete", methods=["POST"])
+@require_role("admin")
+def delete_articles_bulk():
+    """حذف جماعي لمواد قانونية — المرحلة 15 (D-033). الحمولة: {ids: [...]}."""
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        result = services_admin.bulk_delete_articles(_admin_id(), data.get("ids"))
+    except AdminError as exc:
+        return _handle_admin_error(exc)
+    return jsonify(result), 200
+
+
 @admin_bp.route("/api/admin/verification-queue", methods=["GET"])
 @require_role("admin")
 def verification_queue():
@@ -140,6 +180,26 @@ def verification_reject(user_id):
     except AdminError as exc:
         return _handle_admin_error(exc)
     return jsonify({"id": user_id, "message": "تم رفض طلب التحقق"}), 200
+
+
+@admin_bp.route("/api/admin/verification/bulk", methods=["POST"])
+@require_role("admin")
+def verification_bulk():
+    """قبول/رفض جماعي لطلبات التحقق — المرحلة 15 (D-033).
+
+    الحمولة: {action: approve|reject, user_ids: [...], reason?: str}.
+    يُعالَج كل عنصر في معاملة واحدة؛ النجاح الجزئي مع تقرير لكل معرّف."""
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        result = services_admin.bulk_verification(
+            _admin_id(),
+            data.get("action"),
+            data.get("user_ids"),
+            data.get("reason"),
+        )
+    except AdminError as exc:
+        return _handle_admin_error(exc)
+    return jsonify(result), 200
 
 
 @admin_bp.route("/api/admin/verification/<int:user_id>/document", methods=["GET"])
@@ -170,6 +230,23 @@ def moderation_action(report_id):
     try:
         result = services_admin.moderate_report(
             _admin_id(), report_id, data.get("action")
+        )
+    except AdminError as exc:
+        return _handle_admin_error(exc)
+    return jsonify(result), 200
+
+
+@admin_bp.route("/api/admin/moderation/bulk", methods=["POST"])
+@require_role("admin")
+def moderation_bulk():
+    """معالجة جماعية لبلاغات الإشراف — المرحلة 15 (D-033).
+
+    الحمولة: {action: dismiss|hide|remove, report_ids: [...]}.
+    يُعالَج كل بلاغ في معاملة واحدة مع تقرير لكل معرّف."""
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        result = services_admin.bulk_moderation(
+            _admin_id(), data.get("action"), data.get("report_ids")
         )
     except AdminError as exc:
         return _handle_admin_error(exc)
@@ -280,6 +357,22 @@ def marketplace_template_file(template_id):
     )
 
 
+@admin_bp.route("/api/admin/marketplace/templates/bulk-delete", methods=["POST"])
+@require_role("admin")
+def marketplace_delete_templates_bulk():
+    """حذف جماعي للقوالب (مع إزالة الملفات) — المرحلة 15 (D-033).
+
+    الحمولة: {ids: [...]} — قالب له سجل شراءات يُسجَّل فشلًا جزئيًا."""
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        result = services_marketplace.delete_templates_bulk(
+            _admin_id(), data.get("ids")
+        )
+    except MarketplaceError as exc:
+        return _handle_marketplace_error(exc)
+    return jsonify(result), 200
+
+
 # ---------------------------------------------------------------------------
 # لوحة التحليلات الإدارية (المرحلة 8 — قرار D-026، Admin Panel §3.6 /
 # Functional Spec §12): ملخص قراءة-فقط من جداول الوحدات القائمة. التحويل
@@ -340,6 +433,22 @@ def ads_delete_campaign(campaign_id):
     except AdError as exc:
         return _handle_ad_error(exc)
     return jsonify({"id": campaign_id, "message": "تم حذف الحملة."}), 200
+
+
+@admin_bp.route("/api/admin/ads/campaigns/bulk-status", methods=["POST"])
+@require_role("admin")
+def ads_campaigns_bulk_status():
+    """تغيير حالة جماعي للحملات — المرحلة 15 (D-033).
+
+    الحمولة: {ids: [...], status: active|paused|ended}."""
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        result = services_ads.set_campaign_status_bulk(
+            _admin_id(), data.get("ids"), data.get("status")
+        )
+    except AdError as exc:
+        return _handle_ad_error(exc)
+    return jsonify(result), 200
 
 
 # ---------------------------------------------------------------------------

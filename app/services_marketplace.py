@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import config
 from .database import db_session
-from .services_admin import _log_admin_action
+from .services_admin import _log_admin_action, bulk_summary, parse_bulk_ids
 
 # امتدادات ملفات القوالب (وثيقة 19 §2: ملف قابل للتنزيل — pdf/docx)
 TEMPLATE_FILE_EXTENSIONS = {".pdf", ".docx"}
@@ -303,6 +303,48 @@ def delete_template(admin_id: int, template_id: int) -> dict:
             template_id,
         )
     return {"id": template_id, "message": "تم حذف القالب."}
+
+
+def delete_templates_bulk(admin_id: int, template_ids) -> dict:
+    """حذف جماعي للقوالب (مع إزالة الملفات المخزنة) — المرحلة 15 (D-033).
+
+    معاملة واحدة: قالب بحذف فعلي + تدقيق marketplace.delete؛ قالب غير
+    موجود أو له سجل شراءات يُسجَّل فشلًا جزئيًا دون إيقاف الباقي."""
+    ids = parse_bulk_ids(template_ids, "template_ids")
+    with db_session() as conn:
+        results = []
+        for template_id in ids:
+            row = conn.execute(
+                "SELECT id, storage_key FROM marketplace_templates WHERE id = ?",
+                (template_id,),
+            ).fetchone()
+            if row is None:
+                results.append(
+                    {"id": template_id, "status": "error",
+                     "message": "القالب غير موجود."}
+                )
+                continue
+            purchased = conn.execute(
+                "SELECT 1 FROM purchases WHERE template_id = ?", (template_id,)
+            ).fetchone()
+            if purchased:
+                results.append(
+                    {"id": template_id, "status": "error",
+                     "message": "لا يمكن حذف قالب له سجل شراءات."}
+                )
+                continue
+            conn.execute(
+                "DELETE FROM marketplace_templates WHERE id = ?", (template_id,)
+            )
+            _remove_file(row["storage_key"])
+            _log_admin_action(
+                conn, admin_id, "marketplace.delete", "marketplace_template",
+                template_id,
+            )
+            results.append(
+                {"id": template_id, "status": "ok", "message": "تم حذف القالب."}
+            )
+    return bulk_summary("marketplace.delete", results)
 
 
 def get_template_file(template_id: int):
