@@ -30,6 +30,7 @@ nibras-backend/
 │   ├── services_community.py     # المجتمع: منشورات + تعليقات + تفاعلات + بلاغات + إشراف
 │   ├── services_marketplace.py   # سوق القوالب: كتالوج + إدارة قوالب/فئات + رفع/تنزيل الملف
 │   ├── services_analytics.py     # لوحة التحليلات الإدارية: ملخص قراءة-فقط من جداول الوحدات القائمة
+│   ├── services_ads.py           # نظام الإعلانات: خدمة فتحات + حملات (3 أنواع) + تتبع انطباع/نقرة
 │   ├── create_admin.py     # CLI إنشاء أول حساب مسؤول (python -m app.create_admin)
 │   ├── middleware/
 │   │   └── auth_middleware.py  # require_auth و require_role(*roles)
@@ -43,7 +44,8 @@ nibras-backend/
 │       ├── documents.py    # نقاط نهاية مولّد الوثائق (Blueprint)
 │       ├── professionals.py # نقاط نهاية النظام البيئي المهني (Blueprint)
 │       ├── community.py    # نقاط نهاية المجتمع والإشراف (Blueprint)
-│       └── marketplace.py  # نقاط نهاية سوق القوالب العامة (Blueprint)
+│       ├── marketplace.py  # نقاط نهاية سوق القوالب العامة (Blueprint)
+│       └── ads.py          # نقاط نهاية نظام الإعلانات العامة (Blueprint)
 ├── uploads/              # وثائق التحقق المهنية + ملفات قوالب السوق (مجلد محلي — يُنقل لمخزن كائنات لاحقًا)
 ├── admin.html           # لوحة إدارة داخلية مستقلة (دخول + محتوى + طابور التحقق)
 ├── tests/               # اختبارات الوحدة والتكامل (pytest)
@@ -88,6 +90,8 @@ python -m pytest -q                    # الاختبارات مباشرة
 | `NIBRAS_MAX_UPLOAD_BYTES` | `5242880` (5MB) | الحد الأقصى لحجم وثيقة التحقق بالبايت. |
 | `NIBRAS_COMMUNITY_RATE_LIMIT_MAX_REQUESTS` | `30` | حد إنشاء المنشورات/التعليقات لكل مستخدم لكل نافذة (مكافحة الإساءة). |
 | `NIBRAS_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS` | `3600` | نافذة حد كتابة المجتمع بالثواني. |
+| `NIBRAS_AD_RATE_LIMIT_MAX_REQUESTS` | `100` | حد أحداث تتبع الإعلانات (انطباع/نقرة) لكل مفتاح (مستخدم نشط أو عنوان IP) لكل نافذة — منع تضخيم الإحصائيات. |
+| `NIBRAS_AD_RATE_LIMIT_WINDOW_SECONDS` | `3600` | نافذة حد تتبع الإعلانات بالثواني. |
 
 ## التشغيل
 
@@ -163,6 +167,13 @@ python3 run.py              # يشتغل على http://localhost:8000
 | DELETE | `/api/admin/marketplace/templates/<id>` | حذف قالب + ملفه (حذف ممنوع لقالب له شراءات — يتطلب دور `admin`) |
 | GET | `/api/admin/marketplace/templates/<id>/file` | تنزيل ملف القالب (يتطلب دور `admin`) — بلا تنزيل عام حتى الشراء |
 | GET | `/api/admin/analytics/summary` | ملخص التحليلات الإدارية: استخدام + طابورا التحقق/الإشراف + إيرادات صفرية مؤجَّلة (يتطلب دور `admin`) |
+| GET | `/api/ads/serve?slot=<slug>` | خدمة إعلانية عامة: تعيد الحملة النشطة للفتحة (`library_sidebar`/`search_results_top`/`directory_listing_top`) أو `null` |
+| POST | `/api/ads/<campaign_id>/impression` | تسجيل انطباع إعلان (مصادقة اختيارية + حد معدل) |
+| POST | `/api/ads/<campaign_id>/click` | تسجيل نقرة إعلان (مصادقة اختيارية + حد معدل) |
+| GET | `/api/admin/ads/slots` | فتحات الإعلانات مع عدد الحملات النشطة (يتطلب دور `admin`) |
+| GET | `/api/admin/ads/campaigns` | حملات الإعلانات مع إحصائيات (انطباعات/نقرات/CTR + اسم الفتحة) (يتطلب دور `admin`) |
+| POST | `/api/admin/ads/campaigns` | إنشاء حملة `{slot_id, campaign_type, advertiser_name, creative_url, target_url, starts_at?, ends_at?, status?, profile_id?}` (يتطلب دور `admin`) |
+| PUT/DELETE | `/api/admin/ads/campaigns/<id>` | تعديل/حذف حملة (حذف بحذف أحداثها تسلسليًا — يتطلب دور `admin`) |
 
 مثال تنفيذ حاسبة الإرث (زوجة + ابن، تركة 120000):
 ```bash
@@ -223,9 +234,20 @@ curl -X POST http://localhost:8000/api/admin/marketplace/templates \
 curl "http://localhost:8000/api/marketplace/templates?category=1"
 ```
 
+مثال نظام الإعلانات (خدمة عامة + تتبع — الفصل البصري عن المحتوى القانوني مسؤولية
+الواجهة، وتكشف الاستجابة `sponsored` للوسم):
+```bash
+# 1) طلب إعلان لفتحة المكتبة الجانبية
+curl "http://localhost:8000/api/ads/serve?slot=library_sidebar"
+
+# 2) تسجيل انطباع ثم نقرة (تستدعيها الواجهة عند العرض والنقر)
+curl -X POST http://localhost:8000/api/ads/1/impression
+curl -X POST http://localhost:8000/api/ads/1/click
+```
+
 كل إجراء إداري (إنشاء/تعديل/حذف محتوى، قبول/رفض تحقق، إجراءات إشراف
-hide/remove/dismiss، عمليات سوق marketplace.*) يُسجَّل في `admin_audit_log`
-(المسؤول، الفعل، الهدف، التوقيت) وفق Security Architecture §8.
+hide/remove/dismiss، عمليات سوق marketplace.*، حملات إعلانية ads.*) يُسجَّل في
+`admin_audit_log` (المسؤول، الفعل، الهدف، التوقيت) وفق Security Architecture §8.
 
 مثال بحث:
 ```bash
@@ -318,6 +340,11 @@ curl -X POST http://localhost:8000/api/admin/texts \
    (المستخدمون/الأدوار، AI، الحاسبات، الوثائق، المجتمع، الملفات المهنية،
    السوق) + الطابوران + اتجاه 7 أيام. **الإيرادات والتحويل صفرية مؤجَّلة**
    مع الفوترة (BRD §5)؛ بُعد "البحث" غير مسجَّل في جدول (لا search_log) —
-   بند آلات قياس مستقبلي. بقية Roadmap Phase 6: نظام الإعلانات (أولوية دنيا
-   وتنتظر حركة مرور فعلية) وهجرة PostgreSQL (مؤقَّتة بالمحفّز، لا تُبرمج
-   مسبقًا — Architecture §9).
+   بند آلات قياس مستقبلي.
+10. **نظام الإعلانات (Roadmap Phase 6 — اكتملت)**: مكتمل (قرار D-027): فتحات
+    مبذورة، حملات بثلاثة أنواع (عامة/محتوى مرعى/ترويج مهني لملف محقَّق)،
+    خدمة `GET /api/ads/serve?slot=` بلا كتابة، تتبع انطباع/نقرة بمصادقة
+    اختيارية وحد معدل، وإدارة إدارية مع إحصائيات كل حملة (انطباعات/نقرات/CTR).
+    استهداف v1: فتحة + تواريخ فقط (§5)؛ الاستهداف الفئوي (v2) والربط
+    بالفوترة (فواتير/ميزانيات) لاحقًا. **بقي من Roadmap Phase 6**: هجرة
+    PostgreSQL فقط (مؤقَّتة بالمحفّز، لا تُبرمج مسبقًا — Architecture §9).

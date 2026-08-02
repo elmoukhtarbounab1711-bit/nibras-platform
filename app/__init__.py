@@ -41,6 +41,7 @@ def create_app():
 
     # تسجيل Blueprints الوحدات — تُضاف وحدات جديدة بملف blueprint في routes/
     from .routes.admin import admin_bp
+    from .routes.ads import ads_bp
     from .routes.ai import ai_bp
     from .routes.auth import auth_bp
     from .routes.calculators import calculators_bp
@@ -51,6 +52,7 @@ def create_app():
     from .routes.procedures import procedures_bp
     from .routes.professionals import professionals_bp
 
+    app.register_blueprint(ads_bp)
     app.register_blueprint(library_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(auth_bp)

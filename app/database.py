@@ -383,6 +383,46 @@ CREATE TABLE IF NOT EXISTS purchases (
 
 CREATE INDEX IF NOT EXISTS idx_marketplace_templates_category
     ON marketplace_templates(category_id);
+
+-- =====================================================================
+-- نظام الإعلانات (المرحلة 9 — قرار D-027، وثيقة 15 + قاعدة البيانات §11):
+-- فتحات ثابتة تُبذر بأسماء الواجهة، حملات (ثلاثة أنواع — §4) بفترة نشاط
+-- (استهداف v1: فتحة + تواريخ فقط — §5)، وأحداث انطباع/نقرة للتحليلات
+-- (§6) مع index للتجميع (§12). user_id في الأحداث فارغ = مستخدم مجهول.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS ad_slots (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ad_campaigns (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    slot_id         INTEGER NOT NULL REFERENCES ad_slots(id),
+    campaign_type   TEXT NOT NULL DEFAULT 'general',
+                    -- general | sponsored | professional_promotion
+    advertiser_name TEXT NOT NULL,
+    creative_url    TEXT NOT NULL,
+    target_url      TEXT NOT NULL,
+    profile_id      INTEGER REFERENCES professional_profiles(id),
+                    -- نوع الترويج المهني فقط (وثيقة 15 §4)
+    starts_at       TEXT,
+    ends_at         TEXT,
+    status          TEXT NOT NULL DEFAULT 'active',  -- active|paused|ended
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS ad_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL REFERENCES ad_campaigns(id) ON DELETE CASCADE,
+    user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    event_type  TEXT NOT NULL,   -- impression | click
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ad_events_campaign_created
+    ON ad_events(campaign_id, created_at);
 """
 
 
@@ -423,6 +463,7 @@ def init_db(reset: bool = False):
     # بذر الأدوار الثابتة وبيانات الإسناد بعد إنشاء المخطط (استيراد مؤجَّل
     # لكسر الدورة الظاهرية — نمط ensure_roles القائم في D-021)
     from . import (
+        services_ads,
         services_auth,
         services_calculators,
         services_community,
@@ -437,3 +478,4 @@ def init_db(reset: bool = False):
     services_documents.ensure_defaults()
     services_community.ensure_defaults()
     services_marketplace.ensure_defaults()
+    services_ads.ensure_defaults()

@@ -10,17 +10,23 @@ from flask import Blueprint, jsonify, request, send_file
 
 from .. import (
     services_admin,
+    services_ads,
     services_analytics,
     services_marketplace,
 )
 from ..middleware.auth_middleware import require_role
 from ..services_admin import AdminError
+from ..services_ads import AdError
 from ..services_marketplace import MarketplaceError
 
 admin_bp = Blueprint("admin", __name__)
 
 
 def _handle_admin_error(exc: AdminError):
+    return jsonify({"error": exc.message}), exc.status_code
+
+
+def _handle_ad_error(exc: AdError):
     return jsonify({"error": exc.message}), exc.status_code
 
 
@@ -278,3 +284,53 @@ def marketplace_template_file(template_id):
 @require_role("admin")
 def analytics_summary():
     return jsonify(services_analytics.summary()), 200
+
+
+# ---------------------------------------------------------------------------
+# نظام الإعلانات (المرحلة 9 — قرار D-027، وثيقة 15 §4/§6 + Admin Panel §3.5):
+# إدارة الحملات (إنشاء/تعديل/حذف) + فتحات + إحصائيات كل حملة (انطباعات/
+# نقرات/CTR). كل إجراء يُسجَّل في admin_audit_log (Security §8).
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/api/admin/ads/slots", methods=["GET"])
+@require_role("admin")
+def ads_list_slots():
+    return jsonify({"slots": services_ads.list_slots()}), 200
+
+
+@admin_bp.route("/api/admin/ads/campaigns", methods=["GET"])
+@require_role("admin")
+def ads_list_campaigns():
+    return jsonify({"campaigns": services_ads.list_campaigns_admin()}), 200
+
+
+@admin_bp.route("/api/admin/ads/campaigns", methods=["POST"])
+@require_role("admin")
+def ads_create_campaign():
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        new_id = services_ads.create_campaign(_admin_id(), data)
+    except AdError as exc:
+        return _handle_ad_error(exc)
+    return jsonify({"id": new_id, "message": "تم إنشاء الحملة."}), 201
+
+
+@admin_bp.route("/api/admin/ads/campaigns/<int:campaign_id>", methods=["PUT"])
+@require_role("admin")
+def ads_update_campaign(campaign_id):
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        services_ads.update_campaign(_admin_id(), campaign_id, data)
+    except AdError as exc:
+        return _handle_ad_error(exc)
+    return jsonify({"id": campaign_id, "message": "تم تحديث الحملة."}), 200
+
+
+@admin_bp.route("/api/admin/ads/campaigns/<int:campaign_id>", methods=["DELETE"])
+@require_role("admin")
+def ads_delete_campaign(campaign_id):
+    try:
+        services_ads.delete_campaign(_admin_id(), campaign_id)
+    except AdError as exc:
+        return _handle_ad_error(exc)
+    return jsonify({"id": campaign_id, "message": "تم حذف الحملة."}), 200

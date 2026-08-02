@@ -549,3 +549,56 @@
   BRD 01 §4/§5؛ Database Design 06 (جداول الوحدات)؛ Security Architecture 08
   §8؛ Roadmap 23 Phase 6؛ قرار المستخدم (اختيار Analytics Dashboard من
   خيارات Roadmap Phase 6).
+
+---
+
+## المرحلة 9 — نظام الإعلانات (إتمام Roadmap Phase 6)
+
+## D-027 — نطاق نظام الإعلانات وقراراته
+- **القرار (النطاق):** يُبنى **نظام الإعلانات** كاملًا (وثيقة 15 + قاعدة
+  البيانات §11 + Functional Spec 04 §11 + Admin Panel 20 §3.5) — آخر ميزة
+  مُسمَّاة في Roadmap Phase 6: فتحات (slots) تُبذر بنفس أسماء الواجهة
+  (library_sidebar/search_results_top/directory_listing_top — وثيقة 15 §2)،
+  حملات (campaigns) بثلاثة أنواع (general/sponsored/professional_promotion —
+  §4)، ونقطة خدمة `GET /api/ads/serve?slot=` تعيد إعلان الحملة النشطة
+  (الترويسة لا يلمس منطق الصفحة — §2). التتبع ad_events يسجّل الانطباع
+  والنقرة لكل حملة (§6) مع تصريح المستخدم (user_id فارغ = مجهول — قاعدة
+  البيانات §11) وتحليلات إدارية لكل حملة (انطباعات/نقرات/CTR). **الاستهداف
+  v1**: الفتحة + نطاق تواريخ نشاط فقط (§5) — لا استهداف فئوي (v2).
+- **قرار النموذج:** الجداول الثلاثة مطابقة لقاعدة البيانات §11 مع إضافات
+  قليلة: عمود `campaign_type` (general|sponsored|professional_promotion)،
+  وعمود `profile_id` (nullable، FK إلى professional_profiles) لنوع
+  professional_promotion فقط (يقرأ من professional_profiles والحملة —
+  وثيقة 15 §4)، و created_at/updated_at بنمط الجداول النصي (datetime('now')).
+  فهرس `idx_ad_events_campaign_created` (campaign_id, created_at) لعمليات
+  التجميع (§12). حالة الحملة status: active|paused|ended.
+- **قرار الفتحات:** slots بيانات واجهة ثابتة تُبذر في ensure_defaults ولا
+  يُدار إنشاؤها من لوحة الإدارة v1 (اتفاق المسار مع الواجهة — أي فتحة جديدة
+  تُضاف في seed مستقبلًا)؛ تُعرض إداريًا مع عدد الحملات النشطة لكل فتحة.
+- **قرار الخدمة:** الحملة "نشطة" = status='active' و(starts_at فارغ أو
+  <= الآن) و(ends_at فارغ أو >= الآن)؛ عند تعدد النشطات في الفتحة تُختار
+  الأقدم (id أصغر) — v1 حتمي بلا دوران (روتيرة v2).
+- **قرار التتبع:** serve لا يسجّل شيئًا؛ الانطباع والنقرة نقطتان منفصلتان
+  (`POST /api/ads/<campaign_id>/impression` و `/click`) تدعوهما الواجهة عند
+  العرض والنقر (§6)، بمصادقة اختيارية (optional_auth — تُسجَّل user_id عند
+  وجود مستخدم نشط وإلا تبقى فارغة) و**حد معدل خفيف** لكل مفتاح (مستخدم أو IP)
+  في config (AD_RATE_LIMIT_*) لمنع تضخيم الإحصائيات. يُقبل تسجيل حدث لأي
+  حملة موجودة (حتى منتهية — نقرة متأخرة) مع 404 لحملة غير موجودة.
+- **قرار إدارة الحملات (Admin Panel §3.5):** نقاط إدارية كاملة بدور admin
+  في routes/admin.py: GET /api/admin/ads/slots (مع عدّاد نشط)، GET
+  /api/admin/ads/campaigns (قائمة مع إحصائيات: impressions/clicks/ctr +
+  اسم الفتحة + نوع الحملة)، POST/PUT/DELETE /api/admin/ads/campaigns[/<id>].
+  التحقق: advertiser_name/creative_url/target_url إلزامية وURL بـ http/https
+  فقط (يستبعد javascript: — حماية Security §7/معايير المحتوى §7)؛ نوع
+  professional_promotion يتطلب profile_id لحساب **محقَّق** (verification_status=
+  'verified' — يظهر المحقَّقون فقط في الدليل) وإلا 400؛ starts_at <= ends_at.
+- **قرار الحذف:** حذف الحملة **فعلي** مع CASCADE على ad_events (أحداث تحليلات
+  عرضية لا سجل مالي — بخلاف purchases في D-025) عبر FK ON DELETE CASCADE؛
+  كل إجراء حملة/فتحة يُسجَّل في admin_audit_log (Security §8) بنمط ads.*.
+- **قرار الفصل:** الفصل البصري للإعلان عن المحتوى القانوني (وثيقة 15 §7)
+  مسؤولية الواجهة؛ الـ backend يكشف نوع الحملة (`sponsored: true` لكل نوع غير
+  general) في استجابة serve ليُوسم الإعلان بوضوح.
+- **المصدر:** Advertisement System Design 15؛ Database Design 06 §11/§12؛
+  Functional Spec 04 §11؛ Admin Panel Specification 20 §3.5؛ Security
+  Architecture 08 §7/§8؛ Roadmap 23 Phase 6؛ PRD §3 (أولوية دنيا لكنها آخر
+  ميزة مُسمَّاة قابلة للبناء بلا فوترة)؛ قرار المستخدم.

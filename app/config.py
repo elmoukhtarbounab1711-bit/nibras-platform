@@ -138,3 +138,12 @@ ALLOWED_UPLOAD_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
 # الإساءة، نمط حدّ الذكاء الاصطناعي في D-021)
 COMMUNITY_RATE_LIMIT_MAX_REQUESTS = _env_int("NIBRAS_COMMUNITY_RATE_LIMIT_MAX_REQUESTS", 30)
 COMMUNITY_RATE_LIMIT_WINDOW_SECONDS = _env_int("NIBRAS_COMMUNITY_RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+# ---------------------------------------------------------------------------
+# نظام الإعلانات (المرحلة 9 — Roadmap Phase 6) — وفق وثيقة 15 وقرار D-027
+# ---------------------------------------------------------------------------
+
+# حد معدل أحداث التتبع (انطباع/نقرة) لكل مفتاح (مستخدم نشط أو عنوان IP)
+# لمنع تضخيم الإحصائيات (وثيقة 15 §6 — حماية بيانات التقارير)
+AD_RATE_LIMIT_MAX_REQUESTS = _env_int("NIBRAS_AD_RATE_LIMIT_MAX_REQUESTS", 100)
+AD_RATE_LIMIT_WINDOW_SECONDS = _env_int("NIBRAS_AD_RATE_LIMIT_WINDOW_SECONDS", 3600)
