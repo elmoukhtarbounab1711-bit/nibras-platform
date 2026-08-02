@@ -29,6 +29,7 @@ nibras-backend/
 │   ├── services_professionals.py # النظام البيئي المهني: دليل + ملفات + وثائق تحقق + تقييمات
 │   ├── services_community.py     # المجتمع: منشورات + تعليقات + تفاعلات + بلاغات + إشراف
 │   ├── services_marketplace.py   # سوق القوالب: كتالوج + إدارة قوالب/فئات + رفع/تنزيل الملف
+│   ├── services_analytics.py     # لوحة التحليلات الإدارية: ملخص قراءة-فقط من جداول الوحدات القائمة
 │   ├── create_admin.py     # CLI إنشاء أول حساب مسؤول (python -m app.create_admin)
 │   ├── middleware/
 │   │   └── auth_middleware.py  # require_auth و require_role(*roles)
@@ -161,6 +162,7 @@ python3 run.py              # يشتغل على http://localhost:8000
 | PUT | `/api/admin/marketplace/templates/<id>` | تعديل قالب (JSON أو multipart، `file` اختياري — يتطلب دور `admin`) |
 | DELETE | `/api/admin/marketplace/templates/<id>` | حذف قالب + ملفه (حذف ممنوع لقالب له شراءات — يتطلب دور `admin`) |
 | GET | `/api/admin/marketplace/templates/<id>/file` | تنزيل ملف القالب (يتطلب دور `admin`) — بلا تنزيل عام حتى الشراء |
+| GET | `/api/admin/analytics/summary` | ملخص التحليلات الإدارية: استخدام + طابورا التحقق/الإشراف + إيرادات صفرية مؤجَّلة (يتطلب دور `admin`) |
 
 مثال تنفيذ حاسبة الإرث (زوجة + ابن، تركة 120000):
 ```bash
@@ -311,3 +313,11 @@ curl -X POST http://localhost:8000/api/admin/texts \
    (BRD §5)**: الشراء الأحادي (POST /templates/<id>/purchase + /my-purchases)
    ومراجعات القوالب (ما بعد الشراء — وثيقة 19 §5)؛ جدول `purchases` مُنشأ
    بلا نقاط نهاية.
+9. **لوحة التحليلات الإدارية (Roadmap Phase 6)**: ملخص قراءة-فقط مكتمل (قرار
+   D-026): `GET /api/admin/analytics/summary` يجمّع من جداول الوحدات القائمة
+   (المستخدمون/الأدوار، AI، الحاسبات، الوثائق، المجتمع، الملفات المهنية،
+   السوق) + الطابوران + اتجاه 7 أيام. **الإيرادات والتحويل صفرية مؤجَّلة**
+   مع الفوترة (BRD §5)؛ بُعد "البحث" غير مسجَّل في جدول (لا search_log) —
+   بند آلات قياس مستقبلي. بقية Roadmap Phase 6: نظام الإعلانات (أولوية دنيا
+   وتنتظر حركة مرور فعلية) وهجرة PostgreSQL (مؤقَّتة بالمحفّز، لا تُبرمج
+   مسبقًا — Architecture §9).

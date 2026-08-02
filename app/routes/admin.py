@@ -8,7 +8,11 @@
 """
 from flask import Blueprint, jsonify, request, send_file
 
-from .. import services_admin, services_marketplace
+from .. import (
+    services_admin,
+    services_analytics,
+    services_marketplace,
+)
 from ..middleware.auth_middleware import require_role
 from ..services_admin import AdminError
 from ..services_marketplace import MarketplaceError
@@ -262,3 +266,15 @@ def marketplace_template_file(template_id):
     return send_file(
         path, mimetype=content_type, as_attachment=True, download_name=name
     )
+
+
+# ---------------------------------------------------------------------------
+# لوحة التحليلات الإدارية (المرحلة 8 — قرار D-026، Admin Panel §3.6 /
+# Functional Spec §12): ملخص قراءة-فقط من جداول الوحدات القائمة. التحويل
+# والإيرادات صفرية مؤجَّلة مع الفوترة (BRD §5).
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/api/admin/analytics/summary", methods=["GET"])
+@require_role("admin")
+def analytics_summary():
+    return jsonify(services_analytics.summary()), 200

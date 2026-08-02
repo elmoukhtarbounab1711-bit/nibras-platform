@@ -512,3 +512,40 @@
 - **المصدر:** Marketplace Design 19؛ API Documentation § Marketplace؛ Database
   Design 06 §8؛ Admin Panel Specification 20 §3؛ Security Architecture §8؛
   Roadmap 23 Phase 5؛ BRD §5 (تأجيل الفوترة).
+
+---
+
+## المرحلة 8 — لوحة التحليلات الإدارية (إتمام Roadmap Phase 6)
+
+## D-026 — نطاق لوحة التحليلات ومصدر بياناتها
+- **القرار (النطاق):** تُبنى **لوحة التحليلات الإدارية** (Admin Panel 20 §3.6
+  + Functional Spec 04 §12) كوحدة **قراءة-فقط** تجمع مقاييس **الاستخدام** من
+  جداول الوحدات القائمة في نقطة واحدة `GET /api/admin/analytics/summary`
+  (دور admin): المستخدمون والأدوار، الذكاء الاصطناعي (طلبات/نمط)، الحاسبات
+  (تشغيل/توزيع)، الوثائق المولّدة/القوالب، المجتمع (منشورات/تعليقات/تفاعلات/
+  بلاغات)، الملفات المهنية (حالات/مراجعات/متوسط التقييم)، السوق (قوالب/قيمة
+  الكتالوج/شراءات). **التحويل (free→premium) والإيرادات** (اشتراكات/سوق/
+  إعلانات) **صفرية ومؤجَّلة** مع وحدة الفوترة (BRD §5) — تُعاد قيمها 0 مع
+  ملاحظة توضح السبب.
+- **قرار بُعد البحث:** **غير متاح** — البحث في المكتبة لا يُسجَّل في أي جدول
+  (لا search_log)، فهو بند آلات قياس مستقبلي (instrumentation) لا يعيق اللوحة.
+- **قرار مصدر البيانات:** تجميع بجمل COUNT/SUM مباشرة على الجداول الفعلية
+  (users/user_roles/roles، ai_queries، calculator_runs/calculators،
+  generated_documents/document_templates، posts/comments/reactions/reports،
+  professional_profiles/professional_reviews، marketplace_templates/purchases)
+  بلا جداول مجمَّعة جديدة ولا أي كتابة — اللوحة لا تعدّل بيانات.
+- **قرار النهاية:** نقطة واحدة متداخلة (summary) تغذّي مكونات اللوحة
+  (بطاقات عدّادات + توزيعات + اتجاه) من استجابة واحدة عوض تعدد النقاط
+  الدقيقة — الأنسب للوحة داخلية صغيرة.
+- **قرار الاتجاهات:** سلسلة **آخر 7 أيام** صفر-معبَّأة (ai_queries،
+  calculator_runs، generated_documents، new_users) لمخطط اتجاه بسيط؛ التاريخ
+  والتوقيت UTC نصًا (datetime('now')) بنفس اصطلاح الجداول.
+- **قرار الحسابات:** الطابوران يُحسبان بنفس تعريفَي نقطتي الطابور القائمتين:
+  طلبات تحقق معلّقة = عدد الأدوار المهنية role_status='pending_verification'
+  وطابور الإشراف = بلاغات status='open'. admins = مستخدمو دور admin.
+  catalog_value_cents = مجموع أسعار قوالب السوق؛ purchases من جدول purchases
+  (0 حتى الفوترة). avg_rating = متوسط تقييمات الملفات المهنية (round(…,1)).
+- **المصدر:** Admin Panel Specification 20 §3.6؛ Functional Spec 04 §12؛
+  BRD 01 §4/§5؛ Database Design 06 (جداول الوحدات)؛ Security Architecture 08
+  §8؛ Roadmap 23 Phase 6؛ قرار المستخدم (اختيار Analytics Dashboard من
+  خيارات Roadmap Phase 6).
