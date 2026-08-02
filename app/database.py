@@ -13,6 +13,34 @@ from pathlib import Path
 
 DB_PATH = Path(__file__).parent.parent / "nibras.db"
 
+# فهرس بحث نصي كامل (FTS5) على المواد — يخزّن نسخة مطبَّعة من النص
+# (nbr_normalize: بلا تشكيل، ألف موحدة، ة→ه، ى→ي ...) ليتلاقى مع تطبيع
+# الاستعلام (المرحلة 14). فهرس قائم بذاته (غير مرتبط بجدول خارجي) تُبقي
+# المشغّلات نسخته متزامنة تلقائيًا مع أي تعديل على articles.
+FTS_DDL = """
+CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
+    label, content, keywords
+);
+
+-- مزامنة الفهرس تلقائيًا مع أي تعديل على جدول المواد (نسخة مطبَّعة)
+CREATE TRIGGER IF NOT EXISTS articles_ai AFTER INSERT ON articles BEGIN
+    INSERT INTO articles_fts(rowid, label, content, keywords)
+    VALUES (new.id, nbr_normalize(new.label), nbr_normalize(new.content),
+            nbr_normalize(new.keywords));
+END;
+
+CREATE TRIGGER IF NOT EXISTS articles_ad AFTER DELETE ON articles BEGIN
+    DELETE FROM articles_fts WHERE rowid = old.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE ON articles BEGIN
+    DELETE FROM articles_fts WHERE rowid = old.id;
+    INSERT INTO articles_fts(rowid, label, content, keywords)
+    VALUES (new.id, nbr_normalize(new.label), nbr_normalize(new.content),
+            nbr_normalize(new.keywords));
+END;
+"""
+
 SCHEMA = """
 -- الفروع القانونية (مدني، أسرة، جنائي، دستوري ...)
 CREATE TABLE IF NOT EXISTS categories (
@@ -53,28 +81,7 @@ CREATE TABLE IF NOT EXISTS related_articles (
     PRIMARY KEY (article_id, related_article_id)
 );
 
--- فهرس بحث نصي كامل (FTS5) على المواد، يدعم العربية بدون تشكيل
-CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
-    label, content, keywords, content='articles', content_rowid='id'
-);
-
--- مزامنة الفهرس تلقائيًا مع أي تعديل على جدول المواد
-CREATE TRIGGER IF NOT EXISTS articles_ai AFTER INSERT ON articles BEGIN
-    INSERT INTO articles_fts(rowid, label, content, keywords)
-    VALUES (new.id, new.label, new.content, new.keywords);
-END;
-
-CREATE TRIGGER IF NOT EXISTS articles_ad AFTER DELETE ON articles BEGIN
-    INSERT INTO articles_fts(articles_fts, rowid, label, content, keywords)
-    VALUES ('delete', old.id, old.label, old.content, old.keywords);
-END;
-
-CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE ON articles BEGIN
-    INSERT INTO articles_fts(articles_fts, rowid, label, content, keywords)
-    VALUES ('delete', old.id, old.label, old.content, old.keywords);
-    INSERT INTO articles_fts(rowid, label, content, keywords)
-    VALUES (new.id, new.label, new.content, new.keywords);
-END;
+""" + FTS_DDL + """
 
 -- =====================================================================
 -- جدول الهوية (المرحلة 1 — المصادقة والتفويض):
@@ -458,6 +465,12 @@ def get_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # دالة التطبيع العربي — تستخدمها مشغّلات FTS عند فهرسة المواد
+    from . import arabic_text
+
+    conn.create_function(
+        "nbr_normalize", 1, arabic_text.normalize_arabic, deterministic=True
+    )
     return conn
 
 
@@ -474,6 +487,31 @@ def db_session():
         conn.close()
 
 
+def _migrate_articles_fts(conn) -> None:
+    """يعيد بناء فهرس FTS عند وجود نسخة قديمة (مرتبطة بجدول خارجي).
+
+    قواعد البيانات المنشأة قبل المرحلة 14 تستخدم articles_fts كفهرس خارجي
+    (content='articles') يخزّن النص الخام. يُكتشف ذلك من تعريف الجدول
+    المخزَّن في sqlite_master، فيُهدم الفهرس والمشغّلات ويُعاد إنشاؤها
+    بالصيغة الجديدة ثم يُعاد تعبئتها بنصوص مطبَّعة (idempotent).
+    """
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='articles_fts'"
+    ).fetchone()
+    needs_rebuild = row is None or "content='articles'" in (row["sql"] or "")
+    if not needs_rebuild:
+        return
+    for trigger in ("articles_ai", "articles_ad", "articles_au"):
+        conn.execute(f"DROP TRIGGER IF EXISTS {trigger}")
+    conn.execute("DROP TABLE IF EXISTS articles_fts")
+    conn.executescript(FTS_DDL)
+    conn.execute(
+        """INSERT INTO articles_fts(rowid, label, content, keywords)
+           SELECT id, nbr_normalize(label), nbr_normalize(content),
+                  nbr_normalize(keywords) FROM articles"""
+    )
+
+
 def init_db(reset: bool = False):
     if reset and DB_PATH.exists():
         DB_PATH.unlink()
@@ -481,6 +519,8 @@ def init_db(reset: bool = False):
         conn.executescript(SCHEMA)
         # ترحيل خفيف للجداول القائمة (قواعد بيانات أُنشئت قبل المرحلة 2):
         _ensure_column(conn, "user_roles", "rejection_reason", "TEXT")
+        # ترحيل الفهرس للصيغة المطبَّعة (المرحلة 14):
+        _migrate_articles_fts(conn)
     # بذر الأدوار الثابتة وبيانات الإسناد بعد إنشاء المخطط (استيراد مؤجَّل
     # لكسر الدورة الظاهرية — نمط ensure_roles القائم في D-021)
     from . import (

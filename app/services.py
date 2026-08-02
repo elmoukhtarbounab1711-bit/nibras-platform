@@ -4,6 +4,7 @@
 """
 import sqlite3
 
+from . import arabic_text
 from .database import db_session
 
 
@@ -85,18 +86,20 @@ def get_article(article_id):
 
 
 def search_articles(query_text, limit=20):
-    """بحث نصي كامل في المواد القانونية باستخدام FTS5.
+    """بحث نصي كامل في المواد القانونية باستخدام FTS5 (المرحلة 14).
 
-    ملاحظة: FTS5 لا يتعامل جيدًا مع بعض حروف العلة العربية إن اختلف التشكيل،
-    لذلك نطهّر الاستعلام ونحوّله لصيغة بحث عن العبارة كاملة مع بادئة (*)
-    لدعم البحث الجزئي عن الكلمات.
+    الفهرس يخزّن نصًا مطبَّعًا (بلا تشكيل، ألف موحدة، ة→ه، ى→ي) ويُطبَّع
+    الاستعلام بالطريقة نفسها. تُستبعد الكلمات الوظيفية (stopwords)،
+    وتُولَّد لكل كلمة متغيّرات "ال" التعريفية (الكلمة / بلا ال / مع ال)
+    لالتقاط المطابقات رغم اختلاف التعريف بين الاستعلام والمحتوى.
     """
     if not query_text or not query_text.strip():
         return []
 
-    # بناء استعلام FTS: كل كلمة منفصلة + بحث بادئة لدعم النتائج الجزئية
-    terms = [t.strip() for t in query_text.strip().split() if t.strip()]
-    fts_query = " ".join(f'"{t}"*' for t in terms)
+    term_groups = arabic_text.build_search_terms(query_text)
+    if not term_groups:
+        return []
+    fts_query = arabic_text.build_fts_query(term_groups)
 
     with db_session() as conn:
         try:
@@ -115,7 +118,7 @@ def search_articles(query_text, limit=20):
             ).fetchall()
         except sqlite3.OperationalError:
             # fallback: بحث بسيط بـ LIKE إن فشل استعلام FTS (مثلاً لرموز خاصة)
-            like_q = f"%{query_text.strip()}%"
+            like_q = f"%{arabic_text.normalize_arabic(query_text.strip())}%"
             rows = conn.execute(
                 """SELECT a.id, a.label, a.content, a.plain_explanation,
                           lt.title AS legal_text_title, c.name AS category_name, 0 AS rank
