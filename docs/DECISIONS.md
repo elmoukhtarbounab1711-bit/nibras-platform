@@ -464,3 +464,51 @@
 - **المصدر:** Community System Design 16؛ SRS FR-9/FR-12.3؛ Functional Spec
   §9؛ API Documentation § Community؛ Database Design 06 §9؛ Security
   Architecture §8؛ Roadmap 23 Phase 5؛ BRD §5 (تأجيل السوق).
+
+---
+
+## المرحلة 7 — سوق القوالب (إتمام Roadmap Phase 5)
+
+## D-025 — نطاق سوق القوالب وقراراته
+- **القرار (النطاق):** في المرحلة الحالية يُبنى **كتالوج سوق القوالب** فقط
+  (وثيقة 19، API § Marketplace، Database Design §8، Admin Panel 20 §3):
+  فئات سوقية، قوالب (عنوان، وصف، سعر، ملف قابل للتنزيل) بإدارة إدارية كاملة
+  (رفع/تسعير/تصنيف/حذف)، وتصفح/تصفية/بحث/تفصيل عام. **عمليات الشراء
+  (POST /templates/<id>/purchase) وقائمة مشترياتي (GET /my-purchases)
+  ومراجعات القوالب (template_reviews) مؤجَّلة** لحسم بوابة الدفع (BRD §5) —
+  النمط ذاته في D-021/22/23/24؛ المراجعات خاصة بما بعد الشراء فقط (وثيقة
+  19 §5) فلا معنى لبنائها بلا شراء. يُنشأ جدول `purchases` وفق قاعدة
+  البيانات §8 (قرار لاحق أدناه) بلا أي نقطة نهاية.
+- **قرار جدول purchases المبكّر:** يُنشأ الجدول الآن مطابقًا لـ §8 لكن مع
+  `payment_id INTEGER` **فارغ** بلا FK (مرجع جدول payments غير موجود — الفوترة
+  مؤجَّلة) وعدم إضافة template_reviews إطلاقًا. السبب: استقرار المخطط عند
+  الربط اللاحق ببوابة الدفع بلا ترحيل، مع بقاء النطاق الفعلي كتالوجًا فقط.
+  حذف قالب له صفوف شراء (حال وجودها) ممنوع (409) حمايةً لسجل المشتريات.
+- **قرار الفئات:** جدول marketplace_categories مستقل (وثيقة 19 §2) يُبذر
+  بنفس تصنيف المكتبة (dostouri/madani/usra/jinai/shughl/tijari) عبر ensure
+  في init_db — النمط ذاته في المجتمع (D-024).
+- **قرار التخزين والتنزيل:** ملف القالب يُخزَّن في `uploads/marketplace/`
+  بنمط uploads/verification (D-023) بامتدادات pdf/docx وحد الحجم
+  NIBRAS_MAX_UPLOAD_BYTES. لا تنزيل عام للملف إطلاقًا حتى الشراء (حماية
+  المحتوى المدفوع) — التنزيل إداري فقط عبر مسار مصادق (دور admin)، والتفصيل
+  العام لا يفضح storage_key.
+- **قرار إدارة المحتوى:** قالب السوق محتوى كتالوج إداري مرشَّح، فحذفه **فعلي**
+  (DELETE + إزالة الملف من القرص) — النمط القائم لحذف النصوص في الإدارة
+  (services_admin.delete_text) وليس حالة removed (نموذج المجتمع خاص بالمحتوى
+  المجتمعي المستخدم). منع حذف فئة تحتوي قوالب (409). السعر مطلوب و >= 0
+  (price_cents) ويُقبل نصيًا من multipart.
+- **قرار التدقيق:** كل إجراء سوقي يُسجَّل في admin_audit_log (Security §8)
+  بنمط marketplace.create/update/delete و marketplace.category.* —
+  يمر عبر نفس المعاملة (نمط _log_admin_action).
+- **قرار المسارات (وثيقة API § Marketplace):** عامة `GET
+  /api/marketplace/categories` (مع عدد القوالب)، `GET
+  /api/marketplace/templates?category=&q=` (ترقيم + بحث نصي على العنوان/الوصف)،
+  `GET /api/marketplace/templates/<id>` (تفصيل بلا storage_key). إدارية (دور
+  admin في routes/admin.py): إدارة الفئات (POST/PUT/DELETE)، `GET
+  /api/admin/marketplace/templates` (قائمة إدارية بمعلومات الملف)، `POST`
+  إنشاء (multipart: category_id,title,description,price_cents,file)، `PUT`
+  تحديث (file اختياري)، `DELETE`، و`GET
+  /api/admin/marketplace/templates/<id>/file` (تنزيل الملف).
+- **المصدر:** Marketplace Design 19؛ API Documentation § Marketplace؛ Database
+  Design 06 §8؛ Admin Panel Specification 20 §3؛ Security Architecture §8؛
+  Roadmap 23 Phase 5؛ BRD §5 (تأجيل الفوترة).

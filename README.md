@@ -28,6 +28,7 @@ nibras-backend/
 │   ├── services_documents.py   # مولّد الوثائق (قوالب + تحقق + توليد + تصدير PDF/DOCX)
 │   ├── services_professionals.py # النظام البيئي المهني: دليل + ملفات + وثائق تحقق + تقييمات
 │   ├── services_community.py     # المجتمع: منشورات + تعليقات + تفاعلات + بلاغات + إشراف
+│   ├── services_marketplace.py   # سوق القوالب: كتالوج + إدارة قوالب/فئات + رفع/تنزيل الملف
 │   ├── create_admin.py     # CLI إنشاء أول حساب مسؤول (python -m app.create_admin)
 │   ├── middleware/
 │   │   └── auth_middleware.py  # require_auth و require_role(*roles)
@@ -40,8 +41,9 @@ nibras-backend/
 │       ├── ai.py           # نقاط نهاية واجهة الذكاء الاصطناعي (Blueprint)
 │       ├── documents.py    # نقاط نهاية مولّد الوثائق (Blueprint)
 │       ├── professionals.py # نقاط نهاية النظام البيئي المهني (Blueprint)
-│       └── community.py    # نقاط نهاية المجتمع والإشراف (Blueprint)
-├── uploads/              # وثائق التحقق المهنية (مجلد محلي مؤقت — يُنقل لمخزن كائنات لاحقًا)
+│       ├── community.py    # نقاط نهاية المجتمع والإشراف (Blueprint)
+│       └── marketplace.py  # نقاط نهاية سوق القوالب العامة (Blueprint)
+├── uploads/              # وثائق التحقق المهنية + ملفات قوالب السوق (مجلد محلي — يُنقل لمخزن كائنات لاحقًا)
 ├── admin.html           # لوحة إدارة داخلية مستقلة (دخول + محتوى + طابور التحقق)
 ├── tests/               # اختبارات الوحدة والتكامل (pytest)
 ├── scripts/run_checks.py # بوابة الفحص المحلية (ruff + pytest)
@@ -149,6 +151,16 @@ python3 run.py              # يشتغل على http://localhost:8000
 | POST | `/api/community/report` | بلاغ `{target_type: post\|comment\|professional_profile, target_id, reason}` (يتطلب JWT) |
 | GET | `/api/admin/moderation-queue` | بلاغات الإشراف المفتوحة مع لمحة عن المحتوى (يتطلب دور `admin`) |
 | POST | `/api/admin/moderation/<report_id>/action` | `{action: dismiss\|hide\|remove}` على بلاغ مفتوح — مُسجَّل تدقيقًا (يتطلب دور `admin`) |
+| GET | `/api/marketplace/categories` | فئات السوق (عدد القوالب لكل فئة) |
+| GET | `/api/marketplace/templates?category=&q=&limit=&offset=` | تصفح القوالب (تصفية بالتصنيف + بحث نصي + ترقيم) |
+| GET | `/api/marketplace/templates/<id>` | تفاصيل قالب (بلا `storage_key`) |
+| POST | `/api/admin/marketplace/categories` | إنشاء فئة سوق `{slug, name}` (يتطلب دور `admin`) |
+| PUT/DELETE | `/api/admin/marketplace/categories/<id>` | تعديل/حذف فئة (حذف ممنوع لفئة فيها قوالب — يتطلب دور `admin`) |
+| GET | `/api/admin/marketplace/templates` | قائمة إدارية بالقوالب (معلومات الملف — يتطلب دور `admin`) |
+| POST | `/api/admin/marketplace/templates` | إنشاء قالب multipart `{category_id, title, description, price_cents, file}` (pdf/docx — يتطلب دور `admin`) |
+| PUT | `/api/admin/marketplace/templates/<id>` | تعديل قالب (JSON أو multipart، `file` اختياري — يتطلب دور `admin`) |
+| DELETE | `/api/admin/marketplace/templates/<id>` | حذف قالب + ملفه (حذف ممنوع لقالب له شراءات — يتطلب دور `admin`) |
+| GET | `/api/admin/marketplace/templates/<id>/file` | تنزيل ملف القالب (يتطلب دور `admin`) — بلا تنزيل عام حتى الشراء |
 
 مثال تنفيذ حاسبة الإرث (زوجة + ابن، تركة 120000):
 ```bash
@@ -197,8 +209,20 @@ curl -X POST http://localhost:8000/api/professionals/verify-document \
 curl "http://localhost:8000/api/professionals?type=lawyer&city=الدار البيضاء"
 ```
 
+مثال سوق القوالب (رفع قالب من الأدمن ثم التصفح العام — الشراء مؤجَّل لحسم بوابة الدفع):
+```bash
+# 1) رفع قالب (يتطلب توكن admin) — multipart
+curl -X POST http://localhost:8000/api/admin/marketplace/templates \
+  -H "Authorization: Bearer <JWT>" \
+  -F "category_id=1" -F "title=نموذج عقد إيجار" -F "price_cents=1500" \
+  -F "file=@contract.pdf"
+
+# 2) تصفح عام
+curl "http://localhost:8000/api/marketplace/templates?category=1"
+```
+
 كل إجراء إداري (إنشاء/تعديل/حذف محتوى، قبول/رفض تحقق، إجراءات إشراف
-hide/remove/dismiss) يُسجَّل في `admin_audit_log`
+hide/remove/dismiss، عمليات سوق marketplace.*) يُسجَّل في `admin_audit_log`
 (المسؤول، الفعل، الهدف، التوقيت) وفق Security Architecture §8.
 
 مثال بحث:
@@ -279,5 +303,11 @@ curl -X POST http://localhost:8000/api/admin/texts \
 7. **المجتمع**: الفئات والمنشورات والتعليقات والتفاعلات (like/helpful) وبلاغات
    الإشراف مع إجراءات hide/remove/dismiss مُسجَّلة والشارة الخضراء للمحترفين
    مكتملة (قرار D-024). المؤجَّل لحسم منتج: المتابعة (follows) والنقاط (reputation —
-   الصيغة قرار عمل غير محسوم، وثيقة 16 §2)؛ وحسم بوابة الدفع يفتح **سوق القوالب**
-   (شراء أحادي) من Roadmap Phase 5؛ وقيد عمر الحساب كمكافحة إساءة يبقى معايرة منتج.
+   الصيغة قرار عمل غير محسوم، وثيقة 16 §2)؛ وقيد عمر الحساب كمكافحة إساءة يبقى
+   معايرة منتج.
+8. **سوق القوالب (Roadmap Phase 5)**: الكتالوج مكتمل (قرار D-025): فئات، قوالب
+   بسعر/وصف/ملف (pdf/docx)، إدارة إدارية كاملة (رفع/تسعير/تصنيف/حذف + تنزيل
+   إداري)، وتصفح/تصفية/بحث/تفصيل عام بلا كشف للملف. **المؤجَّل لحسم بوابة الدفع
+   (BRD §5)**: الشراء الأحادي (POST /templates/<id>/purchase + /my-purchases)
+   ومراجعات القوالب (ما بعد الشراء — وثيقة 19 §5)؛ جدول `purchases` مُنشأ
+   بلا نقاط نهاية.

@@ -349,6 +349,40 @@ CREATE INDEX IF NOT EXISTS idx_professional_reviews_profile ON professional_revi
 CREATE INDEX IF NOT EXISTS idx_posts_category_status ON posts(category_id, status);
 CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id);
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
+
+-- =====================================================================
+-- سوق القوالب (المرحلة 7 — قرار D-025، وثيقة 06 §8): فئات مستقلة (تُبذر
+-- بنفس تصنيف المكتبة — نمط المجتمع D-024)، قوالب بملف قابل للتنزيل يُخزَّن
+-- محليًا في uploads/marketplace، وجدول purchases مبكّر بلا نقطة نهاية
+-- (payment_id فارغ ريثما تُحسم بوابة الدفع — BRD §5).
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS marketplace_categories (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS marketplace_templates (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    category_id INTEGER NOT NULL REFERENCES marketplace_categories(id),
+    title       TEXT NOT NULL,
+    description TEXT,
+    price_cents INTEGER NOT NULL CHECK (price_cents >= 0),
+    storage_key TEXT NOT NULL,
+    created_at  TEXT,
+    updated_at  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS purchases (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    template_id INTEGER REFERENCES marketplace_templates(id),
+    payment_id  INTEGER,            -- مرجع payments (الفوترة مؤجَّلة — D-025)
+    purchased_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_marketplace_templates_category
+    ON marketplace_templates(category_id);
 """
 
 
@@ -393,6 +427,7 @@ def init_db(reset: bool = False):
         services_calculators,
         services_community,
         services_documents,
+        services_marketplace,
         services_procedures,
     )
 
@@ -401,3 +436,4 @@ def init_db(reset: bool = False):
     services_procedures.ensure_defaults()
     services_documents.ensure_defaults()
     services_community.ensure_defaults()
+    services_marketplace.ensure_defaults()

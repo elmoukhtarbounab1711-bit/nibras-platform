@@ -8,15 +8,27 @@
 """
 from flask import Blueprint, jsonify, request, send_file
 
-from .. import services_admin
+from .. import services_admin, services_marketplace
 from ..middleware.auth_middleware import require_role
 from ..services_admin import AdminError
+from ..services_marketplace import MarketplaceError
 
 admin_bp = Blueprint("admin", __name__)
 
 
 def _handle_admin_error(exc: AdminError):
     return jsonify({"error": exc.message}), exc.status_code
+
+
+def _handle_marketplace_error(exc: MarketplaceError):
+    return jsonify({"error": exc.message}), exc.status_code
+
+
+def _admin_form_or_json() -> dict:
+    """حقول نصية من multipart (إنشاء/تحديث قوالب) أو من JSON — نمط موحَّد."""
+    if request.form:
+        return request.form
+    return request.get_json(force=True, silent=True) or {}
 
 
 def _admin_id() -> int:
@@ -146,3 +158,107 @@ def moderation_action(report_id):
     except AdminError as exc:
         return _handle_admin_error(exc)
     return jsonify(result), 200
+
+
+# ---------------------------------------------------------------------------
+# سوق القوالب (المرحلة 7 — قرار D-025، وثيقة 19 §6 / Admin Panel §3):
+# إدارة فئات وقوالب الكتالوج مع رفع/تنزيل الملف. الشراء مؤجَّل لحسم بوابة
+# الدفع (BRD §5). كل إجراء يُسجَّل في admin_audit_log (Security §8).
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/api/admin/marketplace/categories", methods=["POST"])
+@require_role("admin")
+def marketplace_create_category():
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        new_id = services_marketplace.create_category(_admin_id(), data)
+    except MarketplaceError as exc:
+        return _handle_marketplace_error(exc)
+    return jsonify({"id": new_id, "message": "تم إنشاء فئة السوق."}), 201
+
+
+@admin_bp.route("/api/admin/marketplace/categories/<int:category_id>",
+                methods=["PUT"])
+@require_role("admin")
+def marketplace_update_category(category_id):
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        services_marketplace.update_category(_admin_id(), category_id, data)
+    except MarketplaceError as exc:
+        return _handle_marketplace_error(exc)
+    return jsonify({"id": category_id, "message": "تم تحديث فئة السوق."}), 200
+
+
+@admin_bp.route("/api/admin/marketplace/categories/<int:category_id>",
+                methods=["DELETE"])
+@require_role("admin")
+def marketplace_delete_category(category_id):
+    try:
+        services_marketplace.delete_category(_admin_id(), category_id)
+    except MarketplaceError as exc:
+        return _handle_marketplace_error(exc)
+    return jsonify({"id": category_id, "message": "تم حذف فئة السوق."}), 200
+
+
+@admin_bp.route("/api/admin/marketplace/templates", methods=["GET"])
+@require_role("admin")
+def marketplace_list_templates():
+    return jsonify({
+        "templates": services_marketplace.list_templates_admin(),
+    }), 200
+
+
+@admin_bp.route("/api/admin/marketplace/templates", methods=["POST"])
+@require_role("admin")
+def marketplace_create_template():
+    file = request.files.get("file")
+    if file is None or not (file.filename or "").strip():
+        return jsonify({"error": "الرجاء رفع ملف القالب باسم file."}), 400
+    try:
+        result = services_marketplace.create_template(
+            _admin_id(), _admin_form_or_json(), file
+        )
+    except MarketplaceError as exc:
+        return _handle_marketplace_error(exc)
+    return jsonify(result), 201
+
+
+@admin_bp.route("/api/admin/marketplace/templates/<int:template_id>",
+                methods=["PUT"])
+@require_role("admin")
+def marketplace_update_template(template_id):
+    file = request.files.get("file")
+    try:
+        result = services_marketplace.update_template(
+            _admin_id(), template_id, _admin_form_or_json(), file
+        )
+    except MarketplaceError as exc:
+        return _handle_marketplace_error(exc)
+    return jsonify(result), 200
+
+
+@admin_bp.route("/api/admin/marketplace/templates/<int:template_id>",
+                methods=["DELETE"])
+@require_role("admin")
+def marketplace_delete_template(template_id):
+    try:
+        result = services_marketplace.delete_template(_admin_id(), template_id)
+    except MarketplaceError as exc:
+        return _handle_marketplace_error(exc)
+    return jsonify(result), 200
+
+
+@admin_bp.route("/api/admin/marketplace/templates/<int:template_id>/file",
+                methods=["GET"])
+@require_role("admin")
+def marketplace_template_file(template_id):
+    """تنزيل ملف القالب — دور admin فقط (بلا تنزيل عام حتى الشراء)."""
+    try:
+        path, name, content_type = services_marketplace.get_template_file(
+            template_id
+        )
+    except MarketplaceError as exc:
+        return _handle_marketplace_error(exc)
+    return send_file(
+        path, mimetype=content_type, as_attachment=True, download_name=name
+    )
