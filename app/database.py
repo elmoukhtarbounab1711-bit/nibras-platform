@@ -379,6 +379,51 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read);
 
 -- =====================================================================
+-- تسليم الإشعارات الخارجية (المرحلة 16 — قرار D-034): بريد + دفع.
+-- ---------------------------------------------------------------------
+-- notification_preferences: تفضيل تسليم خارجي لكل (قناة، نوع) — غياب الصف
+--   يعني مُفعَّل افتراضيًا (الاشتراك الخفي). القناة in_app أساسية دائمًا
+--   (داخل التطبيق) وغير قابلة للتعطيل — التفضيلات للقنوات الخارجية فقط.
+-- notification_devices: أجهزة المستخدم لإرسال الدفع (توكن فريد عالميًا،
+--   يُحدَّث مالكه عند إعادة التسجيل). جاهزة لربط مزوّد دفع لاحقًا.
+-- notification_outbox: صندوق تسليم يُملأ ضمن معاملة notify() (transactional)
+--   ويُفرَّغ عبر deliver_pending() يدويًا/مجدولًا — لا بنية خلفية مسبقة.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS notification_preferences (
+    user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    channel           TEXT NOT NULL,          -- email | push
+    notification_type TEXT NOT NULL,
+    enabled           INTEGER NOT NULL DEFAULT 1,
+    updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, channel, notification_type)
+);
+
+CREATE TABLE IF NOT EXISTS notification_devices (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    platform      TEXT NOT NULL,              -- android | ios | web
+    token         TEXT NOT NULL UNIQUE,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_notification_devices_user
+    ON notification_devices(user_id);
+
+CREATE TABLE IF NOT EXISTS notification_outbox (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    notification_id INTEGER NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+    channel         TEXT NOT NULL,            -- email | push
+    recipient       TEXT NOT NULL,            -- بريد المستلم أو توكن جهاز
+    status          TEXT NOT NULL DEFAULT 'pending',  -- pending | sent | failed
+    attempts        INTEGER NOT NULL DEFAULT 0,
+    last_error      TEXT,
+    sent_at         TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_notification_outbox_status
+    ON notification_outbox(status, id);
+
+-- =====================================================================
 -- سوق القوالب (المرحلة 7 — قرار D-025، وثيقة 06 §8): فئات مستقلة (تُبذر
 -- بنفس تصنيف المكتبة — نمط المجتمع D-024)، قوالب بملف قابل للتنزيل يُخزَّن
 -- محليًا في uploads/marketplace، وجدول purchases مبكّر بلا نقطة نهاية

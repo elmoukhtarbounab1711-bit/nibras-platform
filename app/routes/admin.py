@@ -14,6 +14,7 @@ from .. import (
     services_analytics,
     services_ingestion,
     services_marketplace,
+    services_notifications,
 )
 from ..middleware.auth_middleware import require_role
 from ..services_admin import AdminError
@@ -473,3 +474,29 @@ def ingestion_import():
     except IngestionError as exc:
         return _handle_ingestion_error(exc)
     return jsonify(result), (200 if dry_run else 201)
+
+
+# ---------------------------------------------------------------------------
+# تسليم الإشعارات الخارجية (المرحلة 16 — قرار D-034): تفريغ صندوق البريد/الدفع.
+# يُستدعى يدويًا (أو عبر سكربت مجدول flush_notifications) — لا شبكة داخل
+# طلبات المستخدمين أبدًا. كل تفريغ يُعيد ملخص {processed, sent, failed}.
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/api/admin/notifications/deliver", methods=["POST"])
+@require_role("admin")
+def notifications_deliver():
+    data = request.get_json(force=True, silent=True) or {}
+    limit = data.get("limit")
+    try:
+        result = services_notifications.deliver_pending(
+            int(limit) if limit is not None else None
+        )
+    except ValueError:
+        return jsonify({"error": "limit يجب أن يكون رقمًا."}), 400
+    return jsonify(result), 200
+
+
+@admin_bp.route("/api/admin/notifications/delivery-stats", methods=["GET"])
+@require_role("admin")
+def notifications_delivery_stats():
+    return jsonify(services_notifications.delivery_stats()), 200

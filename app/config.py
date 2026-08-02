@@ -188,3 +188,27 @@ INGESTION_MAX_ARTICLES = _env_int("NIBRAS_INGESTION_MAX_ARTICLES", 1000)
 INGESTION_SINGLE_ARTICLE_MAX_CHARS = _env_int(
     "NIBRAS_INGESTION_SINGLE_ARTICLE_MAX_CHARS", 4000
 )
+
+# ---------------------------------------------------------------------------
+# تسليم الإشعارات الخارجية (المرحلة 16 — قرار D-034): بريد + دفع
+# ---------------------------------------------------------------------------
+
+# مزوّد البريد: "noop" افتراضي للتطوير والاختبار (يسجّل الإرسال بلا شبكة —
+# يحاكي النجاح فقط في وضع التطوير، مثل مزوّد الذكاء الاصطناعي في D-021)، و
+# "console" لطباعة سجل مهيكل للإرسال. الإنتاج يربط مزوّدًا حقيقيًا عبر واجهة
+# _send_email الموحّدة. أي قيمة غير معروفة تُعامَل كفشل (تظهر في صندوق التسليم).
+EMAIL_PROVIDER = os.environ.get("NIBRAS_EMAIL_PROVIDER", "noop")
+
+# المرسل الافتراضي للبريد الخارجي (يستخدمه مزوّد الإنتاج لاحقًا)
+EMAIL_FROM = os.environ.get("NIBRAS_EMAIL_FROM", "nibras@localhost")
+
+# مزوّد الدفع: "noop" (تسجيل بلا شبكة) أو "console" (سجل مهيكل).
+PUSH_PROVIDER = os.environ.get("NIBRAS_PUSH_PROVIDER", "noop")
+
+# سقف صفوف صندوق التسليم المعالجة في كل تفريغ (deliver_pending)
+NOTIFICATION_OUTBOX_LIMIT = _env_int("NIBRAS_NOTIFICATION_OUTBOX_LIMIT", 50)
+
+# أقصى محاولات تسليم قبل إعلان فشل الصف نهائيًا
+NOTIFICATION_OUTBOX_MAX_ATTEMPTS = _env_int(
+    "NIBRAS_NOTIFICATION_OUTBOX_MAX_ATTEMPTS", 3
+)

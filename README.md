@@ -443,3 +443,17 @@ curl -X POST http://localhost:8000/api/admin/texts \
     admin_audit_log لكل عنصر. البوابة بعدها: 420 اختبارًا ناجحًا + فحص
     حي أثبت الدليل بعد القبول الجماعي والتحديث/الحذف الجماعيين.
     **الباقي**: إشعارات push/email، جاهزية multi-tenant.
+16. **تسليم الإشعارات الخارجية (المرحلة 16 — اكتمل)**: مكتمل (قرار
+    D-034): إلى جانب الإشعار داخل التطبيق، تُصفَّف صفوف تسليم خارجي
+    (بريد/دفع) ضمن معاملة `notify()` في `notification_outbox` وفق
+    تفضيلات لكل (قناة، نوع) بغياب صف = مُفعَّل (in_app أساسية دائمًا):
+    `GET/PUT /api/notifications/preferences` و`notification_devices`
+    (تسجيل/قائمة/حذف) لتسليم الدفع. التفريغ صريح بلا بنية خلفية:
+    `POST /api/admin/notifications/deliver` أو
+    `python -m app.flush_notifications`؛ المزوّدان الافترضيان
+    noop/console (`NIBRAS_EMAIL_PROVIDER`/`NIBRAS_PUSH_PROVIDER`)،
+    فشل مع إعادة محاولة حتى `NOTIFICATION_OUTBOX_MAX_ATTEMPTS` ثم
+    failed، ومرصد `GET /api/admin/notifications/delivery-stats`. البوابة
+    بعدها: 452 اختبارًا ناجحًا (420+32) + فحص حي أثبت اصطفاف بريد/دفعة
+    للمستلم الصحيح وتعطيل البريد لنوع معيّن وتفريغًا إداريًا ناجحًا.
+    **الباقي**: جاهزية multi-tenant.
