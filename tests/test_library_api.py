@@ -97,6 +97,62 @@ def test_article_detail_not_found(client):
     assert "error" in r.get_json()
 
 
+def test_articles_list_public(client):
+    r = client.get("/api/articles")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["count"] == 2
+    assert len(data["articles"]) == 2
+    item = data["articles"][0]
+    assert {"id", "label", "legal_text_id", "legal_text_title", "views"} <= set(item.keys())
+    assert item["views"] == 0
+
+
+def test_articles_list_limit_and_offset(client):
+    r = client.get("/api/articles?limit=1&offset=1")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data["count"] == 2
+    assert len(data["articles"]) == 1
+
+
+def test_articles_list_limit_capped(client):
+    r = client.get("/api/articles?limit=999")
+    assert r.status_code == 200
+    assert len(r.get_json()["articles"]) <= 100
+
+
+def test_article_view_increments(client):
+    tid = _find_text_id(client, "قانون الالتزامات والعقود")
+    aid = client.get(f"/api/texts/{tid}").get_json()["articles"][0]["id"]
+    before = client.get(f"/api/articles/{aid}").get_json()["views"]
+    after = client.get(f"/api/articles/{aid}").get_json()["views"]
+    assert after == before + 1
+
+
+def test_text_pdf_generates(client):
+    tid = _find_text_id(client, "قانون الالتزامات والعقود")
+    r = client.get(f"/api/texts/{tid}/pdf")
+    assert r.status_code == 200
+    assert r.headers.get("Content-Type", "").startswith("application/pdf")
+    assert "inline" in r.headers.get("Content-Disposition", "")
+    assert r.data.startswith(b"%PDF")
+
+
+def test_text_pdf_download_disposition(client):
+    tid = _find_text_id(client, "مدونة الأسرة")
+    r = client.get(f"/api/texts/{tid}/pdf?download=1")
+    assert r.status_code == 200
+    assert "attachment" in r.headers.get("Content-Disposition", "")
+    assert r.data.startswith(b"%PDF")
+
+
+def test_text_pdf_not_found(client):
+    r = client.get("/api/texts/99999/pdf")
+    assert r.status_code == 404
+    assert "error" in r.get_json()
+
+
 def test_search_requires_q(client):
     for url in ("/api/search", "/api/search?q=", "/api/search?q=%20"):
         r = client.get(url)

@@ -1,26 +1,16 @@
 """
-اختبارات نقاط المصادقة (API) — المرحلة 1.
+اختبارات نقاط المصادقة (API) — منصة عامة بلا حسابات مستخدمين.
 
-تغطي التسجيل، الدخول، تجديد التوكن، تسجيل الخروج، استعادة كلمة المرور،
-ملف المستخدم، حماية مسارات require_role (بما فيها النقاط الإدارية المنقولة
-من X-Admin-Key إلى Bearer JWT)، ورسالة الدخول العامة الموحدة.
+التسجيل والدخول والتجديد واستعادة كلمة المرور للجمهور معطلة (403) —
+الوصول الإداري حصري عبر سكربت app.create_admin وتوقيع التوكنات الداخلي.
+تبقى نقاط الإدارة (require_role) تعمل بتوكن Bearer صحيح، و/me داخلي
+(يتطلب توكنًا صالحًا — لا حساب عام). (وثيقة 12.)
 """
-from datetime import timedelta
-
-import pytest
 
 from app import services_auth
-from app.routes.auth import _attempts
+from app.database import db_session
 
 PASSWORD = "test-password-123"
-
-
-@pytest.fixture(autouse=True)
-def _reset_rate_limits():
-    """تطهير حد معدل الطلبات بين الاختبارات (حالة في الذاكرة)."""
-    _attempts.clear()
-    yield
-    _attempts.clear()
 
 
 def _register(client, email="citizen@example.com", role="citizen", full_name="مواطن اختبار"):
@@ -38,148 +28,78 @@ def _auth_headers(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def _make_admin_token(client):
-    admin = services_auth.create_user_with_role(
-        email="admin@nibras.test", password=PASSWORD, full_name="مسؤول",
-        role_code="admin", role_status="active", user_status="active",
+def _user(email="user@test.local", role_code="citizen"):
+    return services_auth.create_user_with_role(
+        email=email, password=PASSWORD, full_name="مستخدم اختبار",
+        role_code=role_code, role_status="active", user_status="active",
     )
-    return services_auth.create_access_token(admin.id)[0]
 
 
-def test_register_returns_tokens_and_profile(client):
-    resp = _register(client)
-    assert resp.status_code == 201
-    data = resp.get_json()
-    assert data["token_type"] == "bearer"
-    assert data["access_token"]
-    assert data["refresh_token"]
-    assert data["user"]["email"] == "citizen@example.com"
-    assert data["user"]["roles"] == ["citizen"]
+def _token(profile):
+    return services_auth.create_access_token(profile.id)[0]
 
 
-def test_register_rejects_admin_role(client):
-    resp = _register(client, email="hacker@example.com", role="admin")
+def _make_admin_token(client):
+    admin = _user(email="admin@nibras.test", role_code="admin")
+    return _token(admin)
+
+
+def test_public_register_disabled(client):
+    assert _register(client).status_code == 403
+
+
+def test_public_login_disabled(client):
+    assert _login(client).status_code == 403
+
+
+def test_public_refresh_disabled(client):
+    resp = client.post("/api/auth/refresh", json={"refresh_token": "whatever"})
     assert resp.status_code == 403
-    assert "مسؤول" in resp.get_json()["error"]
 
 
-def test_register_duplicate_email(client):
-    _register(client)
-    resp = _register(client)
-    assert resp.status_code == 409
-
-
-def test_login_returns_tokens(client):
-    _register(client)
-    resp = _login(client)
-    assert resp.status_code == 200
-    data = resp.get_json()
-    assert data["access_token"] and data["refresh_token"]
-    assert data["user"]["roles"] == ["citizen"]
-
-
-def test_login_generic_error_message(client):
-    _register(client)
-    resp = _login(client, password="totally-wrong-password")
-    assert resp.status_code == 401
-    assert resp.get_json()["error"] == "بيانات الدخول غير صحيحة"
-    # نفس الرسالة لعنوان غير مسجل (لا نكشف سبب الفشل)
-    resp2 = _login(client, email="unknown@example.com")
-    assert resp2.status_code == 401
-    assert resp2.get_json()["error"] == "بيانات الدخول غير صحيحة"
+def test_logout_returns_ok_without_accounts(client):
+    assert client.post("/api/auth/logout").status_code == 200
 
 
 def test_me_requires_auth(client):
     assert client.get("/api/auth/me").status_code == 401
-    _register(client)
-    token = _login(client).get_json()["access_token"]
+
+
+def test_me_returns_internal_profile(client):
+    profile = _user()
+    token = _token(profile)
     resp = client.get("/api/auth/me", headers=_auth_headers(token))
     assert resp.status_code == 200
-    assert resp.get_json()["user"]["email"] == "citizen@example.com"
+    assert resp.get_json()["user"]["email"] == "user@test.local"
 
 
-def test_refresh_rotates_token(client):
-    _register(client)
-    refresh_token = _login(client).get_json()["refresh_token"]
-    resp = client.post("/api/auth/refresh", json={"refresh_token": refresh_token})
-    assert resp.status_code == 200
-    new_refresh = resp.get_json()["refresh_token"]
-    assert new_refresh != refresh_token
-    # القديم مرفوض بعد الدوران
-    resp2 = client.post("/api/auth/refresh", json={"refresh_token": refresh_token})
-    assert resp2.status_code == 401
-    # الجديد مقبول
-    assert client.post("/api/auth/refresh", json={"refresh_token": new_refresh}).status_code == 200
+def test_me_with_bad_token_401(client):
+    assert client.get("/api/auth/me", headers=_auth_headers("garbage")).status_code == 401
 
 
-def test_refresh_with_invalid_token(client):
-    resp = client.post("/api/auth/refresh", json={"refresh_token": "garbage"})
-    assert resp.status_code == 401
-
-
-def test_logout_revokes_refresh_token(client):
-    _register(client)
-    data = _login(client).get_json()
-    token, refresh_token = data["access_token"], data["refresh_token"]
-    resp = client.post("/api/auth/logout", json={"refresh_token": refresh_token}, headers=_auth_headers(token))
-    assert resp.status_code == 200
-    assert client.post("/api/auth/refresh", json={"refresh_token": refresh_token}).status_code == 401
-
-
-def test_password_reset_request_and_confirm(client):
-    _register(client)
-    resp = client.post("/api/auth/password-reset/request", json={"email": "citizen@example.com"})
-    assert resp.status_code == 202
-    # نُنشئ توكن استعادة صريحًا للاختبار (البث الفعلي يمر عبر المريلر)
-    profile = services_auth.get_user_by_email("citizen@example.com")
-    token = services_auth.generate_random_token()
-    with services_auth.db_session() as conn:
-        conn.execute(
-            "INSERT INTO password_reset_tokens (token_hash, user_id, expires_at) VALUES (?,?,?)",
-            (
-                services_auth.hash_token(token),
-                profile.id,
-                (services_auth._now() + timedelta(hours=1)).isoformat(),
-            ),
-        )
-    resp = client.post(
+def test_password_reset_disabled(client):
+    req = client.post("/api/auth/password-reset/request", json={"email": "x@example.com"})
+    assert req.status_code == 403
+    conf = client.post(
         "/api/auth/password-reset/confirm",
-        json={"token": token, "new_password": "brand-new-password-1"},
+        json={"token": "t", "new_password": "new-secret-1"},
     )
-    assert resp.status_code == 200
-    # الدخول بكلمة المرور الجديدة
-    assert _login(client, password="brand-new-password-1").status_code == 200
+    assert conf.status_code == 403
 
 
-def test_password_reset_confirm_invalid_token(client):
-    resp = client.post(
-        "/api/auth/password-reset/confirm",
-        json={"token": "not-a-real-token", "new_password": "some-new-password-1"},
-    )
-    assert resp.status_code == 400
-
-
-def test_password_reset_request_does_not_reveal_email(client):
-    resp = client.post("/api/auth/password-reset/request", json={"email": "ghost@example.com"})
-    assert resp.status_code == 202
-
-
-def test_rate_limit_on_login(client):
-    for _ in range(5):
-        _login(client, password="wrong")
-    resp = _login(client, password="wrong")
-    assert resp.status_code == 429
+def test_suspended_user_me_rejected(client):
+    profile = _user()
+    token = _token(profile)
+    with db_session() as conn:
+        conn.execute("UPDATE users SET status = 'suspended' WHERE id = ?", (profile.id,))
+    assert client.get("/api/auth/me", headers=_auth_headers(token)).status_code == 401
 
 
 def test_admin_endpoint_requires_admin_role(client):
-    # بدون توكن
     assert client.post("/api/admin/texts", json={}).status_code == 401
-    # مستخدم عادي
-    _register(client)
-    token = _login(client).get_json()["access_token"]
-    resp = client.post("/api/admin/texts", json={}, headers=_auth_headers(token))
+    citizen = _user(role_code="citizen")
+    resp = client.post("/api/admin/texts", json={}, headers=_auth_headers(_token(citizen)))
     assert resp.status_code == 403
-    # مسؤول
     admin_token = _make_admin_token(client)
     resp = client.post("/api/admin/texts", json={}, headers=_auth_headers(admin_token))
     assert resp.status_code == 400  # الحقول الناقصة — وصلنا لطبقة التحقق، المصادقة نجحت
@@ -207,44 +127,3 @@ def test_old_admin_key_header_is_rejected(client):
         "/api/admin/texts", json={}, headers={"X-Admin-Key": "nibras-dev-key"}
     )
     assert resp.status_code == 401
-
-
-def test_register_validation_returns_400(client):
-    resp = client.post(
-        "/api/auth/register",
-        json={"email": "bad", "password": "short", "full_name": "x", "role": "citizen"},
-    )
-    assert resp.status_code == 400
-    assert "error" in resp.get_json()
-    # دور غير معروف
-    resp = client.post(
-        "/api/auth/register",
-        json={"email": "x@example.com", "password": "valid-password-1",
-              "full_name": "x", "role": "pharaoh"},
-    )
-    assert resp.status_code == 400
-
-
-def test_suspended_user_me_rejected(client):
-    _register(client)
-    token = _login(client).get_json()["access_token"]
-    profile = services_auth.get_user_by_email("citizen@example.com")
-    with services_auth.db_session() as conn:
-        conn.execute("UPDATE users SET status = 'suspended' WHERE id = ?", (profile.id,))
-    resp = client.get("/api/auth/me", headers=_auth_headers(token))
-    assert resp.status_code == 401
-
-
-def test_register_rate_limited(client):
-    for i in range(5):
-        client.post(
-            "/api/auth/register",
-            json={"email": f"r{i}@example.com", "password": "valid-password-1",
-                  "full_name": "x", "role": "citizen"},
-        )
-    resp = client.post(
-        "/api/auth/register",
-        json={"email": "last@example.com", "password": "valid-password-1",
-              "full_name": "x", "role": "citizen"},
-    )
-    assert resp.status_code == 429

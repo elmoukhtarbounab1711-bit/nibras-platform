@@ -7,11 +7,17 @@
 بـ PostgreSQL لاحقًا دون تغيير طبقة الخدمة (services*.py) لأن الاستعلامات
 معزولة هنا.
 """
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "nibras.db"
+# مسار قاعدة بيانات SQLite — يَتعيّن عبر NIBRAS_DB_PATH في الإنتاج ليوضع على
+# قرص مُثبَّت (persistent disk) لأن أنظمة PaaS (Render/Railway/Fly) لها
+# نظام ملفات عابر (ephemeral) يُمسح عند كل إعادة نشر. الافتراضي محلي.
+DB_PATH = Path(os.environ.get(
+    "NIBRAS_DB_PATH", str(Path(__file__).parent.parent / "nibras.db")
+))
 
 # فهرس بحث نصي كامل (FTS5) على المواد — يخزّن نسخة مطبَّعة من النص
 # (nbr_normalize: بلا تشكيل، ألف موحدة، ة→ه، ى→ي ...) ليتلاقى مع تطبيع
@@ -41,13 +47,37 @@ CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE ON articles BEGIN
 END;
 """
 
+JURISPRUDENCE_FTS_DDL = """
+CREATE VIRTUAL TABLE IF NOT EXISTS jurisprudence_fts USING fts5(
+    title, content, keywords
+);
+
+CREATE TRIGGER IF NOT EXISTS jurisprudence_ai AFTER INSERT ON jurisprudence BEGIN
+    INSERT INTO jurisprudence_fts(rowid, title, content, keywords)
+    VALUES (new.id, nbr_normalize(new.title), nbr_normalize(new.content),
+            nbr_normalize(new.court || ' ' || COALESCE(new.source_note, '')));
+END;
+
+CREATE TRIGGER IF NOT EXISTS jurisprudence_ad AFTER DELETE ON jurisprudence BEGIN
+    DELETE FROM jurisprudence_fts WHERE rowid = old.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS jurisprudence_au AFTER UPDATE ON jurisprudence BEGIN
+    DELETE FROM jurisprudence_fts WHERE rowid = old.id;
+    INSERT INTO jurisprudence_fts(rowid, title, content, keywords)
+    VALUES (new.id, nbr_normalize(new.title), nbr_normalize(new.content),
+            nbr_normalize(new.court || ' ' || COALESCE(new.source_note, '')));
+END;
+"""
+
 SCHEMA = """
 -- الفروع القانونية (مدني، أسرة، جنائي، دستوري ...)
 CREATE TABLE IF NOT EXISTS categories (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     slug        TEXT UNIQUE NOT NULL,
     name        TEXT NOT NULL,
-    description TEXT
+    description TEXT,
+    tenant_id   INTEGER REFERENCES tenants(id)  -- المستأجر المالك (عزل D-036)
 );
 
 -- النصوص القانونية (دستور، مدونة، قانون، مرسوم، جريدة رسمية ...)
@@ -60,7 +90,8 @@ CREATE TABLE IF NOT EXISTS legal_texts (
     enacted_date    TEXT,               -- YYYY-MM-DD أو نص وصفي
     last_amended    TEXT,
     source_note     TEXT,               -- ملاحظة حول المصدر (للشفافية)
-    is_sample_data  INTEGER NOT NULL DEFAULT 1  -- 1 = بيانات نموذجية للعرض، 0 = محتوى موثّق كليًا
+    is_sample_data  INTEGER NOT NULL DEFAULT 1,  -- 1 = بيانات نموذجية للعرض، 0 = محتوى موثّق كليًا
+    tenant_id       INTEGER REFERENCES tenants(id)  -- المستأجر المالك (عزل D-036)
 );
 
 -- المواد/الفصول داخل كل نص قانوني
@@ -71,7 +102,8 @@ CREATE TABLE IF NOT EXISTS articles (
     label           TEXT NOT NULL,      -- "المادة 230" أو "الفصل 24"
     content         TEXT NOT NULL,      -- النص القانوني الأصلي
     plain_explanation TEXT,             -- شرح مبسّط (يُعبَّأ لاحقًا بمحرك الذكاء الاصطناعي)
-    keywords        TEXT                -- كلمات مفتاحية مفصولة بفواصل
+    keywords        TEXT,               -- كلمات مفتاحية مفصولة بفواصل
+    tenant_id       INTEGER REFERENCES tenants(id)  -- المستأجر المالك (عزل D-036)
 );
 
 -- روابط "مواد ذات صلة"
@@ -188,6 +220,26 @@ CREATE TABLE IF NOT EXISTS ai_queries (
 );
 
 -- =====================================================================
+-- مزوّدو الذكاء الاصطناعي (تكوين متعدد المزوّدات — D-021 المحسَّن)
+-- جداول إدارة المزوّدين (مجاني/مدفوع/محمّل محليًا) من لوحة التحكم.
+-- type: noop | gemini | openai | ollama | anthropic
+-- base_url حقل اختياري (OpenAI-compatible / Ollama); model معرف النموذج.
+-- is_default: واحد فقط بتفعَّل في كل لحظة؛ enable يخبر التوفر.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS ai_providers (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    type        TEXT NOT NULL,          -- noop | gemini | openai_compatible | anthropic | ollama
+    base_url    TEXT NOT NULL DEFAULT '',
+    api_key     TEXT NOT NULL DEFAULT '',
+    model       TEXT NOT NULL DEFAULT '',
+    enabled     INTEGER NOT NULL DEFAULT 0,
+    is_default  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- =====================================================================
 -- الحاسبات القانونية (المرحلة 3): بيانات إسناد الحاسبات + سجل التنفيذ
 -- وفق قاعدة البيانات 06 §4. المنطق في دوال مستقلة في services_calculators
 -- (المواصفة الوظيفية §4) والجدولان وصف إداري فقط.
@@ -219,7 +271,9 @@ CREATE TABLE IF NOT EXISTS procedures (
     title                TEXT NOT NULL,
     category             TEXT,
     responsible_authority TEXT,
-    typical_timeframe    TEXT
+    typical_timeframe    TEXT,
+    fees                 TEXT,               -- وصف الرسوم (نص حر)
+    faq                  TEXT                -- نص JSON [{"q":..,"a":..}] — أسئلة شائعة
 );
 
 CREATE TABLE IF NOT EXISTS procedure_steps (
@@ -248,6 +302,7 @@ CREATE TABLE IF NOT EXISTS document_templates (
     slug          TEXT UNIQUE NOT NULL,
     name          TEXT NOT NULL,
     category      TEXT NOT NULL,
+    description   TEXT NOT NULL DEFAULT '',
     field_schema  TEXT NOT NULL,
     body_template TEXT NOT NULL,
     created_at    TEXT
@@ -279,6 +334,15 @@ CREATE TABLE IF NOT EXISTS professional_profiles (
     verification_document_name TEXT,
     phone               TEXT,
     contact_preference  TEXT NOT NULL DEFAULT 'platform', -- visible|platform
+    photo_url           TEXT,           -- رابط صورة الملف (إضافي — قرار الواجهة)
+    registration_number TEXT,           -- رقم التسجيل المهني
+    address             TEXT,
+    website             TEXT,
+    years_of_experience INTEGER,
+    work_hours          TEXT,           -- ساعات العمل (نص حر)
+    social_links        TEXT,           -- نص JSON {facebook:.., linkedin:.., twitter:.., instagram:..}
+    map_embed           TEXT,           -- خريطة الموقع (رابط/بيانات خريطة)
+    tenant_id           INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
     created_at          TEXT,
     updated_at          TEXT
 );
@@ -286,7 +350,8 @@ CREATE TABLE IF NOT EXISTS professional_profiles (
 CREATE TABLE IF NOT EXISTS professional_specialties (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     profile_id INTEGER NOT NULL REFERENCES professional_profiles(id) ON DELETE CASCADE,
-    specialty  TEXT NOT NULL
+    specialty  TEXT NOT NULL,
+    tenant_id  INTEGER REFERENCES tenants(id)  -- المستأجر المالك (عزل D-036)
 );
 
 CREATE TABLE IF NOT EXISTS professional_reviews (
@@ -295,6 +360,7 @@ CREATE TABLE IF NOT EXISTS professional_reviews (
     reviewer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     rating      INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
     comment     TEXT,
+    tenant_id   INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
     created_at  TEXT,
     updated_at  TEXT,
     UNIQUE (profile_id, reviewer_id)
@@ -317,6 +383,7 @@ CREATE TABLE IF NOT EXISTS posts (
     title       TEXT NOT NULL,
     body        TEXT NOT NULL,
     status      TEXT NOT NULL DEFAULT 'visible',  -- visible|hidden|removed
+    tenant_id   INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
     created_at  TEXT,
     updated_at  TEXT
 );
@@ -327,6 +394,7 @@ CREATE TABLE IF NOT EXISTS comments (
     user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     body       TEXT NOT NULL,
     status     TEXT NOT NULL DEFAULT 'visible',  -- visible|hidden|removed
+    tenant_id  INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
     created_at TEXT,
     updated_at TEXT
 );
@@ -336,6 +404,7 @@ CREATE TABLE IF NOT EXISTS reactions (
     post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
     type       TEXT NOT NULL,   -- like|helpful
     created_at TEXT,
+    tenant_id  INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
     PRIMARY KEY (user_id, post_id, type)
 );
 
@@ -349,7 +418,70 @@ CREATE TABLE IF NOT EXISTS reports (
     created_at  TEXT,
     resolved_at TEXT,
     resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    tenant_id   INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
     UNIQUE (reporter_id, target_type, target_id, status)
+);
+
+-- =====================================================================
+-- المقالات القانونية المنشورة (بوابة المقالات — مرحلة الواجهة):
+-- فئات مستقلة عن مكتبة النصوص (مثل المجتمع D-024)، مقالات كاملة بغلاف
+-- وتصنيف وكلمات مفتاحية وحالة نشر (pending|published|hidden) وعدّادات
+-- مشاهدات/إعجابات/تعليقات، مع تفاعلات (إعجاب/تعليق/بلاغ) بنمط موحّد.
+-- الدور: يمكن للمشرف وللمستخدم المسجَّل كتابة مقالات؛ نشرها إداري فقط.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS blog_categories (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug      TEXT UNIQUE NOT NULL,
+    name      TEXT NOT NULL,
+    tenant_id INTEGER REFERENCES tenants(id)  -- المستأجر المالك (عزل D-036)
+);
+
+CREATE TABLE IF NOT EXISTS blog_articles (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category_id  INTEGER REFERENCES blog_categories(id),
+    title        TEXT NOT NULL,
+    cover_url    TEXT,
+    summary      TEXT,
+    body         TEXT NOT NULL,
+    keywords     TEXT,                  -- كلمات مفتاحية مفصولة بفواصل
+    status       TEXT NOT NULL DEFAULT 'pending',  -- pending|published|hidden
+    views        INTEGER NOT NULL DEFAULT 0,
+    published_at TEXT,
+    tenant_id    INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS blog_comments (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    article_id INTEGER NOT NULL REFERENCES blog_articles(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    body       TEXT NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'visible',  -- visible|hidden|removed
+    tenant_id  INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS blog_likes (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    article_id INTEGER NOT NULL REFERENCES blog_articles(id) ON DELETE CASCADE,
+    tenant_id  INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, article_id)
+);
+
+CREATE TABLE IF NOT EXISTS blog_reports (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    reporter_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    article_id  INTEGER NOT NULL REFERENCES blog_articles(id) ON DELETE CASCADE,
+    reason      TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'open',  -- open|actioned|dismissed
+    created_at  TEXT,
+    resolved_at TEXT,
+    resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    tenant_id   INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
+    UNIQUE (reporter_id, article_id, status)
 );
 
 -- =====================================================================
@@ -446,7 +578,8 @@ CREATE INDEX IF NOT EXISTS idx_notification_outbox_status
 CREATE TABLE IF NOT EXISTS marketplace_categories (
     id   INTEGER PRIMARY KEY AUTOINCREMENT,
     slug TEXT UNIQUE NOT NULL,
-    name TEXT NOT NULL
+    name TEXT NOT NULL,
+    tenant_id INTEGER REFERENCES tenants(id)  -- المستأجر المالك (عزل D-036)
 );
 
 CREATE TABLE IF NOT EXISTS marketplace_templates (
@@ -456,6 +589,10 @@ CREATE TABLE IF NOT EXISTS marketplace_templates (
     description TEXT,
     price_cents INTEGER NOT NULL CHECK (price_cents >= 0),
     storage_key TEXT NOT NULL,
+    download_count INTEGER NOT NULL DEFAULT 0,  -- عدّاد مرات التنزيل (عرض في الكتالوج)
+    rating      REAL NOT NULL DEFAULT 0,         -- التقييم (0-5، يُضبط إداريًا ريثما تفتح التقييمات)
+    image_url   TEXT,                            -- صورة غلاف النموذج (رابط اختياري)
+    tenant_id   INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
     created_at  TEXT,
     updated_at  TEXT
 );
@@ -465,17 +602,80 @@ CREATE TABLE IF NOT EXISTS purchases (
     user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
     template_id INTEGER REFERENCES marketplace_templates(id),
     payment_id  INTEGER,            -- مرجع payments (الفوترة مؤجَّلة — D-025)
+    tenant_id   INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
     purchased_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_marketplace_templates_category
     ON marketplace_templates(category_id);
+CREATE INDEX IF NOT EXISTS idx_blog_articles_status
+    ON blog_articles(status, published_at);
+CREATE INDEX IF NOT EXISTS idx_blog_articles_author
+    ON blog_articles(user_id);
+CREATE INDEX IF NOT EXISTS idx_blog_articles_category
+    ON blog_articles(category_id);
+CREATE INDEX IF NOT EXISTS idx_blog_comments_article
+    ON blog_comments(article_id);
+CREATE INDEX IF NOT EXISTS idx_blog_reports_status
+    ON blog_reports(status);
 
 -- =====================================================================
--- نظام الإعلانات (المرحلة 9 — قرار D-027، وثيقة 15 + قاعدة البيانات §11):
--- فتحات ثابتة تُبذر بأسماء الواجهة، حملات (ثلاثة أنواع — §4) بفترة نشاط
--- (استهداف v1: فتحة + تواريخ فقط — §5)، وأحداث انطباع/نقرة للتحليلات
--- (§6) مع index للتجميع (§12). user_id في الأحداث فارغ = مستخدم مجهول.
+-- التجارة والفوترة (دخل نبراس): باقات (plans) قابلة للشراء، طلبات بحالة
+-- pending|paid|cancelled بمصدر تحقق يدوي أولًا (تحويل بنكي/CMI) قابلة
+-- للربط ببوابة دفع لاحقًا عبر payment_method (manual أولًا)، حوافظ نقاط
+-- (wallet_balances) تُضاف عند التأكيد الإداري للطلب وتُصرف على مكالمات
+-- الذكاء الاصطناعي المتقدمة وتصدير الوثائق، مع سجل حركة (credit_ledger)
+-- للمساءلة. قرار: إيراد نبراس (محسَّن D-021/B5 سابق).
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS payment_plans (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug        TEXT UNIQUE NOT NULL,
+    name        TEXT NOT NULL,
+    kind        TEXT NOT NULL,            -- credits | premium_listing
+    price_cents INTEGER NOT NULL CHECK (price_cents >= 0),
+    credits     INTEGER NOT NULL DEFAULT 0,   -- نقاط عند kind=credits
+    duration_days INTEGER,                -- أيام الظهور عند kind=premium
+    description TEXT NOT NULL DEFAULT '',
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    plan_id      INTEGER NOT NULL REFERENCES payment_plans(id),
+    amount_cents INTEGER NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'pending',  -- pending | paid | cancelled
+    payment_method TEXT NOT NULL DEFAULT 'manual', -- manual أولًا (بوابة لاحقًا)
+    note         TEXT,                -- ملاحظة المستخدم/إثبات الدفع
+    processed_by INTEGER REFERENCES users(id),       -- من أكّد الطلب (إدارة)
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    processed_at TEXT,
+    tenant_id    INTEGER REFERENCES tenants(id)      -- عزل المستأجر (D-036)
+);
+
+CREATE TABLE IF NOT EXISTS wallet_balances (
+    user_id      INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    credits      INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS credit_ledger (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    delta         INTEGER NOT NULL,              -- +عند الشراء/الإهداء، -عند الإنفاق
+    reason        TEXT NOT NULL,                 -- order|ai_research|doc_export|adjust
+    reference     TEXT,                          -- مرجع (رقم طلب/معرف وثيقة)
+    balance_after INTEGER NOT NULL,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    tenant_id     INTEGER REFERENCES tenants(id) -- عزل المستأجر (D-036)
+);
+
+CREATE INDEX IF NOT EXISTS idx_orders_user_created ON orders(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_credit_ledger_user ON credit_ledger(user_id, created_at);
+
+-- =====================================================================
+-- نظام الإعلانات (المرحلة 9 — Roadmap Phase 6) — وفق وثيقة 15 وقرار D-027
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS ad_slots (
     id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -496,6 +696,7 @@ CREATE TABLE IF NOT EXISTS ad_campaigns (
     starts_at       TEXT,
     ends_at         TEXT,
     status          TEXT NOT NULL DEFAULT 'active',  -- active|paused|ended
+    tenant_id       INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -505,11 +706,75 @@ CREATE TABLE IF NOT EXISTS ad_events (
     campaign_id INTEGER NOT NULL REFERENCES ad_campaigns(id) ON DELETE CASCADE,
     user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
     event_type  TEXT NOT NULL,   -- impression | click
+    tenant_id   INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_ad_events_campaign_created
     ON ad_events(campaign_id, created_at);
+
+-- =====================================================================
+-- الاجتهادات القضائية (مرحلة الفقه القضائي): فئات الاجتهاد (مدني، جنائي،
+-- إداري، عقاري، ...) وقرارات المحاكم (title + مبدأ + نص). تُنشأ فئات
+-- افتراضية في bots kwargs ولا تُلزم النصوص بالتصنيف القديم.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS jurisprudence_categories (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug        TEXT UNIQUE NOT NULL,
+    name        TEXT NOT NULL,
+    description TEXT,
+    tenant_id   INTEGER REFERENCES tenants(id)   -- عزل المستأجر (قرار D-036)
+);
+
+CREATE TABLE IF NOT EXISTS jurisprudence (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    category_id     INTEGER NOT NULL REFERENCES jurisprudence_categories(id),
+    title           TEXT NOT NULL,
+    principles      TEXT,               -- مبدأ القرار (خلاصة للحكم)
+    content         TEXT NOT NULL,       -- نص الاجتهاد / أسباب الحكم
+    court           TEXT,                -- المحكمة المصدرة
+    decision_number TEXT,                -- رقم القرار
+    decision_date   TEXT,                -- تاريخ القرار (YYYY-MM-DD)
+    source_note     TEXT,                -- مصدر الاجتهاد (مرجع النشر)
+    pdf_url         TEXT,                -- رابط التحميل الأصلي للقرار (PDF)
+    published       INTEGER NOT NULL DEFAULT 1,
+    views           INTEGER NOT NULL DEFAULT 0,
+    tenant_id       INTEGER REFERENCES tenants(id),  -- عزل عاجر (D-036)
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_jurisprudence_category
+    ON jurisprudence(category_id);
+CREATE INDEX IF NOT EXISTS idx_jurisprudence_published
+    ON jurisprudence(published);
+CREATE INDEX IF NOT EXISTS idx_jurisprudence_categories_tenant
+    ON jurisprudence_categories(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_jurisprudence_tenant
+    ON jurisprudence(tenant_id);
+
+-- فهارس عزل المستأجر (D-036): تسريع كل بحث مُقيَّد بـ tenant_id
+-- (تُنشأ بعد كل الجداول لأن marketplace/ads تُعرَّف لاحقًا في المخطط)
+CREATE INDEX IF NOT EXISTS idx_categories_tenant ON categories(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_legal_texts_tenant ON legal_texts(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_articles_tenant ON articles(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_posts_tenant ON posts(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_comments_tenant ON comments(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_reactions_tenant ON reactions(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_reports_tenant ON reports(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_professional_profiles_tenant ON professional_profiles(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_professional_specialties_tenant ON professional_specialties(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_professional_reviews_tenant ON professional_reviews(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_categories_tenant ON marketplace_categories(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_templates_tenant ON marketplace_templates(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_purchases_tenant ON purchases(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_ad_campaigns_tenant ON ad_campaigns(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_ad_events_tenant ON ad_events(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_blog_categories_tenant ON blog_categories(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_blog_articles_tenant ON blog_articles(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_blog_comments_tenant ON blog_comments(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_blog_likes_tenant ON blog_likes(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_blog_reports_tenant ON blog_reports(tenant_id);
 """
 
 
@@ -528,9 +793,13 @@ def _table_exists(conn, table: str) -> bool:
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # وضع WAL: قراءة متزامنة مع كتابة واحدة بين العُمّال المتعددين (gunicorn)
+    # + مهلة انتظار القفل للنجاة من التزاحم العابر بدل خطأ locked فوري.
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 30000")
     # دالة التطبيع العربي — تستخدمها مشغّلات FTS عند فهرسة المواد
     from . import arabic_text
 
@@ -578,6 +847,28 @@ def _migrate_articles_fts(conn) -> None:
     )
 
 
+def _migrate_jurisprudence_fts(conn) -> None:
+    """يُنشئ فهرس FTS للاجتهادات ويعيد تعبئته من الجداول (idempotent)."""
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='jurisprudence_fts'"
+    ).fetchone()
+    if row is None:
+        conn.executescript(JURISPRUDENCE_FTS_DDL)
+    elif "content='jurisprudence'" in (row["sql"] or ""):
+        for trigger in ("jurisprudence_ai", "jurisprudence_ad", "jurisprudence_au"):
+            conn.execute(f"DROP TRIGGER IF EXISTS {trigger}")
+        conn.execute("DROP TABLE IF EXISTS jurisprudence_fts")
+        conn.executescript(JURISPRUDENCE_FTS_DDL)
+    else:
+        return
+    conn.execute(
+        """INSERT INTO jurisprudence_fts(rowid, title, content, keywords)
+           SELECT id, nbr_normalize(title), nbr_normalize(content),
+                  nbr_normalize(COALESCE(court, '') || ' ' ||
+                                COALESCE(source_note, '')) FROM jurisprudence"""
+    )
+
+
 def init_db(reset: bool = False):
     if reset and DB_PATH.exists():
         DB_PATH.unlink()
@@ -596,31 +887,99 @@ def init_db(reset: bool = False):
         )
         if _table_exists(conn, "users"):
             _ensure_column(conn, "users", "tenant_id", "INTEGER REFERENCES tenants(id)")
+        # ترحيل عزل المستأجر (D-036): يضيف عمود tenant_id للجداول الـ 15
+        # المعزولة في القواعد القائمة (أُنشئت قبل المرحلة 18) قبل تنفيذ
+        # SCHEMA حتى تطبَّق فهارس العزل. للقواعد الجديدة يُنشئ SCHEMA
+        # العمود والفهارس مباشرة — نتخطى الإضافة هنا فقط.
+        for _t in (
+            "categories",
+            "legal_texts",
+            "articles",
+            "professional_profiles",
+            "professional_specialties",
+            "professional_reviews",
+            "posts",
+            "comments",
+            "reactions",
+            "reports",
+            "marketplace_categories",
+            "marketplace_templates",
+            "purchases",
+            "ad_campaigns",
+            "ad_events",
+            "jurisprudence_categories",
+            "jurisprudence",
+        ):
+            if _table_exists(conn, _t):
+                _ensure_column(conn, _t, "tenant_id", "INTEGER REFERENCES tenants(id)")
         conn.executescript(SCHEMA)
         # ترحيل خفيف للجداول القائمة (قواعد بيانات أُنشئت قبل المرحلة 2):
         _ensure_column(conn, "user_roles", "rejection_reason", "TEXT")
         # ترحيل الفهرس للصيغة المطبَّعة (المرحلة 14):
         _migrate_articles_fts(conn)
+        # فهرس FTS للاجتهادات القضائية (فقه قضائي):
+        _migrate_jurisprudence_fts(conn)
+        # عدّاد مشاهدات المواد (قسم المقالات في الواجهة + توليد PDF):
+        _ensure_column(conn, "articles", "views", "INTEGER NOT NULL DEFAULT 0")
+        # حقول القوانين الإضافية (الوصف/الجهة الناشرة + ملف PDF مرفوع إداريًا):
+        _ensure_column(conn, "legal_texts", "description", "TEXT")
+        _ensure_column(conn, "legal_texts", "issuing_body", "TEXT")
+        _ensure_column(conn, "legal_texts", "uploaded_pdf_key", "TEXT")
+        # حقول الملف المهني الإضافية (صفحة الملف في الواجهة):
+        for _col, _def in (
+            ("photo_url", "TEXT"),
+            ("registration_number", "TEXT"),
+            ("address", "TEXT"),
+            ("website", "TEXT"),
+            ("years_of_experience", "INTEGER"),
+            ("work_hours", "TEXT"),
+            ("social_links", "TEXT"),
+            ("map_embed", "TEXT"),
+        ):
+            _ensure_column(conn, "professional_profiles", _col, _def)
+        # رسوم وأسئلة المساطر الشائعة:
+        _ensure_column(conn, "procedures", "fees", "TEXT")
+        _ensure_column(conn, "procedures", "faq", "TEXT")
+        # عدّاد تحميل القوالب والتقييم والغلاف:
+        _ensure_column(conn, "marketplace_templates", "download_count",
+                       "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "marketplace_templates", "rating", "REAL NOT NULL DEFAULT 0")
+        _ensure_column(conn, "marketplace_templates", "image_url", "TEXT")
+        # الظهور المميز للملفات المهنية (المرحلة 19 — دخل نبراس): تاريخ
+        # انتهاء الاشتراك المميز (NULL = غير مميز). يُفعَّل عند تأكيد طلب
+        # premium_listing إداريًا، ويُقرأ في ترتيب الدليل وأولوية الظهور.
+        _ensure_column(conn, "professional_profiles", "premium_until",
+                       "TEXT")
+        # رابط التحميل الأصلي للقرار القضائي (الاجتهاد يبقى PDF قابلاً للتحميل):
+        _ensure_column(conn, "jurisprudence", "pdf_url", "TEXT")
     # بذر الأدوار الثابتة وبيانات الإسناد بعد إنشاء المخطط (استيراد مؤجَّل
     # لكسر الدورة الظاهرية — نمط ensure_roles القائم في D-021)
     from . import (
         services_ads,
         services_auth,
+        services_billing,
+        services_blog,
         services_calculators,
         services_community,
         services_documents,
+        services_jurisprudence,
         services_marketplace,
         services_procedures,
         services_tenants,
     )
 
     services_auth.ensure_roles()
+    services_billing.ensure_defaults()
     services_calculators.ensure_defaults()
     services_procedures.ensure_defaults()
     services_documents.ensure_defaults()
     services_community.ensure_defaults()
     services_marketplace.ensure_defaults()
     services_ads.ensure_defaults()
+    services_blog.ensure_defaults()
+    services_jurisprudence.ensure_defaults()
     # المستأجر الافتراضي ثم إلحاق المستخدمين الموجودين به (idempotent)
     services_tenants.ensure_defaults()
     services_tenants.backfill_default_tenant()
+    # إلحاق صفوف العزل القائمة (بلا مستأجر) بالمستأجر الافتراضي (idempotent)
+    services_tenants.backfill_isolated_tables()

@@ -229,13 +229,12 @@ def test_single_tenant_ignores_tenant_header(client):
     assert r.status_code == 200
 
 
-def test_single_tenant_register_without_header_ok(client):
+def test_single_tenant_public_register_disabled(client):
     r = client.post("/api/auth/register", json={
         "email": "new-single@nibras.test", "password": PASSWORD,
         "full_name": "جديد",
     })
-    assert r.status_code == 201
-    assert r.get_json()["user"]["tenant_id"] == services_tenants.default_tenant_id()
+    assert r.status_code == 403
 
 
 def test_ready_reports_tenants_up(client):
@@ -320,17 +319,14 @@ def test_multitenant_default_tenant_header_allowed(client, monkeypatch):
         assert r.status_code == 200
 
 
-def test_register_binds_header_tenant(client, monkeypatch):
+def test_public_register_binds_no_tenant(client, monkeypatch):
     _enable_multitenant(monkeypatch)
     admin = _admin()
-    tenant = services_tenants.create_tenant(admin.id, "مستأجر", "acme")
+    services_tenants.create_tenant(admin.id, "مستأجر", "acme")
     r = client.post("/api/auth/register", headers={"X-Tenant-Id": "acme"}, json={
         "email": "acme-user@nibras.test", "password": PASSWORD, "full_name": "مستخدم",
     })
-    assert r.status_code == 201
-    body = r.get_json()
-    assert body["user"]["tenant_id"] == tenant["id"]
-    assert services_auth.get_token_tenant_id(body["access_token"]) == tenant["id"]
+    assert r.status_code == 403
 
 
 def test_register_rejects_unknown_tenant_header(client, monkeypatch):
@@ -338,7 +334,8 @@ def test_register_rejects_unknown_tenant_header(client, monkeypatch):
     r = client.post("/api/auth/register", headers={"X-Tenant-Id": "no-such-tenant"}, json={
         "email": "unknown@nibras.test", "password": PASSWORD, "full_name": "مستخدم",
     })
-    assert r.status_code == 400
+    # الفرض المركزي (D-035) يرفض المستأجر المجهول قبل الوصول إلى المسار
+    assert r.status_code == 403
 
 
 # ---------------------------------------------------------------------------

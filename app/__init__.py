@@ -10,7 +10,7 @@ import sqlite3
 
 from flask import Flask, jsonify, request
 
-from . import config
+from . import config, tenant_scope
 from . import logging_utils as nibras_logging
 from .database import db_session
 
@@ -23,7 +23,7 @@ def _add_cors_headers(response):
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Vary"] = "Origin"
         response.headers["Access-Control-Allow-Headers"] = (
-            "Content-Type, Authorization"
+            "Content-Type, Authorization, X-Tenant-Id"
         )
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
         response.headers["Access-Control-Max-Age"] = "3600"
@@ -58,10 +58,49 @@ def create_app():
 
     init_db()
 
+    # تسخين ذاكرة التخزين المؤقت للصفحات عند الإقلاع: قراءة فهرسة شاملة
+    # ليتحمَّل أول طلب بعد الإقلاع دون انتظار قراءة قاعدة البيانات من القرص.
+    from . import services
+
+    services.library_stats()
+    services.list_categories()
+    services.list_texts(limit=8)
+
     app.before_request(nibras_logging.log_request_start)
     app.after_request(nibras_logging.log_request_end)
     app.after_request(_add_security_headers)
     app.after_request(_add_cors_headers)
+
+    @app.before_request
+    def _tenant_enforcement():
+        """فرض شامل لنطاق المستأجر (المرحلة 18 — قرار D-036).
+
+        عند NIBRAS_MULTI_TENANT=1 كل نقطة نهاية تطلب رأس X-Tenant-Id
+        (معرّف رقمي أو slug لمستأجر نشط) — غيابه/جهله/تعليقه يرفض الطلب
+        403، ويُضبط السياق الحالي لنطاق بيانات الخدمات. يُستثنى فحصا
+        الحيوية/الجاهزية (مسابر بنية تحتية بلا نطاق) وطلبات CORS المسبقة.
+        في الوضع أحادي المستأجر (الافتراضي) يُصفَّر السياق فلا يُطبَّق
+        أي فرز — سلوك المراحل السابقة تمامًا.
+        """
+        if not config.MULTI_TENANT:
+            tenant_scope.clear_current_tenant()
+            return None
+        if request.method == "OPTIONS" or request.path in ("/api/health", "/api/ready"):
+            tenant_scope.clear_current_tenant()
+            return None
+        from .services_tenants import resolve_tenant
+
+        header = request.headers.get("X-Tenant-Id")
+        if not header:
+            return jsonify({
+                "error": "رأس X-Tenant-Id مطلوب في الوضع متعدد المستأجرين."
+            }), 403
+        tenant = resolve_tenant(header)
+        if tenant is None or tenant["status"] != "active":
+            return jsonify({"error": "مستأجر غير معروف أو غير نشط."}), 403
+        tenant_scope.set_current_tenant(tenant["id"])
+        request.tenant_id = tenant["id"]
+        return None
 
     @app.route("/api/health", methods=["GET"])
     def health():
@@ -110,12 +149,16 @@ def create_app():
 
     # تسجيل Blueprints الوحدات — تُضاف وحدات جديدة بملف blueprint في routes/
     from .routes.admin import admin_bp
+    from .routes.admin_ai import admin_ai_bp
     from .routes.ads import ads_bp
     from .routes.ai import ai_bp
     from .routes.auth import auth_bp
+    from .routes.billing import billing_bp
+    from .routes.blog import blog_bp
     from .routes.calculators import calculators_bp
     from .routes.community import community_bp
     from .routes.documents import documents_bp
+    from .routes.jurisprudence import jurisprudence_bp
     from .routes.library import library_bp
     from .routes.marketplace import marketplace_bp
     from .routes.notifications import notifications_bp
@@ -125,15 +168,55 @@ def create_app():
     app.register_blueprint(ads_bp)
     app.register_blueprint(library_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(admin_ai_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(calculators_bp)
     app.register_blueprint(procedures_bp)
     app.register_blueprint(documents_bp)
     app.register_blueprint(professionals_bp)
+    app.register_blueprint(jurisprudence_bp)
     app.register_blueprint(community_bp)
     app.register_blueprint(marketplace_bp)
     app.register_blueprint(notifications_bp)
     app.register_blueprint(ai_bp)
+    app.register_blueprint(billing_bp)
+    app.register_blueprint(blog_bp)
+
+    # ------------------------------------------------------------------
+    # خدمة ملفات الواجهة الأمامية على نفس الخادم (مرحلة الواجهة):
+    # frontend/ تُقدم على / (واجهة SPA) و/admin (لوحة الإدارة) و/assets.
+    # لا تُغيّر أي نقطة API — الواجهة نفس الأصل فتتحدث إلى /api مباشرة.
+    # ------------------------------------------------------------------
+    from pathlib import Path as _Path
+
+    from flask import abort, send_from_directory
+
+    frontend_dir = _Path(config.FRONTEND_DIR)
+    _assets_dir = frontend_dir / "assets"
+    _vendor_dir = frontend_dir / "vendor"
+
+    def _page(name: str):
+        def serve_page():
+            path = frontend_dir / name
+            if not path.exists():
+                abort(404)
+            return send_from_directory(frontend_dir, name)
+        serve_page.__name__ = f"serve_{name.replace('.', '_')}"
+        return serve_page
+
+    app.add_url_rule("/", "frontend_index", _page("index.html"))
+    app.add_url_rule("/index.html", "frontend_index_alt", _page("index.html"))
+    app.add_url_rule("/admin", "frontend_admin", _page("admin.html"))
+    app.add_url_rule("/admin/", "frontend_admin_slash", _page("admin.html"))
+    app.add_url_rule("/admin.html", "frontend_admin_alt", _page("admin.html"))
+
+    @app.route("/assets/<path:filename>")
+    def frontend_assets(filename):
+        return send_from_directory(str(_assets_dir), filename)
+
+    @app.route("/vendor/<path:filename>")
+    def frontend_vendor(filename):
+        return send_from_directory(str(_vendor_dir), filename)
 
     @app.errorhandler(404)
     def not_found(e):

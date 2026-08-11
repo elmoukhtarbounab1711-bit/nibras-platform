@@ -131,3 +131,41 @@ def backfill_default_tenant() -> int:
             "UPDATE users SET tenant_id = ? WHERE tenant_id IS NULL", (default_id,)
         )
     return default_id
+
+
+# جداول عزل بيانات الوحدات (قرار D-036) — تُملأ tenant_id في الترحيل القديم
+_ISOLATED_TABLES = (
+    "categories",
+    "legal_texts",
+    "articles",
+    "professional_profiles",
+    "professional_specialties",
+    "professional_reviews",
+    "posts",
+    "comments",
+    "reactions",
+    "reports",
+    "marketplace_categories",
+    "marketplace_templates",
+    "purchases",
+    "ad_campaigns",
+    "ad_events",
+    "jurisprudence_categories",
+    "jurisprudence",
+)
+
+
+def backfill_isolated_tables() -> int:
+    """يلحق صفوف الجداول الـ 15 المعزولة بلا مستأجر بالمستأجر الافتراضي.
+
+    ترحيل قديم (قواعد أُنشئت قبل المرحلة 18): عند تفعيل multi-tenancy
+    لاحقًا يجب ألا يفلت أي صف من الفلترة. idempotent — يلمس صفوف NULL فقط.
+    """
+    default_id = ensure_defaults()
+    with db_session() as conn:
+        for table in _ISOLATED_TABLES:
+            conn.execute(
+                f"UPDATE {table} SET tenant_id = ? WHERE tenant_id IS NULL",
+                (default_id,),
+            )
+    return default_id

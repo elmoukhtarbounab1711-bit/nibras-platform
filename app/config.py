@@ -8,6 +8,7 @@
 القيم الافتراضية هنا آمنة للتطوير المحلي فقط؛ بيئة الإنتاج يجب أن تضبطها صراحة.
 """
 import os
+from pathlib import Path
 
 
 def _env_bool(name: str, default: str = "0") -> bool:
@@ -106,6 +107,13 @@ RATE_LIMIT_WINDOW_SECONDS = _env_int("NIBRAS_RATE_LIMIT_WINDOW_SECONDS", 900)
 # عنوان الواجهة لبناء رابط استعادة كلمة المرور المرسَل (واجهة قابلة للتغيير)
 FRONTEND_BASE_URL = os.environ.get("NIBRAS_FRONTEND_BASE_URL", "http://localhost:3000")
 
+# مجلد ملفات الواجهة الأمامية الذي يخدمه الخادم نفسه على / و/admin
+# (الواجهة الجديدة متعددة الملفات — تُفتح عبر localhost:8000 مباشرة).
+FRONTEND_DIR = os.environ.get(
+    "NIBRAS_FRONTEND_DIR",
+    str(Path(__file__).resolve().parent.parent / "frontend"),
+)
+
 # ---------------------------------------------------------------------------
 # الذكاء الاصطناعي (المرحلة 3) — وفق وثيقة 13 (AI Architecture)
 # ---------------------------------------------------------------------------
@@ -118,14 +126,32 @@ AI_PROVIDER = os.environ.get("NIBRAS_AI_PROVIDER", "noop")
 # نموذج فئة Sonnet وفق وثيقة 13 §5 (يُعاود التحقق من المستوى في الإنتاج).
 AI_MODEL = os.environ.get("NIBRAS_AI_MODEL", "claude-sonnet-4-5")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-AI_MAX_TOKENS = _env_int("NIBRAS_AI_MAX_TOKENS", 1024)
+AI_MAX_TOKENS = _env_int("NIBRAS_AI_MAX_TOKENS", 2048)
 
-# عدد المواد المسترجعة كسياق موجَّه لكل سؤال (وثيقة 13 §2)
-AI_RETRIEVAL_LIMIT = _env_int("NIBRAS_AI_RETRIEVAL_LIMIT", 5)
+# عدد المواد المسترجعة كسياق موجَّه لكل سؤال (وثيقة 13 §2) — رُفع ليلائم
+# مكتبة نبراس الواسعة (أكثر من 1600 نص قانوني / 24 ألف مادة) فيُتاح للمزوّد
+# سياق أوسع للإجابة انطلاقًا من المكتبة.
+AI_RETRIEVAL_LIMIT = _env_int("NIBRAS_AI_RETRIEVAL_LIMIT", 12)
+
+# عدد الاجتهادات القضائية المسترجعة كسياق إضافي (فقه قضائي) لكل سؤال.
+# تُسترجَع اجتهادات محكمة النقض المتصلة بسؤال المستخدم وتُرفَق بالمواد في
+# الإجابة الموجَّهة كمرجع ثانٍ (المواد ملزمة، الاجتهاد مؤيِّد). صفر = تعطيل.
+AI_JURISPRUDENCE_LIMIT = _env_int("NIBRAS_AI_JURISPRUDENCE_LIMIT", 5)
+
+# أقصى طول (حرف) يُقتبس من نص الاجتهاد الواحد في سياق المزوّد — معظم نصوص
+# الاجتهادات حسَنة الحجم (وسيط ~277 حرفًا) لكن بعضها طويل جدًّا (حتى 11 ألف).
+# القطع يمنع انفجار سياق الإجابة الموجَّهة دون إضعاف دلالة المبدأ المستشهد به.
+AI_JURISPRUDENCE_MAX_CHARS = _env_int("NIBRAS_AI_JURISPRUDENCE_MAX_CHARS", 800)
 
 # حد معدل طلبات الذكاء الاصطناعي لكل مستخدم (وثيقة 13 §7 / Security 12 §6)
 AI_RATE_LIMIT_MAX_REQUESTS = _env_int("NIBRAS_AI_RATE_LIMIT_MAX_REQUESTS", 20)
 AI_RATE_LIMIT_WINDOW_SECONDS = _env_int("NIBRAS_AI_RATE_LIMIT_WINDOW_SECONDS", 3600)
+
+# البحث الخارجي في وضع المقارنة (research): عدد النتائج المسترجعة من الويب
+# ومهلة كل طلب بالثواني. يُستخدم DuckDuckGo HTML بلا مفتاح — إخفاقه لا يُفشل
+# الإجابة (تُعاد الإجابة من نبراس فقط). صفر = تعطيل البحث الخارجي.
+AI_WEBSEARCH_LIMIT = _env_int("NIBRAS_AI_WEBSEARCH_LIMIT", 5)
+AI_WEBSEARCH_TIMEOUT = _env_int("NIBRAS_AI_WEBSEARCH_TIMEOUT", 12)
 
 # ---------------------------------------------------------------------------
 # مولّد الوثائق (المرحلة 4) — وفق المواصفة التقنية §6 وقرار D-022

@@ -13,7 +13,7 @@ import secrets
 import sqlite3
 from pathlib import Path
 
-from . import config
+from . import config, tenant_scope
 from .database import db_session
 from .services_admin import _log_admin_action, bulk_summary, parse_bulk_ids
 
@@ -56,7 +56,10 @@ def _uploads_dir() -> Path:
 
 
 def ensure_defaults():
-    """بذر فئات السوق إن كانت فارغة (idempotent — نمط ensure_defaults)."""
+    """بذر فئات السوق إن كانت فارغة (idempotent — نمط ensure_defaults).
+
+    تُبذر بلا مستأجر في الوضع أحادي؛ وفي الوضع المفعّل يُسند إليها
+    المستأجر الافتراضي (ترحيل backfill يعالج NULL لاحقًا على أي حال)."""
     with db_session() as conn:
         count = conn.execute(
             "SELECT COUNT(*) AS c FROM marketplace_categories"
@@ -64,15 +67,20 @@ def ensure_defaults():
         if count == 0:
             for slug, name in CATEGORY_SEED:
                 conn.execute(
-                    "INSERT INTO marketplace_categories (slug, name) VALUES (?, ?)",
-                    (slug, name),
+                    "INSERT INTO marketplace_categories (slug, name, tenant_id) "
+                    "VALUES (?, ?, ?)",
+                    (slug, name, tenant_scope.insert_tenant_id()),
                 )
 
 
 def _category_exists(conn, category_id) -> bool:
-    return conn.execute(
-        "SELECT 1 FROM marketplace_categories WHERE id = ?", (category_id,)
-    ).fetchone() is not None
+    query = "SELECT 1 FROM marketplace_categories WHERE id = ?"
+    params = [category_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        query += " AND " + cond
+        params.extend(vals)
+    return conn.execute(query, params).fetchone() is not None
 
 
 def _coerce_price(value) -> int:
@@ -127,13 +135,22 @@ def _remove_file(storage_key: str) -> None:
 # ---------------------------------------------------------------------------
 
 def list_categories():
+    # عدّ القوالب ضمن مستأجر الفئة نفسها (عزل D-036)
+    t_scope = " AND t.tenant_id IS c.tenant_id" if tenant_scope.active() else ""
+    query = (
+        f"""SELECT c.id, c.slug, c.name,
+                   (SELECT COUNT(*) FROM marketplace_templates t
+                    WHERE t.category_id = c.id{t_scope}) AS template_count
+            FROM marketplace_categories c"""
+    )
+    params = []
+    c_cond, c_vals = tenant_scope.tenant_eq("c")
+    if c_cond:
+        query += " WHERE " + c_cond
+        params.extend(c_vals)
+    query += " ORDER BY c.id"
     with db_session() as conn:
-        rows = conn.execute(
-            """SELECT c.id, c.slug, c.name,
-                      (SELECT COUNT(*) FROM marketplace_templates t
-                       WHERE t.category_id = c.id) AS template_count
-               FROM marketplace_categories c ORDER BY c.id"""
-        ).fetchall()
+        rows = conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
 
 
@@ -144,6 +161,9 @@ def _template_item(row) -> dict:
         "title": row["title"],
         "description": row["description"],
         "price_cents": row["price_cents"],
+        "download_count": row["download_count"],
+        "rating": round(row["rating"], 1) if row["rating"] else 0,
+        "image_url": row["image_url"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -155,6 +175,10 @@ def list_templates(category_id=None, q=None, limit: int = DEFAULT_LIST_LIMIT,
     offset = max(0, int(offset or 0))
     conditions = []
     params = []
+    t_cond, t_vals = tenant_scope.tenant_eq("t")
+    if t_cond:
+        conditions.append(t_cond)
+        params.extend(t_vals)
     if category_id is not None:
         conditions.append("t.category_id = ?")
         params.append(int(category_id))
@@ -173,10 +197,14 @@ def list_templates(category_id=None, q=None, limit: int = DEFAULT_LIST_LIMIT,
 
 
 def get_template(template_id: int):
+    query = "SELECT * FROM marketplace_templates WHERE id = ?"
+    params = [template_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        query += " AND " + cond
+        params.extend(vals)
     with db_session() as conn:
-        row = conn.execute(
-            "SELECT * FROM marketplace_templates WHERE id = ?", (template_id,)
-        ).fetchone()
+        row = conn.execute(query, params).fetchone()
         if not row:
             return None
         return _template_item(dict(row))
@@ -187,13 +215,32 @@ def get_template(template_id: int):
 # ---------------------------------------------------------------------------
 
 def list_templates_admin():
+    query = (
+        """SELECT t.*, c.name AS category_name
+           FROM marketplace_templates t
+           JOIN marketplace_categories c ON c.id = t.category_id
+           ORDER BY t.id DESC"""
+    )
+    params = []
+    conds = []
+    t_cond, t_vals = tenant_scope.tenant_eq("t")
+    c_cond, c_vals = tenant_scope.tenant_eq("c")
+    if t_cond:
+        conds.append(t_cond)
+        params.extend(t_vals)
+    if c_cond:
+        conds.append(c_cond)
+        params.extend(c_vals)
+    if conds:
+        query = (
+            f"""SELECT t.*, c.name AS category_name
+                FROM marketplace_templates t
+                JOIN marketplace_categories c ON c.id = t.category_id
+                WHERE {" AND ".join(conds)}
+                ORDER BY t.id DESC"""
+        )
     with db_session() as conn:
-        rows = conn.execute(
-            """SELECT t.*, c.name AS category_name
-               FROM marketplace_templates t
-               JOIN marketplace_categories c ON c.id = t.category_id
-               ORDER BY t.id DESC"""
-        ).fetchall()
+        rows = conn.execute(query, params).fetchall()
         items = []
         for row in rows:
             item = dict(row)
@@ -222,9 +269,10 @@ def create_template(admin_id: int, data: dict, file) -> dict:
         cur = conn.execute(
             "INSERT INTO marketplace_templates "
             "(category_id, title, description, price_cents, storage_key, "
-            "created_at, updated_at) VALUES (?, ?, ?, ?, ?, "
+            "tenant_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, "
             "datetime('now'), datetime('now'))",
-            (category_id, title, description or None, price_cents, storage_key),
+            (category_id, title, description or None, price_cents, storage_key,
+             tenant_scope.insert_tenant_id()),
         )
         template_id = cur.lastrowid
         _log_admin_action(
@@ -236,9 +284,13 @@ def create_template(admin_id: int, data: dict, file) -> dict:
 
 def update_template(admin_id: int, template_id: int, data: dict, file) -> dict:
     with db_session() as conn:
-        row = conn.execute(
-            "SELECT * FROM marketplace_templates WHERE id = ?", (template_id,)
-        ).fetchone()
+        sel_q = "SELECT * FROM marketplace_templates WHERE id = ?"
+        sel_params = [template_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            sel_q += " AND " + cond
+            sel_params.extend(vals)
+        row = conn.execute(sel_q, sel_params).fetchone()
         if row is None:
             raise MarketplaceError("القالب غير موجود.", 404)
         updates = {}
@@ -257,6 +309,17 @@ def update_template(admin_id: int, template_id: int, data: dict, file) -> dict:
             if not _category_exists(conn, category_id):
                 raise MarketplaceError("الفئة غير موجودة.", 400)
             updates["category_id"] = category_id
+        if "rating" in data and data.get("rating") not in (None, ""):
+            try:
+                rating = float(data.get("rating"))
+            except (TypeError, ValueError):
+                raise MarketplaceError("rating يجب أن يكون رقمًا.", 400)
+            if rating < 0 or rating > 5:
+                raise MarketplaceError("rating يجب أن يكون بين 0 و 5.", 400)
+            updates["rating"] = rating
+        if "image_url" in data:
+            image_url = (data.get("image_url") or "").strip()
+            updates["image_url"] = image_url or None
         new_storage_key = None
         if file is not None:
             filename, _ext, content = _validate_file(file)
@@ -265,11 +328,15 @@ def update_template(admin_id: int, template_id: int, data: dict, file) -> dict:
         if not updates and file is None:
             raise MarketplaceError("لا توجد حقول للتحديث.", 400)
         sets = ", ".join(f"{k} = ?" for k in updates)
-        conn.execute(
+        upd_q = (
             f"UPDATE marketplace_templates SET {sets}, "
-            "updated_at = datetime('now') WHERE id = ?",
-            (*updates.values(), template_id),
+            "updated_at = datetime('now') WHERE id = ?"
         )
+        upd_params = list(updates.values()) + [template_id]
+        if cond:
+            upd_q += " AND " + cond
+            upd_params.extend(vals)
+        conn.execute(upd_q, upd_params)
         if new_storage_key:
             _remove_file(row["storage_key"])
         _log_admin_action(
@@ -281,22 +348,33 @@ def update_template(admin_id: int, template_id: int, data: dict, file) -> dict:
 
 def delete_template(admin_id: int, template_id: int) -> dict:
     with db_session() as conn:
-        row = conn.execute(
-            "SELECT id, storage_key FROM marketplace_templates WHERE id = ?",
-            (template_id,),
-        ).fetchone()
+        sel_q = (
+            "SELECT id, storage_key FROM marketplace_templates WHERE id = ?"
+        )
+        sel_params = [template_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            sel_q += " AND " + cond
+            sel_params.extend(vals)
+        row = conn.execute(sel_q, sel_params).fetchone()
         if row is None:
             raise MarketplaceError("القالب غير موجود.", 404)
-        purchased = conn.execute(
-            "SELECT 1 FROM purchases WHERE template_id = ?", (template_id,)
-        ).fetchone()
+        pur_q = "SELECT 1 FROM purchases WHERE template_id = ?"
+        pur_params = [template_id]
+        if cond:
+            pur_q += " AND " + cond
+            pur_params.extend(vals)
+        purchased = conn.execute(pur_q, pur_params).fetchone()
         if purchased:
             raise MarketplaceError(
                 "لا يمكن حذف قالب له سجل شراءات.", 409
             )
-        conn.execute(
-            "DELETE FROM marketplace_templates WHERE id = ?", (template_id,)
-        )
+        del_q = "DELETE FROM marketplace_templates WHERE id = ?"
+        del_params = [template_id]
+        if cond:
+            del_q += " AND " + cond
+            del_params.extend(vals)
+        conn.execute(del_q, del_params)
         _remove_file(row["storage_key"])
         _log_admin_action(
             conn, admin_id, "marketplace.delete", "marketplace_template",
@@ -313,29 +391,40 @@ def delete_templates_bulk(admin_id: int, template_ids) -> dict:
     ids = parse_bulk_ids(template_ids, "template_ids")
     with db_session() as conn:
         results = []
+        cond, vals = tenant_scope.tenant_eq()
         for template_id in ids:
-            row = conn.execute(
-                "SELECT id, storage_key FROM marketplace_templates WHERE id = ?",
-                (template_id,),
-            ).fetchone()
+            sel_q = (
+                "SELECT id, storage_key FROM marketplace_templates WHERE id = ?"
+            )
+            sel_params = [template_id]
+            if cond:
+                sel_q += " AND " + cond
+                sel_params.extend(vals)
+            row = conn.execute(sel_q, sel_params).fetchone()
             if row is None:
                 results.append(
                     {"id": template_id, "status": "error",
                      "message": "القالب غير موجود."}
                 )
                 continue
-            purchased = conn.execute(
-                "SELECT 1 FROM purchases WHERE template_id = ?", (template_id,)
-            ).fetchone()
+            pur_q = "SELECT 1 FROM purchases WHERE template_id = ?"
+            pur_params = [template_id]
+            if cond:
+                pur_q += " AND " + cond
+                pur_params.extend(vals)
+            purchased = conn.execute(pur_q, pur_params).fetchone()
             if purchased:
                 results.append(
                     {"id": template_id, "status": "error",
                      "message": "لا يمكن حذف قالب له سجل شراءات."}
                 )
                 continue
-            conn.execute(
-                "DELETE FROM marketplace_templates WHERE id = ?", (template_id,)
-            )
+            del_q = "DELETE FROM marketplace_templates WHERE id = ?"
+            del_params = [template_id]
+            if cond:
+                del_q += " AND " + cond
+                del_params.extend(vals)
+            conn.execute(del_q, del_params)
             _remove_file(row["storage_key"])
             _log_admin_action(
                 conn, admin_id, "marketplace.delete", "marketplace_template",
@@ -348,12 +437,24 @@ def delete_templates_bulk(admin_id: int, template_ids) -> dict:
 
 
 def get_template_file(template_id: int):
-    """مسار/اسم ملف القالب — يُستدعى من مسار إداري مصادق (دور admin) فقط."""
+    """مسار/اسم ملف القالب — يُستدعى من مسار إداري مصادق (دور admin) فقط.
+    يُزيد عدّاد التنزيلات (إحصاءات الكتالوج — عرض "عدد مرات التحميل")."""
+    query = (
+        "SELECT storage_key, title FROM marketplace_templates WHERE id = ?"
+    )
+    params = [template_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        query += " AND " + cond
+        params.extend(vals)
     with db_session() as conn:
-        row = conn.execute(
-            "SELECT storage_key, title FROM marketplace_templates WHERE id = ?",
-            (template_id,),
-        ).fetchone()
+        row = conn.execute(query, params).fetchone()
+        if row is not None:
+            conn.execute(
+                "UPDATE marketplace_templates SET download_count = "
+                "download_count + 1 WHERE id = ?",
+                (template_id,),
+            )
     if row is None:
         raise MarketplaceError("القالب غير موجود.", 404)
     path = _uploads_dir() / os.path.basename(row["storage_key"])
@@ -382,8 +483,9 @@ def create_category(admin_id: int, data: dict) -> int:
     with db_session() as conn:
         try:
             cur = conn.execute(
-                "INSERT INTO marketplace_categories (slug, name) VALUES (?, ?)",
-                (slug, name),
+                "INSERT INTO marketplace_categories (slug, name, tenant_id) "
+                "VALUES (?, ?, ?)",
+                (slug, name, tenant_scope.insert_tenant_id()),
             )
         except sqlite3.IntegrityError:
             raise MarketplaceError("فئة بنفس slug موجودة مسبقًا.", 400)
@@ -397,9 +499,13 @@ def create_category(admin_id: int, data: dict) -> int:
 
 def update_category(admin_id: int, category_id: int, data: dict) -> int:
     with db_session() as conn:
-        row = conn.execute(
-            "SELECT id FROM marketplace_categories WHERE id = ?", (category_id,)
-        ).fetchone()
+        sel_q = "SELECT id FROM marketplace_categories WHERE id = ?"
+        sel_params = [category_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            sel_q += " AND " + cond
+            sel_params.extend(vals)
+        row = conn.execute(sel_q, sel_params).fetchone()
         if row is None:
             raise MarketplaceError("الفئة غير موجودة.", 404)
         updates = {}
@@ -417,10 +523,12 @@ def update_category(admin_id: int, category_id: int, data: dict) -> int:
             raise MarketplaceError("لا توجد حقول للتحديث.", 400)
         try:
             sets = ", ".join(f"{k} = ?" for k in updates)
-            conn.execute(
-                f"UPDATE marketplace_categories SET {sets} WHERE id = ?",
-                (*updates.values(), category_id),
-            )
+            upd_q = f"UPDATE marketplace_categories SET {sets} WHERE id = ?"
+            upd_params = list(updates.values()) + [category_id]
+            if cond:
+                upd_q += " AND " + cond
+                upd_params.extend(vals)
+            conn.execute(upd_q, upd_params)
         except sqlite3.IntegrityError:
             raise MarketplaceError("فئة بنفس slug موجودة مسبقًا.", 400)
         _log_admin_action(
@@ -432,20 +540,29 @@ def update_category(admin_id: int, category_id: int, data: dict) -> int:
 
 def delete_category(admin_id: int, category_id: int) -> int:
     with db_session() as conn:
-        row = conn.execute(
-            "SELECT id FROM marketplace_categories WHERE id = ?", (category_id,)
-        ).fetchone()
+        sel_q = "SELECT id FROM marketplace_categories WHERE id = ?"
+        sel_params = [category_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            sel_q += " AND " + cond
+            sel_params.extend(vals)
+        row = conn.execute(sel_q, sel_params).fetchone()
         if row is None:
             raise MarketplaceError("الفئة غير موجودة.", 404)
-        used = conn.execute(
-            "SELECT 1 FROM marketplace_templates WHERE category_id = ?",
-            (category_id,),
-        ).fetchone()
+        used_q = "SELECT 1 FROM marketplace_templates WHERE category_id = ?"
+        used_params = [category_id]
+        if cond:
+            used_q += " AND " + cond
+            used_params.extend(vals)
+        used = conn.execute(used_q, used_params).fetchone()
         if used:
             raise MarketplaceError("لا يمكن حذف فئة تحتوي قوالب.", 409)
-        conn.execute(
-            "DELETE FROM marketplace_categories WHERE id = ?", (category_id,)
-        )
+        del_q = "DELETE FROM marketplace_categories WHERE id = ?"
+        del_params = [category_id]
+        if cond:
+            del_q += " AND " + cond
+            del_params.extend(vals)
+        conn.execute(del_q, del_params)
         _log_admin_action(
             conn, admin_id, "marketplace.category.delete",
             "marketplace_category", category_id,

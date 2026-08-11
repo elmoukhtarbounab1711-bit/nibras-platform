@@ -11,7 +11,6 @@ import pytest
 
 from app import config, services_auth
 from app.database import db_session
-from app.routes.auth import _attempts as _auth_attempts
 
 PASSWORD = "test-password-123"
 
@@ -27,13 +26,6 @@ PROFILE = {
 def _isolate_uploads(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "UPLOAD_DIR", str(tmp_path / "uploads"))
     yield
-
-
-@pytest.fixture(autouse=True)
-def _reset_rate_limits():
-    _auth_attempts.clear()
-    yield
-    _auth_attempts.clear()
 
 
 def _headers(user):

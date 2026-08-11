@@ -25,12 +25,16 @@ from app.services_documents import (
 
 RENTAL_ANSWERS = {
     "landlord_name": "علي العلوي",
+    "landlord_cin": "AB123456",
     "tenant_name": "فاطمة الزهراء",
+    "tenant_cin": "CD789012",
     "property_address": "شارع الحسن الثاني، الدار البيضاء",
     "monthly_rent": 2500,
     "start_date": "2026-09-01",
     "duration_months": 12,
     "deposit_amount": 5000,
+    "city": "الدار البيضاء",
+    "contract_date": "2026-08-01",
 }
 
 
@@ -55,21 +59,60 @@ def test_ensure_defaults_is_idempotent(fresh_db):
     ensure_defaults()
     with db_session() as conn:
         after = conn.execute("SELECT COUNT(*) AS n FROM document_templates").fetchone()["n"]
-    assert before == after == len(list_templates()) == 3
+    assert before == after == len(list_templates()) == 23
 
 
 def test_list_and_get_template(fresh_db):
     items = list_templates()
-    assert {t["slug"] for t in items} == {"rental-contract", "power-of-attorney", "debt-acknowledgment"}
+    assert {"rental-contract", "power-of-attorney", "debt-acknowledgment",
+            "commercial-lease", "sales-contract", "work-contract"} <= {t["slug"] for t in items}
     tmpl = get_template("rental-contract")
     assert tmpl["name"] == "عقد كراء سكني"
     assert any(f["name"] == "tenant_name" and f["required"] for f in tmpl["fields"])
+
+
+def test_all_seed_templates_are_renderable(fresh_db):
+    """كل قالب في البذر: وصفه موجود، حقولُه ترجع لقوالب، والهيكل يشير فقط
+    لحقول معرّفة (تحقق من قالب عن الإغفال القاتل بـ StrictUndefined)."""
+    import re
+
+    from app import services_documents as svc
+
+    ensure_defaults()
+    for tmpl in svc._SEED_TEMPLATES:
+        names = {f["name"] for f in tmpl["field_schema"]}
+        assert tmpl.get("description", "").strip(), f"{tmpl['slug']} بلا وصف"
+        assert tmpl["body_template"].strip(), f"{tmpl['slug']} بلا هيكل"
+        body = tmpl["body_template"]
+        # متغيرات {{ var }} — أول معرّف لاتيني بعد الوسم (قبل or/filters)
+        for m in re.findall(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*)", body):
+            assert m in names, f"{tmpl['slug']} متغير غير معروف: {m}"
+        # شروط {% if var %} / {% elif var %} / {% if not var %}
+        for m in re.findall(r"\{\%\s*(?:if|elif)\s+(?:not\s+)?([A-Za-z_][A-Za-z0-9_]*)", body):
+            assert m in names, f"{tmpl['slug']} شرط غير معروف: {m}"
+        assert tmpl["body_template"].count("{{") == tmpl["body_template"].count("}}"), f"{tmpl['slug']} وسوم غير متزنة"
+
+
+def test_validation_lab_kept(fresh_db):
+    """قالب تجريبي لا يُبذر ويُختبر مباشرة — ضمانة بقاء سلوك التحقق."""
+    from app.services_documents import _validate_answers
+
+    fields = [{"name": "kind", "label": "النوع", "type": "select",
+               "required": True, "options": ["أ", "ب"]},
+              {"name": "flag", "label": "علم", "type": "boolean", "required": False}]
+    with pytest.raises(DocumentError) as exc:
+        _validate_answers(fields, {"kind": "ج"})
+    assert "غير مقبولة" in exc.value.message
+    with pytest.raises(DocumentError) as exc:
+        _validate_answers(fields, {"kind": "أ", "flag": "نعم"})
+    assert "منطقية" in exc.value.message
 
 
 def test_generate_and_owner_access(fresh_db):
     doc = generate_document(_user_id(1), "rental-contract", RENTAL_ANSWERS)
     assert doc["version"] == 1
     assert "علي العلوي" in doc["doc_text"]
+    assert doc["answers"]["landlord_name"] == "علي العلوي"
     fetched = get_document(_user_id(1), doc["id"])
     assert fetched["doc_text"] == doc["doc_text"]
     with pytest.raises(DocumentError) as exc:

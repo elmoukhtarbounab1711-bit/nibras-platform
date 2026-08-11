@@ -1,15 +1,14 @@
 """
-مسارات مساعد المساطر (Blueprint) — المرحلة 3.
+مسارات مساعد المساطر (Blueprint) — المرحلة 3 (منصة عامة).
 
-التصفح والتفصيل عامان (FR-6.1)، وتحديث التقدم يتطلب مصادقة (FR-6.2 —
-للمسجّلين فقط) وفق وثيقة API: GET /api/procedures، GET /api/procedures/<slug>،
-POST /api/procedures/<slug>/progress.
-"""
+التصفح والتفصيل عامان (FR-6.1). تتبع التقدم كان مخصصًا للحسابات؛ بعد
+التحول إلى منصة بلا حسابات لا يُخزَّن تقدم شخصي (الخصوصية بالتصميم):
+GET progress يعيد تعريف المسطرة فقط، و POST progress يعيد اعترافًا
+بدون كتابة سجل شخصي. (وثيقة API: GET /api/procedures،
+GET /api/procedures/<slug>.)"""
 from flask import Blueprint, jsonify, request
 
 from .. import services_procedures
-from ..middleware.auth_middleware import require_auth
-from ..services_procedures import ProcedureError
 
 procedures_bp = Blueprint("procedures", __name__)
 
@@ -28,18 +27,18 @@ def get_procedure(slug):
     return jsonify(proc)
 
 
+@procedures_bp.route("/api/procedures/<slug>/progress", methods=["GET"])
+def get_progress(slug):
+    return jsonify({
+        "procedure_slug": slug,
+        "progress": [],
+        "message": "منصة عامة — لا تتبع تقدم شخصي",
+    })
+
+
 @procedures_bp.route("/api/procedures/<slug>/progress", methods=["POST"])
-@require_auth
 def set_progress(slug):
-    data = request.get_json(force=True, silent=True) or {}
-    step_number = data.get("step_number")
-    if not isinstance(step_number, int) or isinstance(step_number, bool) or step_number < 1:
-        return jsonify({"error": "step_number يجب أن يكون رقم خطوة صحيحًا موجبًا"}), 400
-    completed = bool(data.get("completed", True))
-    try:
-        progress = services_procedures.set_step_progress(
-            request.user.id, slug, step_number, completed
-        )
-    except ProcedureError as exc:
-        return jsonify({"error": exc.message}), exc.status_code
-    return jsonify({"message": "تم تحديث تقدمك في المسطرة", "progress": progress}), 200
+    return jsonify({
+        "message": "منصة عامة — لا يُحفظ تقدم شخصي",
+        "progress": [],
+    }), 200

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>نبراس — لوحة التحكم</title>
+  <link rel="stylesheet" href="assets/css/app.css">
+  <link rel="stylesheet" href="assets/css/admin.css">
+</head>
+<body class="adm-app">
+  <div class="adm-shell">
+
+    <!-- الشريط الجانبي -->
+    <aside class="adm-side">
+      <div class="adm-brand">
+        <span class="brand-logo" title="نبراس">
+          <svg viewBox="0 0 48 48" width="30" height="30" aria-hidden="true" focusable="false">
+            <g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M16 41 H32" />
+              <path d="M24 41 V17" />
+              <path d="M6 17 H42" />
+              <path d="M9 17 L7 24 M13 17 L15 24" />
+              <path d="M37 17 L35 24 M43 17 L45 24" />
+              <path d="M3 24 Q9 30 15 24" />
+              <path d="M35 24 Q41 30 47 24" />
+            </g>
+            <path d="M24 13.5 L21 17 L24 20.5 L27 17 Z" fill="currentColor" />
+            <rect x="39.5" y="16.5" width="3" height="7.5" rx="0.6" fill="currentColor" />
+            <path d="M41 14.3 L41 16.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            <path d="M41 7.5 C43.7 10.6 43.7 13.2 41 14.3 C38.3 13.2 38.3 10.6 41 7.5 Z" fill="currentColor" />
+            <circle cx="41" cy="10" r="4.5" fill="currentColor" opacity="0.2" />
+          </svg>
+        </span>
+        <span><strong>نبراس</strong><small>لوحة التحكم الإدارية</small></span>
+      </div>
+      <nav class="adm-nav" id="adm-nav" aria-label="أقسام لوحة التحكم"></nav>
+      <div class="adm-side-foot">
+        <button class="adm-foot-btn" id="adm-theme-btn" type="button"></button>
+        <button class="adm-foot-btn" id="adm-lang-btn" type="button"></button>
+        <button class="adm-foot-btn" id="adm-logout" type="button"><svg class="icn" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> <span data-i18n="admin.logout">تسجيل الخروج</span></button>
+      </div>
+    </aside>
+
+    <!-- المحتوى -->
+    <div class="adm-main">
+      <header class="adm-top">
+        <button class="adm-burger" id="adm-burger" type="button" aria-label="فتح القائمة"><svg class="icn" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+        <div>
+          <h1 id="adm-title">لوحة التحكم</h1>
+          <span class="crumb" id="adm-crumb"></span>
+        </div>
+        <div class="adm-top-actions">
+          <a class="btn btn-outline btn-sm" href="/"><svg class="icn" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> <span data-i18n="admin.backToSite">العودة إلى الموقع</span></a>
+          <div class="adm-user">
+            <span class="adm-avatar" id="adm-avatar">م</span>
+            <span class="u-name" id="adm-user-name"></span>
+          </div>
+        </div>
+      </header>
+      <main class="adm-content" id="adm-content"></main>
+    </div>
+  </div>
+
+  <!-- عناصر مشتركة تعتمد عليها أدوات ui.js -->
+  <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+  <div class="modal-backdrop" id="auth-modal" hidden>
+    <div class="modal modal-lg" role="dialog" aria-modal="true">
+      <button class="modal-close" data-close-modal aria-label="إغلاق">×</button>
+      <div class="adm-modal-body" id="auth-modal-body"></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="confirm-modal" hidden>
+    <div class="modal modal-sm" role="dialog" aria-modal="true">
+      <h3 id="confirm-title"></h3>
+      <p id="confirm-text"></p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="confirm-cancel">إلغاء</button>
+        <button class="btn btn-danger" id="confirm-ok">تأكيد</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="assets/js/admin/admin.js"></script>
+</body>
+</html>

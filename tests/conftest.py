@@ -73,6 +73,52 @@ def _seed_test_data():
             (art_49, art_230),
         )
 
+        # اجتهادات قضائية نموذجية — مستخدمة في اختبارات المساعد (فقه قضائي)
+        jcat = conn.execute(
+            "INSERT INTO jurisprudence_categories (slug, name) VALUES (?,?)",
+            ("test-jinaiya", "قانون المسطرة الجنائية (اختبار)"),
+        ).lastrowid
+        conn.execute(
+            """INSERT INTO jurisprudence
+               (category_id, title, principles, content, court, decision_number,
+                decision_date, source_note, published, views, tenant_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (jcat, "طلب النقض من حكم غيابي - تعذر عشرية الاستئناف",
+             "القرار المطعون فيه الصادر غيابيا يقبل التعرض",
+             (
+                 "بمقتضى المادة 521 من قانون المسطرة الجنائية، فإنه لا يصح أن يطعن "
+                 "بطريق المطالبة بالنقض إلا في الأحكام الصادرة بصفة نهائية، ولما كان "
+                 "الحكم المطعون فيه صدر غيابيا فهو قابل للطعن بطريق التعرض."
+             ),
+             "محكمة النقض", "2021/158", "2021-01-19",
+             "قرار محكمة النقض", 1, 0, None),
+        )
+        conn.execute(
+            """INSERT INTO jurisprudence
+               (category_id, title, principles, content, court, decision_number,
+                decision_date, source_note, published, views, tenant_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (jcat, "طلب النقض - أجل الطعن",
+             "الطعن بالنقض يخضع لأجل محدد",
+             (
+                 "يجب تقديم طلب النقض داخل الأجل القانوني، وأن مخالفة الأجل تجعل الطعن "
+                 "غير مقبول."
+             ),
+             "محكمة النقض", "2021/119", "2021-01-19",
+             "قرار محكمة النقض", 1, 0, None),
+        )
+        conn.execute(
+            """INSERT INTO jurisprudence
+               (category_id, title, principles, content, court, decision_number,
+                decision_date, source_note, published, views, tenant_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (jcat, "مبدأ التعرض أمام المحكمة الابتدائية",
+             "التعرض وسيلة طعن عادية",
+             "التعرض هو وسيلة عادية للطعن، ويُقبل من المحكوم عليه غيابيا.",
+             "محكمة النقض", "2021/173", "2021-01-19",
+             "قرار محكمة النقض", 1, 0, None),
+        )
+
 
 @pytest.fixture()
 def fresh_db(tmp_path):

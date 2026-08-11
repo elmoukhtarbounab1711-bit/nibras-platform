@@ -67,7 +67,7 @@ def test_summary_empty_db_structure(client):
     assert data["calculators"]["total_runs"] == 0
     assert data["calculators"]["distinct_calculators"] == 0
     assert data["documents"]["generated_total"] == 0
-    assert data["documents"]["templates"] == 3
+    assert data["documents"]["templates"] == 23
     assert data["community"]["posts"] == 0
     assert data["community"]["reports_open"] == 0
     assert data["professionals"]["profiles_total"] == 0

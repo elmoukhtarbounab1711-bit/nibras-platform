@@ -9,13 +9,36 @@
 لأن البحث لا يُسجَّل في جدول (لا search_log). يُستدعى من نقطة إدارية واحدة
 GET /api/admin/analytics/summary (دور admin) في routes/admin.py.
 """
+from . import tenant_scope
 from .database import db_session
 from .services_auth import PROFESSIONAL_ROLES
 
+# جداول خاضعة لعزل المستأجر (D-036) — تُقيَّد التحليلات فيها بمستأجر الطلب
+_TENANT_TABLES = frozenset({
+    "users",
+    "categories", "legal_texts", "articles",
+    "posts", "comments", "reactions", "reports",
+    "professional_profiles", "professional_specialties", "professional_reviews",
+    "marketplace_categories", "marketplace_templates", "purchases",
+    "ad_campaigns", "ad_events",
+})
+
 
 def _count(conn, table: str, where: str = "", params=()) -> int:
+    parts = []
+    p = list(params)
+    cond, vals = tenant_scope.tenant_eq()
+    if cond and table in _TENANT_TABLES:
+        parts.append(cond)
+        p.extend(vals)
+    w = (where or "").strip()
+    if w.upper().startswith("WHERE "):
+        w = w[6:].strip()
+    if w:
+        parts.append(w)
+    full_where = (" WHERE " + " AND ".join(parts)) if parts else ""
     return conn.execute(
-        f"SELECT COUNT(*) AS c FROM {table} {where}", params
+        f"SELECT COUNT(*) AS c FROM {table} {full_where}", tuple(p)
     ).fetchone()["c"]
 
 
@@ -34,6 +57,10 @@ def _count_role(conn, code: str, role_status: str | None = None) -> int:
     if role_status:
         where.append("ur.role_status = ?")
         params.append(role_status)
+    u_cond, u_vals = tenant_scope.tenant_eq("u")
+    if u_cond:
+        where.append(u_cond)
+        params.extend(u_vals)
     return conn.execute(
         f"""SELECT COUNT(DISTINCT u.id) AS c
             FROM users u
@@ -46,14 +73,22 @@ def _count_role(conn, code: str, role_status: str | None = None) -> int:
 
 def _count_professional_role(conn, role_status: str) -> int:
     """عدد الحسابات المهنية حسب حالة دورها (بند الطابور/المجالات)."""
+    where = [
+        f"r.code IN ({_role_placeholders()})",
+        "ur.role_status = ?",
+    ]
+    params = [*sorted(PROFESSIONAL_ROLES), role_status]
+    u_cond, u_vals = tenant_scope.tenant_eq("u")
+    if u_cond:
+        where.append(u_cond)
+        params.extend(u_vals)
     return conn.execute(
         f"""SELECT COUNT(DISTINCT u.id) AS c
             FROM users u
             JOIN user_roles ur ON ur.user_id = u.id
             JOIN roles r ON r.id = ur.role_id
-            WHERE r.code IN ({_role_placeholders()})
-              AND ur.role_status = ?""",
-        (*sorted(PROFESSIONAL_ROLES), role_status),
+            WHERE {" AND ".join(where)}""",
+        params,
     ).fetchone()["c"]
 
 
@@ -128,16 +163,29 @@ def _community(conn) -> dict:
 
 
 def _professionals(conn) -> dict:
+    query = (
+        "SELECT verification_status, COUNT(*) AS c "
+        "FROM professional_profiles GROUP BY verification_status"
+    )
+    params = []
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        query = (
+            "SELECT verification_status, COUNT(*) AS c "
+            "FROM professional_profiles WHERE " + cond +
+            " GROUP BY verification_status"
+        )
+        params = list(vals)
     by_status = {
         r["verification_status"]: r["c"]
-        for r in conn.execute(
-            "SELECT verification_status, COUNT(*) AS c "
-            "FROM professional_profiles GROUP BY verification_status"
-        )
+        for r in conn.execute(query, params)
     }
-    avg_rating = conn.execute(
-        "SELECT AVG(rating) AS avg FROM professional_reviews"
-    ).fetchone()["avg"]
+    avg_q = "SELECT AVG(rating) AS avg FROM professional_reviews"
+    avg_params = []
+    if cond:
+        avg_q += " WHERE " + cond
+        avg_params = list(vals)
+    avg_rating = conn.execute(avg_q, avg_params).fetchone()["avg"]
     return {
         "profiles_total": _count(conn, "professional_profiles"),
         "by_status": by_status,
@@ -147,10 +195,14 @@ def _professionals(conn) -> dict:
 
 
 def _marketplace(conn) -> dict:
-    value = conn.execute(
-        "SELECT COALESCE(SUM(price_cents), 0) AS total "
-        "FROM marketplace_templates"
-    ).fetchone()["total"]
+    query = "SELECT COALESCE(SUM(price_cents), 0) AS total " \
+            "FROM marketplace_templates"
+    params = []
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        query += " WHERE " + cond
+        params = list(vals)
+    value = conn.execute(query, params).fetchone()["total"]
     return {
         "templates": _count(conn, "marketplace_templates"),
         "catalog_value_cents": value,
@@ -179,13 +231,19 @@ def _revenue() -> dict:
 
 
 def _daily_series(conn, table: str, column: str = "created_at") -> dict:
+    query = (
+        f"SELECT date({column}) AS d, COUNT(*) AS c FROM {table} "
+        f"WHERE date({column}) >= date('now', '-6 days')"
+    )
+    params = []
+    cond, vals = tenant_scope.tenant_eq()
+    if cond and table in _TENANT_TABLES:
+        query += " AND " + cond
+        params = list(vals)
+    query += " GROUP BY d"
     return {
         r["d"]: r["c"]
-        for r in conn.execute(
-            f"""SELECT date({column}) AS d, COUNT(*) AS c FROM {table}
-                WHERE date({column}) >= date('now', '-6 days')
-                GROUP BY d"""
-        )
+        for r in conn.execute(query, params)
     }
 
 

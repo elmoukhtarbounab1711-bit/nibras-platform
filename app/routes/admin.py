@@ -12,6 +12,7 @@ from .. import (
     services_admin,
     services_ads,
     services_analytics,
+    services_blog,
     services_ingestion,
     services_marketplace,
     services_notifications,
@@ -20,8 +21,10 @@ from .. import (
 from ..middleware.auth_middleware import require_role
 from ..services_admin import AdminError
 from ..services_ads import AdError
+from ..services_blog import BlogError
 from ..services_ingestion import IngestionError
 from ..services_marketplace import MarketplaceError
+from ..services_procedures import ProcedureError
 from ..services_tenants import TenantError
 
 admin_bp = Blueprint("admin", __name__)
@@ -40,6 +43,18 @@ def _handle_marketplace_error(exc: MarketplaceError):
 
 
 def _handle_ingestion_error(exc: IngestionError):
+    return jsonify({"error": exc.message}), exc.status_code
+
+
+def _handle_blog_error(exc: BlogError):
+    return jsonify({"error": exc.message}), exc.status_code
+
+
+def _handle_procedure_error(exc: ProcedureError):
+    return jsonify({"error": exc.message}), exc.status_code
+
+
+def _handle_jurisprudence_error(exc):
     return jsonify({"error": exc.message}), exc.status_code
 
 
@@ -526,3 +541,122 @@ def tenants_create():
     except TenantError as exc:
         return jsonify({"error": exc.message}), exc.status_code
     return jsonify({"id": tenant["id"], "message": "تم إنشاء المستأجر."}), 201
+
+
+# ---------------------------------------------------------------------------
+# رفع ملف PDF للقوانين (مرحلة الواجهة): يُفضَّل على الملف المولَّد عند العرض
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/api/admin/texts/<int:text_id>/pdf", methods=["POST"])
+@require_role("admin")
+def text_pdf_upload(text_id):
+    file = request.files.get("file")
+    if file is None or not (file.filename or "").strip():
+        return jsonify({"error": "الرجاء رفع ملف باسم file."}), 400
+    try:
+        result = services_admin.update_text_pdf(_admin_id(), text_id, file)
+    except AdminError as exc:
+        return _handle_admin_error(exc)
+    return jsonify(result), 200
+
+
+@admin_bp.route("/api/admin/texts/<int:text_id>/pdf", methods=["DELETE"])
+@require_role("admin")
+def text_pdf_delete(text_id):
+    try:
+        result = services_admin.delete_text_pdf(_admin_id(), text_id)
+    except AdminError as exc:
+        return _handle_admin_error(exc)
+    return jsonify(result), 200
+
+
+# ---------------------------------------------------------------------------
+# إدارة المقالات القانونية (بوابة المقالات): قائمة كل الحالات + تغيير الحالة
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/api/admin/blog/articles", methods=["GET"])
+@require_role("admin")
+def blog_articles_list():
+    result = services_blog.list_articles_admin(
+        status=request.args.get("status"),
+        q=request.args.get("q"),
+        limit=int(request.args.get("limit") or 50),
+        offset=int(request.args.get("offset") or 0),
+    )
+    return jsonify({"articles": result})
+
+
+@admin_bp.route("/api/admin/blog/articles/<int:article_id>/status", methods=["PUT"])
+@require_role("admin")
+def blog_article_status(article_id):
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        result = services_blog.set_status(
+            _admin_id(), article_id, data.get("status")
+        )
+    except BlogError as exc:
+        return _handle_blog_error(exc)
+    return jsonify(result), 200
+
+
+@admin_bp.route("/api/admin/blog/reports", methods=["GET"])
+@require_role("admin")
+def blog_reports_list():
+    return jsonify({
+        "reports": services_blog.list_reports(request.args.get("status"))
+    })
+
+
+@admin_bp.route("/api/admin/blog/reports/<int:report_id>/action", methods=["POST"])
+@require_role("admin")
+def blog_report_action(report_id):
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        result = services_blog.action_report(
+            _admin_id(), report_id, data.get("decision")
+        )
+    except BlogError as exc:
+        return _handle_blog_error(exc)
+    return jsonify(result), 200
+
+
+# ---------------------------------------------------------------------------
+# إدارة المساطر القانونية (مرحلة الواجهة): CRUD بالخطوات والرسوم والأسئلة
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/api/admin/procedures", methods=["GET"])
+@require_role("admin")
+def procedures_admin_list():
+    return jsonify({"procedures": services_admin.list_procedures_admin()})
+
+
+@admin_bp.route("/api/admin/procedures", methods=["POST"])
+@require_role("admin")
+def procedures_admin_create():
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        new_id = services_admin.create_procedure(_admin_id(), data)
+    except AdminError as exc:
+        return _handle_admin_error(exc)
+    return jsonify({"id": new_id, "message": "تم إنشاء المسطرة."}), 201
+
+
+@admin_bp.route("/api/admin/procedures/<int:procedure_id>", methods=["PUT"])
+@require_role("admin")
+def procedures_admin_update(procedure_id):
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        services_admin.update_procedure(_admin_id(), procedure_id, data)
+    except AdminError as exc:
+        return _handle_admin_error(exc)
+    return jsonify({"id": procedure_id, "message": "تم تحديث المسطرة."}), 200
+
+
+@admin_bp.route("/api/admin/procedures/<int:procedure_id>", methods=["DELETE"])
+@require_role("admin")
+def procedures_admin_delete(procedure_id):
+    try:
+        services_admin.delete_procedure(_admin_id(), procedure_id)
+    except AdminError as exc:
+        return _handle_admin_error(exc)
+    return jsonify({"id": procedure_id, "message": "تم حذف المسطرة."}), 200

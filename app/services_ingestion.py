@@ -12,7 +12,7 @@ import io
 import os
 import re
 
-from . import config
+from . import config, tenant_scope
 from .database import db_session
 from .services_admin import LEGAL_TEXT_TYPES, _log_admin_action
 
@@ -303,9 +303,13 @@ def import_document(admin_id: int, data: dict, file, dry_run: bool = False) -> d
         )
 
     with db_session() as conn:
-        category = conn.execute(
-            "SELECT id FROM categories WHERE id = ?", (category_id,)
-        ).fetchone()
+        cat_q = "SELECT id FROM categories WHERE id = ?"
+        cat_params = [category_id]
+        cat_cond, cat_vals = tenant_scope.tenant_eq()
+        if cat_cond:
+            cat_q += " AND " + cat_cond
+            cat_params.extend(cat_vals)
+        category = conn.execute(cat_q, cat_params).fetchone()
         if category is None:
             raise IngestionError("القسم غير موجود.", 404)
 
@@ -330,22 +334,25 @@ def import_document(admin_id: int, data: dict, file, dry_run: bool = False) -> d
         cur = conn.execute(
             """INSERT INTO legal_texts
                (category_id, type, title, official_ref, enacted_date,
-                last_amended, source_note, is_sample_data)
-               VALUES (?,?,?,?,?,?,?,?)""",
+                last_amended, source_note, is_sample_data, tenant_id)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
             (
                 category_id, text_type, title,
                 data.get("official_ref"), data.get("enacted_date"),
                 data.get("last_amended"), source_note, is_sample_data,
+                tenant_scope.insert_tenant_id(),
             ),
         )
         text_id = cur.lastrowid
         for article in articles:
             conn.execute(
                 "INSERT INTO articles "
-                "(legal_text_id, number, label, content, plain_explanation, keywords)"
-                " VALUES (?,?,?,?,?,?)",
+                "(legal_text_id, number, label, content, plain_explanation, "
+                "keywords, tenant_id)"
+                " VALUES (?,?,?,?,?,?,?)",
                 (text_id, article["number"], article["label"],
-                 article["content"], None, None),
+                 article["content"], None, None,
+                 tenant_scope.insert_tenant_id()),
             )
         _log_admin_action(
             conn, admin_id, "ingestion.import", "legal_text", text_id,

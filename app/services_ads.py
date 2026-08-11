@@ -11,6 +11,7 @@ impressions/clicks/ctr). الإدارة تُسجَّل في admin_audit_log (Sec
 """
 from urllib.parse import urlparse
 
+from . import tenant_scope
 from .database import db_session
 from .services_admin import _log_admin_action, bulk_summary, parse_bulk_ids
 
@@ -80,10 +81,15 @@ def _validate_dates(data: dict) -> tuple:
 
 
 def _check_profile(conn, profile_id: int):
-    profile = conn.execute(
-        "SELECT verification_status FROM professional_profiles WHERE id = ?",
-        (profile_id,),
-    ).fetchone()
+    query = (
+        "SELECT verification_status FROM professional_profiles WHERE id = ?"
+    )
+    params = [profile_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        query += " AND " + cond
+        params.extend(vals)
+    profile = conn.execute(query, params).fetchone()
     if profile is None:
         raise AdError("الملف المهني غير موجود.", 400)
     if profile["verification_status"] != "verified":
@@ -102,16 +108,21 @@ def serve(slot_slug: str):
         ).fetchone()
         if slot is None:
             raise AdError("الفتحة غير موجودة.", 400)
-        row = conn.execute(
+        query = (
             """SELECT id, campaign_type, advertiser_name, creative_url,
                       target_url, profile_id
                FROM ad_campaigns
                WHERE slot_id = ? AND status = 'active'
                  AND (starts_at IS NULL OR starts_at <= datetime('now'))
-                 AND (ends_at IS NULL OR ends_at >= datetime('now'))
-               ORDER BY id LIMIT 1""",
-            (slot["id"],),
-        ).fetchone()
+                 AND (ends_at IS NULL OR ends_at >= datetime('now'))"""
+        )
+        params = [slot["id"]]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            query += " AND " + cond
+            params.extend(vals)
+        query += " ORDER BY id LIMIT 1"
+        row = conn.execute(query, params).fetchone()
         if row is None:
             return None
         return {
@@ -130,15 +141,19 @@ def log_event(campaign_id: int, event_type: str, user_id=None) -> int:
     if event_type not in ("impression", "click"):
         raise AdError("نوع الحدث يجب أن يكون impression أو click.", 400)
     with db_session() as conn:
-        campaign = conn.execute(
-            "SELECT 1 FROM ad_campaigns WHERE id = ?", (campaign_id,)
-        ).fetchone()
+        campaign_q = "SELECT 1 FROM ad_campaigns WHERE id = ?"
+        campaign_params = [campaign_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            campaign_q += " AND " + cond
+            campaign_params.extend(vals)
+        campaign = conn.execute(campaign_q, campaign_params).fetchone()
         if campaign is None:
             raise AdError("الحملة غير موجودة.", 404)
         conn.execute(
-            "INSERT INTO ad_events (campaign_id, user_id, event_type) "
-            "VALUES (?, ?, ?)",
-            (campaign_id, user_id, event_type),
+            "INSERT INTO ad_events (campaign_id, user_id, event_type, tenant_id) "
+            "VALUES (?, ?, ?, ?)",
+            (campaign_id, user_id, event_type, tenant_scope.insert_tenant_id()),
         )
     return campaign_id
 
@@ -148,43 +163,73 @@ def log_event(campaign_id: int, event_type: str, user_id=None) -> int:
 # ---------------------------------------------------------------------------
 
 def list_slots():
+    # عدّ الحملات النشطة ضمن مستأجر الطلب (عزل D-036): ad_slots عام بلا
+    # tenant_id، فتُقيَّد الحملات مباشرة بمستأجر الطلب الحالي.
+    count_sub = (
+        "(SELECT COUNT(*) FROM ad_campaigns c "
+        " WHERE c.slot_id = s.id AND c.status = 'active')"
+    )
+    params = []
+    c_cond, c_vals = tenant_scope.tenant_eq("c")
+    if c_cond:
+        count_sub = (
+            f"(SELECT COUNT(*) FROM ad_campaigns c "
+            f" WHERE c.slot_id = s.id AND c.status = 'active' AND {c_cond})"
+        )
+        params = list(c_vals)
     with db_session() as conn:
         rows = conn.execute(
-            """SELECT s.id, s.slug, s.name,
-                      (SELECT COUNT(*) FROM ad_campaigns c
-                       WHERE c.slot_id = s.id AND c.status = 'active')
-                       AS active_campaigns
-               FROM ad_slots s ORDER BY s.id"""
+            f"""SELECT s.id, s.slug, s.name, {count_sub} AS active_campaigns
+                FROM ad_slots s ORDER BY s.id""",
+            params,
         ).fetchall()
         return [dict(r) for r in rows]
 
 
 def _campaign_stats(conn, campaign_id: int) -> tuple:
-    impressions = conn.execute(
-        "SELECT COUNT(*) AS c FROM ad_events "
-        "WHERE campaign_id = ? AND event_type = 'impression'",
-        (campaign_id,),
-    ).fetchone()["c"]
-    clicks = conn.execute(
-        "SELECT COUNT(*) AS c FROM ad_events "
-        "WHERE campaign_id = ? AND event_type = 'click'",
-        (campaign_id,),
-    ).fetchone()["c"]
-    return impressions, clicks
+    def _count(event: str) -> int:
+        query = "SELECT COUNT(*) AS c FROM ad_events " \
+                "WHERE campaign_id = ? AND event_type = ?"
+        params = [campaign_id, event]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            query += " AND " + cond
+            params.extend(vals)
+        return conn.execute(query, params).fetchone()["c"]
+
+    return _count("impression"), _count("click")
 
 
 def list_campaigns_admin():
+    # الملف المهني مرتبط بحملة في مستأجرها نفسه (عزل D-036)
+    p_scope = " AND p.tenant_id IS c.tenant_id" if tenant_scope.active() else ""
+    query = (
+        f"""SELECT c.*, s.name AS slot_name,
+                   p.profession_type AS profile_profession,
+                   u.full_name AS profile_name
+            FROM ad_campaigns c
+            JOIN ad_slots s ON s.id = c.slot_id
+            LEFT JOIN professional_profiles p ON p.id = c.profile_id{p_scope}
+            LEFT JOIN users u ON u.id = p.user_id
+            ORDER BY c.id DESC"""
+    )
+    params = []
+    cond, vals = tenant_scope.tenant_eq("c")
+    if cond:
+        query = (
+            f"""SELECT c.*, s.name AS slot_name,
+                       p.profession_type AS profile_profession,
+                       u.full_name AS profile_name
+                FROM ad_campaigns c
+                JOIN ad_slots s ON s.id = c.slot_id
+                LEFT JOIN professional_profiles p ON p.id = c.profile_id{p_scope}
+                LEFT JOIN users u ON u.id = p.user_id
+                WHERE {cond}
+                ORDER BY c.id DESC"""
+        )
+        params = list(vals)
     with db_session() as conn:
-        rows = conn.execute(
-            """SELECT c.*, s.name AS slot_name,
-                      p.profession_type AS profile_profession,
-                      u.full_name AS profile_name
-               FROM ad_campaigns c
-               JOIN ad_slots s ON s.id = c.slot_id
-               LEFT JOIN professional_profiles p ON p.id = c.profile_id
-               LEFT JOIN users u ON u.id = p.user_id
-               ORDER BY c.id DESC"""
-        ).fetchall()
+        rows = conn.execute(query, params).fetchall()
         campaigns = []
         for row in rows:
             item = dict(row)
@@ -231,10 +276,11 @@ def create_campaign(admin_id: int, data: dict) -> int:
         cur = conn.execute(
             """INSERT INTO ad_campaigns (slot_id, campaign_type,
                advertiser_name, creative_url, target_url, profile_id,
-               starts_at, ends_at, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               starts_at, ends_at, status, tenant_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (slot_id, campaign_type, advertiser_name, creative_url,
-             target_url, profile_id, starts_at, ends_at, status),
+             target_url, profile_id, starts_at, ends_at, status,
+             tenant_scope.insert_tenant_id()),
         )
         campaign_id = cur.lastrowid
         _log_admin_action(
@@ -246,10 +292,13 @@ def create_campaign(admin_id: int, data: dict) -> int:
 
 def update_campaign(admin_id: int, campaign_id: int, data: dict) -> int:
     with db_session() as conn:
-        row = conn.execute(
-            "SELECT starts_at, ends_at FROM ad_campaigns WHERE id = ?",
-            (campaign_id,),
-        ).fetchone()
+        sel_q = "SELECT starts_at, ends_at FROM ad_campaigns WHERE id = ?"
+        sel_params = [campaign_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            sel_q += " AND " + cond
+            sel_params.extend(vals)
+        row = conn.execute(sel_q, sel_params).fetchone()
         if row is None:
             raise AdError("الحملة غير موجودة.", 404)
         updates = {}
@@ -313,11 +362,15 @@ def update_campaign(admin_id: int, campaign_id: int, data: dict) -> int:
         if not updates:
             raise AdError("لا توجد حقول للتحديث.", 400)
         sets = ", ".join(f"{k} = ?" for k in updates)
-        conn.execute(
+        upd_q = (
             f"UPDATE ad_campaigns SET {sets}, "
-            "updated_at = datetime('now') WHERE id = ?",
-            (*updates.values(), campaign_id),
+            "updated_at = datetime('now') WHERE id = ?"
         )
+        upd_params = list(updates.values()) + [campaign_id]
+        if cond:
+            upd_q += " AND " + cond
+            upd_params.extend(vals)
+        conn.execute(upd_q, upd_params)
         _log_admin_action(
             conn, admin_id, "ads.update", "ad_campaign", campaign_id,
         )
@@ -327,12 +380,21 @@ def update_campaign(admin_id: int, campaign_id: int, data: dict) -> int:
 def delete_campaign(admin_id: int, campaign_id: int) -> int:
     """حذف فعلي مع CASCADE على ad_events (أحداث تحليلات — قرار D-027)."""
     with db_session() as conn:
-        row = conn.execute(
-            "SELECT id FROM ad_campaigns WHERE id = ?", (campaign_id,)
-        ).fetchone()
+        sel_q = "SELECT id FROM ad_campaigns WHERE id = ?"
+        sel_params = [campaign_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            sel_q += " AND " + cond
+            sel_params.extend(vals)
+        row = conn.execute(sel_q, sel_params).fetchone()
         if row is None:
             raise AdError("الحملة غير موجودة.", 404)
-        conn.execute("DELETE FROM ad_campaigns WHERE id = ?", (campaign_id,))
+        del_q = "DELETE FROM ad_campaigns WHERE id = ?"
+        del_params = [campaign_id]
+        if cond:
+            del_q += " AND " + cond
+            del_params.extend(vals)
+        conn.execute(del_q, del_params)
         _log_admin_action(
             conn, admin_id, "ads.delete", "ad_campaign", campaign_id,
         )
@@ -350,21 +412,29 @@ def set_campaign_status_bulk(admin_id: int, campaign_ids, status: str) -> dict:
     ids = parse_bulk_ids(campaign_ids, "campaign_ids")
     with db_session() as conn:
         results = []
+        cond, vals = tenant_scope.tenant_eq()
         for campaign_id in ids:
-            row = conn.execute(
-                "SELECT 1 FROM ad_campaigns WHERE id = ?", (campaign_id,)
-            ).fetchone()
+            sel_q = "SELECT 1 FROM ad_campaigns WHERE id = ?"
+            sel_params = [campaign_id]
+            if cond:
+                sel_q += " AND " + cond
+                sel_params.extend(vals)
+            row = conn.execute(sel_q, sel_params).fetchone()
             if row is None:
                 results.append(
                     {"id": campaign_id, "status": "error",
                      "message": "الحملة غير موجودة."}
                 )
                 continue
-            conn.execute(
+            upd_q = (
                 "UPDATE ad_campaigns SET status = ?, "
-                "updated_at = datetime('now') WHERE id = ?",
-                (status, campaign_id),
+                "updated_at = datetime('now') WHERE id = ?"
             )
+            upd_params = [status, campaign_id]
+            if cond:
+                upd_q += " AND " + cond
+                upd_params.extend(vals)
+            conn.execute(upd_q, upd_params)
             _log_admin_action(
                 conn, admin_id, "ads.update", "ad_campaign", campaign_id,
                 f"status={status}",

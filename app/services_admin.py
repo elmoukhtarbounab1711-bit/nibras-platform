@@ -11,6 +11,10 @@
   الأقسام خارج النطاق لأن الوثيقة 08 لا تعرّفه).
 - 3.2 طابور التحقق: القبول والرفض مع سبب (وثيقة المصادقة §3).
 """
+import json
+import sqlite3
+
+from . import config, tenant_scope
 from .database import db_session
 from .services_auth import PROFESSIONAL_ROLES
 from .services_notifications import notify
@@ -26,6 +30,7 @@ _PROFESSIONAL_ROLES = tuple(sorted(PROFESSIONAL_ROLES))
 _TEXT_FIELDS = (
     "category_id", "type", "title", "official_ref",
     "enacted_date", "last_amended", "source_note",
+    "description", "issuing_body",
 )
 _ARTICLE_FIELDS = ("number", "label", "content", "plain_explanation", "keywords")
 
@@ -130,19 +135,24 @@ def create_text(admin_id, data):
         else 1
     )
     with db_session() as conn:
-        category = conn.execute(
-            "SELECT id FROM categories WHERE id = ?", (category_id,)
-        ).fetchone()
+        cat_q = "SELECT id FROM categories WHERE id = ?"
+        cat_params = [category_id]
+        cat_cond, cat_vals = tenant_scope.tenant_eq()
+        if cat_cond:
+            cat_q += " AND " + cat_cond
+            cat_params.extend(cat_vals)
+        category = conn.execute(cat_q, cat_params).fetchone()
         if category is None:
             raise AdminError("القسم غير موجود", 404)
         cur = conn.execute(
             """INSERT INTO legal_texts
-               (category_id, type, title, official_ref, enacted_date, last_amended, source_note, is_sample_data)
-               VALUES (?,?,?,?,?,?,?,?)""",
+               (category_id, type, title, official_ref, enacted_date, last_amended, source_note, is_sample_data, tenant_id)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
             (
                 category_id, text_type, title,
                 data.get("official_ref"), data.get("enacted_date"),
                 data.get("last_amended"), data.get("source_note"), is_sample_data,
+                tenant_scope.insert_tenant_id(),
             ),
         )
         new_id = cur.lastrowid
@@ -159,9 +169,13 @@ def _compute_text_updates(conn, data):
     if "is_sample_data" in data:
         updates["is_sample_data"] = _coerce_sample_flag(data["is_sample_data"])
     if "category_id" in updates:
-        category = conn.execute(
-            "SELECT id FROM categories WHERE id = ?", (updates["category_id"],)
-        ).fetchone()
+        cat_q = "SELECT id FROM categories WHERE id = ?"
+        cat_params = [updates["category_id"]]
+        cat_cond, cat_vals = tenant_scope.tenant_eq()
+        if cat_cond:
+            cat_q += " AND " + cat_cond
+            cat_params.extend(cat_vals)
+        category = conn.execute(cat_q, cat_params).fetchone()
         if category is None:
             raise AdminError("القسم غير موجود", 404)
     if "type" in updates and updates["type"] not in LEGAL_TEXT_TYPES:
@@ -174,16 +188,22 @@ def _compute_text_updates(conn, data):
 
 
 def _update_text_row(conn, admin_id, text_id, updates):
-    row = conn.execute(
-        "SELECT id FROM legal_texts WHERE id = ?", (text_id,)
-    ).fetchone()
+    sel_q = "SELECT id FROM legal_texts WHERE id = ?"
+    sel_params = [text_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        sel_q += " AND " + cond
+        sel_params.extend(vals)
+    row = conn.execute(sel_q, sel_params).fetchone()
     if row is None:
         raise AdminError("النص القانوني غير موجود", 404)
     sets = ", ".join(f"{k} = ?" for k in updates)
-    conn.execute(
-        f"UPDATE legal_texts SET {sets} WHERE id = ?",
-        (*updates.values(), text_id),
-    )
+    upd_q = f"UPDATE legal_texts SET {sets} WHERE id = ?"
+    upd_params = list(updates.values()) + [text_id]
+    if cond:
+        upd_q += " AND " + cond
+        upd_params.extend(vals)
+    conn.execute(upd_q, upd_params)
     _log_admin_action(conn, admin_id, "text.update", "legal_text", text_id)
     return text_id
 
@@ -222,13 +242,22 @@ def bulk_update_texts(admin_id, ids, data):
 
 
 def _delete_text_row(conn, admin_id, text_id):
-    row = conn.execute(
-        "SELECT id FROM legal_texts WHERE id = ?", (text_id,)
-    ).fetchone()
+    sel_q = "SELECT id FROM legal_texts WHERE id = ?"
+    sel_params = [text_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        sel_q += " AND " + cond
+        sel_params.extend(vals)
+    row = conn.execute(sel_q, sel_params).fetchone()
     if row is None:
         raise AdminError("النص القانوني غير موجود", 404)
     # المواد تُحذف تسلسليًا (ON DELETE CASCADE + مشغّلات FTS)
-    conn.execute("DELETE FROM legal_texts WHERE id = ?", (text_id,))
+    del_q = "DELETE FROM legal_texts WHERE id = ?"
+    del_params = [text_id]
+    if cond:
+        del_q += " AND " + cond
+        del_params.extend(vals)
+    conn.execute(del_q, del_params)
     _log_admin_action(conn, admin_id, "text.delete", "legal_text", text_id)
     return text_id
 
@@ -258,24 +287,321 @@ def bulk_delete_texts(admin_id, ids):
 
 
 # ---------------------------------------------------------------------------
+# رفع ملف PDF للقوانين (مرحلة الواجهة — مرحلة إضافية غير مُغيِّرة)
+# ---------------------------------------------------------------------------
+
+def _laws_upload_dir():
+    from pathlib import Path
+
+    from . import config
+
+    if config.UPLOAD_DIR:
+        base = Path(config.UPLOAD_DIR)
+    else:
+        base = Path(__file__).resolve().parent.parent / "uploads"
+    return base / "laws"
+
+
+def update_text_pdf(admin_id, text_id, file):
+    """يرفع ملف PDF بديلًا لنص قانوني (يُفضَّل على الملف المولَّد عند العرض).
+
+    تخزين محلي في uploads/laws (نمط uploads/verification — D-023). استبدال
+    الملف السابق: يحذف القديم من القرص ويحدّث المفتاح في نفس المعاملة."""
+    import os
+    import secrets
+
+    filename = (file.filename or "").strip()
+    ext = os.path.splitext(filename)[1].lower()
+    if ext != ".pdf":
+        raise AdminError("صيغة الملف غير مسموح بها (pdf فقط).", 400)
+    content = file.read()
+    if not content:
+        raise AdminError("الملف فارغ.", 400)
+    if len(content) > config.MAX_UPLOAD_BYTES:
+        raise AdminError(
+            f"الملف يتجاوز الحد الأقصى ({config.MAX_UPLOAD_BYTES // (1024 * 1024)}MB).",
+            400,
+        )
+    with db_session() as conn:
+        sel_q = "SELECT id, uploaded_pdf_key FROM legal_texts WHERE id = ?"
+        sel_params = [text_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            sel_q += " AND " + cond
+            sel_params.extend(vals)
+        row = conn.execute(sel_q, sel_params).fetchone()
+        if row is None:
+            raise AdminError("النص القانوني غير موجود", 404)
+        old_key = row["uploaded_pdf_key"]
+        storage_name = f"text-{text_id}-{secrets.token_urlsafe(10)}.pdf"
+        uploads = _laws_upload_dir()
+        uploads.mkdir(parents=True, exist_ok=True)
+        (uploads / storage_name).write_bytes(content)
+        if old_key:
+            try:
+                (uploads / os.path.basename(old_key)).unlink(missing_ok=True)
+            except OSError:
+                pass
+        upd_q = "UPDATE legal_texts SET uploaded_pdf_key = ? WHERE id = ?"
+        upd_params = [storage_name, text_id]
+        if cond:
+            upd_q += " AND " + cond
+            upd_params.extend(vals)
+        conn.execute(upd_q, upd_params)
+        _log_admin_action(
+            conn, admin_id, "text.pdf.update", "legal_text", text_id,
+            f"bytes={len(content)}",
+        )
+    return {"id": text_id, "message": "تم رفع ملف PDF القانون."}
+
+
+def delete_text_pdf(admin_id, text_id):
+    """يزيل ملف PDF المرفوع — يعود العرض إلى الملف المولَّد تلقائيًا."""
+    import os
+
+    with db_session() as conn:
+        sel_q = "SELECT id, uploaded_pdf_key FROM legal_texts WHERE id = ?"
+        sel_params = [text_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            sel_q += " AND " + cond
+            sel_params.extend(vals)
+        row = conn.execute(sel_q, sel_params).fetchone()
+        if row is None:
+            raise AdminError("النص القانوني غير موجود", 404)
+        old_key = row["uploaded_pdf_key"]
+        if not old_key:
+            raise AdminError("لا يوجد ملف PDF مرفوع لهذا النص.", 404)
+        upd_q = "UPDATE legal_texts SET uploaded_pdf_key = NULL WHERE id = ?"
+        upd_params = [text_id]
+        if cond:
+            upd_q += " AND " + cond
+            upd_params.extend(vals)
+        conn.execute(upd_q, upd_params)
+        try:
+            (_laws_upload_dir() / os.path.basename(old_key)).unlink(missing_ok=True)
+        except OSError:
+            pass
+        _log_admin_action(conn, admin_id, "text.pdf.delete", "legal_text", text_id)
+    return {"id": text_id, "message": "تم حذف ملف PDF المرفوع."}
+
+
+# ---------------------------------------------------------------------------
+# إدارة المساطر القانونية (مرحلة الواجهة — رسوم وأسئلة شائعة + CRUD)
+# ---------------------------------------------------------------------------
+
+def _procedure_steps(data, required=True):
+    """يتحقق من خطوات المسطرة ويعيدها قائمة منظمة (step_number تلقائي)."""
+    steps = data.get("steps") if isinstance(data, dict) else None
+    if steps is None:
+        return None
+    if not isinstance(steps, list):
+        raise AdminError("steps يجب أن تكون قائمة خطوات.", 400)
+    cleaned = []
+    for index, raw in enumerate(steps, start=1):
+        if not isinstance(raw, dict):
+            raise AdminError("كل خطوة يجب أن تكون كائنًا.", 400)
+        title = (raw.get("title") or "").strip()
+        description = (raw.get("description") or "").strip()
+        if not title:
+            raise AdminError(f"عنوان الخطوة {index} مطلوب.", 400)
+        cleaned.append({
+            "step_number": index,
+            "title": title,
+            "description": description,
+            "required_documents": (raw.get("required_documents") or "").strip() or None,
+        })
+    if required and not cleaned:
+        raise AdminError("المسطرة تتطلب خطوة واحدة على الأقل.", 400)
+    return cleaned or None
+
+
+def _procedure_faq(data):
+    """يتحقق من الأسئلة الشائعة ويعيدها نص JSON (أو None عند الغياب)."""
+
+    faq = data.get("faq")
+    if faq is None:
+        return None
+    if not isinstance(faq, list):
+        raise AdminError("faq يجب أن تكون قائمة أسئلة.", 400)
+    cleaned = []
+    for raw in faq:
+        if not isinstance(raw, dict):
+            raise AdminError("كل سؤال في faq يجب أن يكون كائنًا.", 400)
+        q = (raw.get("q") or "").strip()
+        a = (raw.get("a") or "").strip()
+        if q and a:
+            cleaned.append({"q": q, "a": a})
+    return json.dumps(cleaned, ensure_ascii=False) if cleaned else None
+
+
+def list_procedures_admin():
+    query = (
+        """SELECT p.*,
+                  (SELECT COUNT(*) FROM procedure_steps s
+                   WHERE s.procedure_id = p.id) AS step_count
+           FROM procedures p ORDER BY p.title"""
+    )
+    params = []
+    cond, vals = tenant_scope.tenant_eq("p")
+    if cond:
+        query = (
+            """SELECT p.*,
+                      (SELECT COUNT(*) FROM procedure_steps s
+                       WHERE s.procedure_id = p.id) AS step_count
+               FROM procedures p WHERE """
+            + cond + " ORDER BY p.title"
+        )
+        params.extend(vals)
+    with db_session() as conn:
+        rows = conn.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
+
+
+def create_procedure(admin_id, data):
+    slug = (data.get("slug") or "").strip()
+    title = (data.get("title") or "").strip()
+    if not slug or not title:
+        raise AdminError("slug و title مطلوبان.", 400)
+    steps = _procedure_steps(data)
+    if steps is None:
+        raise AdminError("المسطرة تتطلب خطوات (steps).", 400)
+    faq = _procedure_faq(data)
+    with db_session() as conn:
+        try:
+            cur = conn.execute(
+                """INSERT INTO procedures
+                   (slug, title, category, responsible_authority, typical_timeframe,
+                    fees, faq)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    slug, title,
+                    (data.get("category") or "").strip() or None,
+                    (data.get("responsible_authority") or "").strip() or None,
+                    (data.get("typical_timeframe") or "").strip() or None,
+                    (data.get("fees") or "").strip() or None,
+                    faq,
+                ),
+            )
+        except sqlite3.IntegrityError:
+            raise AdminError("مسطرة بنفس slug موجودة مسبقًا.", 400)
+        procedure_id = cur.lastrowid
+        _insert_steps(conn, procedure_id, steps)
+        _log_admin_action(
+            conn, admin_id, "procedure.create", "procedure", procedure_id
+        )
+    return procedure_id
+
+
+def update_procedure(admin_id, procedure_id, data):
+    with db_session() as conn:
+        sel_q = "SELECT id FROM procedures WHERE id = ?"
+        sel_params = [procedure_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            sel_q += " AND " + cond
+            sel_params.extend(vals)
+        row = conn.execute(sel_q, sel_params).fetchone()
+        if row is None:
+            raise AdminError("المسطرة غير موجودة.", 404)
+        updates = {}
+        for field in ("title", "category", "responsible_authority",
+                      "typical_timeframe", "fees"):
+            if field in data:
+                updates[field] = (data.get(field) or "").strip() or None
+        if "slug" in data:
+            updates["slug"] = (data.get("slug") or "").strip()
+        if "title" in updates and not updates["title"]:
+            raise AdminError("title مطلوب.", 400)
+        if "slug" in updates and not updates["slug"]:
+            raise AdminError("slug مطلوب.", 400)
+        faq = _procedure_faq(data)
+        if faq is not None:
+            updates["faq"] = faq
+        steps = _procedure_steps(data, required=False)
+        try:
+            if updates:
+                sets = ", ".join(f"{k} = ?" for k in updates)
+                upd_q = f"UPDATE procedures SET {sets} WHERE id = ?"
+                upd_params = list(updates.values()) + [procedure_id]
+                if cond:
+                    upd_q += " AND " + cond
+                    upd_params.extend(vals)
+                conn.execute(upd_q, upd_params)
+            if steps is not None:
+                conn.execute(
+                    "DELETE FROM procedure_steps WHERE procedure_id = ?",
+                    (procedure_id,),
+                )
+                _insert_steps(conn, procedure_id, steps)
+        except sqlite3.IntegrityError:
+            raise AdminError("مسطرة بنفس slug موجودة مسبقًا.", 400)
+        _log_admin_action(
+            conn, admin_id, "procedure.update", "procedure", procedure_id
+        )
+    return procedure_id
+
+
+def _insert_steps(conn, procedure_id, steps):
+    for step in steps:
+        conn.execute(
+            """INSERT INTO procedure_steps
+               (procedure_id, step_number, title, description, required_documents)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                procedure_id, step["step_number"], step["title"],
+                step["description"], step["required_documents"],
+            ),
+        )
+
+
+def delete_procedure(admin_id, procedure_id):
+    with db_session() as conn:
+        sel_q = "SELECT id FROM procedures WHERE id = ?"
+        sel_params = [procedure_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            sel_q += " AND " + cond
+            sel_params.extend(vals)
+        row = conn.execute(sel_q, sel_params).fetchone()
+        if row is None:
+            raise AdminError("المسطرة غير موجودة.", 404)
+        del_q = "DELETE FROM procedures WHERE id = ?"
+        del_params = [procedure_id]
+        if cond:
+            del_q += " AND " + cond
+            del_params.extend(vals)
+        conn.execute(del_q, del_params)
+        _log_admin_action(
+            conn, admin_id, "procedure.delete", "procedure", procedure_id
+        )
+    return procedure_id
+
+
+# ---------------------------------------------------------------------------
 # إدارة المواد
 # ---------------------------------------------------------------------------
 
 def create_article(admin_id, text_id, data):
     _require_fields(data, ["number", "label", "content"])
     with db_session() as conn:
-        text = conn.execute(
-            "SELECT id FROM legal_texts WHERE id = ?", (text_id,)
-        ).fetchone()
+        text_q = "SELECT id FROM legal_texts WHERE id = ?"
+        text_params = [text_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            text_q += " AND " + cond
+            text_params.extend(vals)
+        text = conn.execute(text_q, text_params).fetchone()
         if text is None:
             raise AdminError("النص القانوني غير موجود", 404)
         cur = conn.execute(
             """INSERT INTO articles
-               (legal_text_id, number, label, content, plain_explanation, keywords)
-               VALUES (?,?,?,?,?,?)""",
+               (legal_text_id, number, label, content, plain_explanation, keywords, tenant_id)
+               VALUES (?,?,?,?,?,?,?)""",
             (
                 text_id, data["number"], data["label"], data["content"],
                 data.get("plain_explanation"), data.get("keywords", ""),
+                tenant_scope.insert_tenant_id(),
             ),
         )
         new_id = cur.lastrowid
@@ -287,9 +613,13 @@ def update_article(admin_id, article_id, data):
     if not isinstance(data, dict) or not data:
         raise AdminError("لا توجد حقول للتحديث", 400)
     with db_session() as conn:
-        row = conn.execute(
-            "SELECT id FROM articles WHERE id = ?", (article_id,)
-        ).fetchone()
+        sel_q = "SELECT id FROM articles WHERE id = ?"
+        sel_params = [article_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            sel_q += " AND " + cond
+            sel_params.extend(vals)
+        row = conn.execute(sel_q, sel_params).fetchone()
         if row is None:
             raise AdminError("المادة غير موجودة", 404)
         updates = {f: data[f] for f in _ARTICLE_FIELDS if f in data}
@@ -298,22 +628,33 @@ def update_article(admin_id, article_id, data):
         if not updates:
             raise AdminError("لا توجد حقول للتحديث", 400)
         sets = ", ".join(f"{k} = ?" for k in updates)
-        conn.execute(
-            f"UPDATE articles SET {sets} WHERE id = ?",
-            (*updates.values(), article_id),
-        )
+        upd_q = f"UPDATE articles SET {sets} WHERE id = ?"
+        upd_params = list(updates.values()) + [article_id]
+        if cond:
+            upd_q += " AND " + cond
+            upd_params.extend(vals)
+        conn.execute(upd_q, upd_params)
         _log_admin_action(conn, admin_id, "article.update", "article", article_id)
     return article_id
 
 
 def _delete_article_row(conn, admin_id, article_id):
-    row = conn.execute(
-        "SELECT id FROM articles WHERE id = ?", (article_id,)
-    ).fetchone()
+    sel_q = "SELECT id FROM articles WHERE id = ?"
+    sel_params = [article_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        sel_q += " AND " + cond
+        sel_params.extend(vals)
+    row = conn.execute(sel_q, sel_params).fetchone()
     if row is None:
         raise AdminError("المادة غير موجودة", 404)
     # الروابط ذات الصلة تُحذف تسلسليًا + مشغّلات FTS
-    conn.execute("DELETE FROM articles WHERE id = ?", (article_id,))
+    del_q = "DELETE FROM articles WHERE id = ?"
+    del_params = [article_id]
+    if cond:
+        del_q += " AND " + cond
+        del_params.extend(vals)
+    conn.execute(del_q, del_params)
     _log_admin_action(conn, admin_id, "article.delete", "article", article_id)
     return article_id
 
@@ -348,26 +689,31 @@ def bulk_delete_articles(admin_id, ids):
 
 def list_verification_queue():
     placeholders = ",".join("?" for _ in _PROFESSIONAL_ROLES)
+    query = (
+        f"""SELECT u.id AS user_id, u.email, u.full_name,
+                   r.code AS role_code, r.name AS role_name,
+                   ur.role_status, ur.rejection_reason,
+                   ur.created_at AS requested_at,
+                   CASE WHEN p.id IS NULL THEN 0 ELSE 1 END AS has_profile,
+                   p.verification_status AS profile_status,
+                   CASE WHEN p.verification_document_key IS NULL
+                        THEN 0 ELSE 1 END AS has_document,
+                   p.verification_document_name AS document_name
+            FROM user_roles ur
+            JOIN users u ON u.id = ur.user_id
+            JOIN roles r ON r.id = ur.role_id
+            LEFT JOIN professional_profiles p ON p.user_id = ur.user_id
+            WHERE ur.role_status = 'pending_verification'
+              AND r.code IN ({placeholders})"""
+    )
+    params = list(_PROFESSIONAL_ROLES)
+    u_cond, u_vals = tenant_scope.tenant_eq("u")
+    if u_cond:
+        query += " AND " + u_cond
+        params.extend(u_vals)
+    query += " ORDER BY ur.created_at, u.id"
     with db_session() as conn:
-        rows = conn.execute(
-            f"""SELECT u.id AS user_id, u.email, u.full_name,
-                       r.code AS role_code, r.name AS role_name,
-                       ur.role_status, ur.rejection_reason,
-                       ur.created_at AS requested_at,
-                       CASE WHEN p.id IS NULL THEN 0 ELSE 1 END AS has_profile,
-                       p.verification_status AS profile_status,
-                       CASE WHEN p.verification_document_key IS NULL
-                            THEN 0 ELSE 1 END AS has_document,
-                       p.verification_document_name AS document_name
-                FROM user_roles ur
-                JOIN users u ON u.id = ur.user_id
-                JOIN roles r ON r.id = ur.role_id
-                LEFT JOIN professional_profiles p ON p.user_id = ur.user_id
-                WHERE ur.role_status = 'pending_verification'
-                  AND r.code IN ({placeholders})
-                ORDER BY ur.created_at, u.id""",
-            _PROFESSIONAL_ROLES,
-        ).fetchall()
+        rows = conn.execute(query, params).fetchall()
         return [dict(r) for r in rows]
 
 
@@ -394,11 +740,16 @@ def _approve_verification_row(conn, admin_id, user_id):
         (user_id, row["role_id"]),
     )
     # مزامنة مصدر الحقيقة لظهور الدليل (قرار D-023): إن وُجد ملف مهني
-    conn.execute(
+    prof_q = (
         "UPDATE professional_profiles SET verification_status = 'verified', "
-        "updated_at = datetime('now') WHERE user_id = ?",
-        (user_id,),
+        "updated_at = datetime('now') WHERE user_id = ?"
     )
+    prof_params = [user_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        prof_q += " AND " + cond
+        prof_params.extend(vals)
+    conn.execute(prof_q, prof_params)
     _log_admin_action(
         conn, admin_id, "verification.approve", "user", user_id,
         f"role={row['code']}",
@@ -427,11 +778,16 @@ def _reject_verification_row(conn, admin_id, user_id, reason):
         " WHERE user_id = ? AND role_id = ?",
         (reason, user_id, row["role_id"]),
     )
-    conn.execute(
+    prof_q = (
         "UPDATE professional_profiles SET verification_status = 'rejected', "
-        "updated_at = datetime('now') WHERE user_id = ?",
-        (user_id,),
+        "updated_at = datetime('now') WHERE user_id = ?"
     )
+    prof_params = [user_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        prof_q += " AND " + cond
+        prof_params.extend(vals)
+    conn.execute(prof_q, prof_params)
     _log_admin_action(
         conn, admin_id, "verification.reject", "user", user_id,
         f"role={row['code']}; reason={reason}",
@@ -509,15 +865,21 @@ MODERATION_ACTIONS = ("dismiss", "hide", "remove")
 def list_moderation_queue():
     """بلاغات open مع لمحة عن المحتوى والمبلِّغ — بنمط موحد لطابور الإشراف
     (post|comment|professional_profile، وثيقة API § Admin)."""
+    query = (
+        """SELECT r.id, r.target_type, r.target_id, r.reason, r.status,
+                  r.created_at,
+                  u.email AS reporter_email, u.full_name AS reporter_name
+           FROM reports r JOIN users u ON u.id = r.reporter_id
+           WHERE r.status = 'open'"""
+    )
+    params = []
+    cond, vals = tenant_scope.tenant_eq("r")
+    if cond:
+        query += " AND " + cond
+        params.extend(vals)
+    query += " ORDER BY r.created_at, r.id"
     with db_session() as conn:
-        rows = conn.execute(
-            """SELECT r.id, r.target_type, r.target_id, r.reason, r.status,
-                      r.created_at,
-                      u.email AS reporter_email, u.full_name AS reporter_name
-               FROM reports r JOIN users u ON u.id = r.reporter_id
-               WHERE r.status = 'open'
-               ORDER BY r.created_at, r.id"""
-        ).fetchall()
+        rows = conn.execute(query, params).fetchall()
         items = []
         for row in rows:
             item = dict(row)
@@ -529,39 +891,56 @@ def list_moderation_queue():
 def _report_target_snapshot(conn, report) -> dict:
     """لمحة عن الهدف المدان لإبلاغ المشرف بقراره — الحالة الحالية للمحتوى."""
     target_id = report["target_id"]
+    cond, vals = tenant_scope.tenant_eq()
     if report["target_type"] == "post":
-        row = conn.execute(
+        query = (
             """SELECT p.id AS content_id, p.status AS content_status,
                       p.title, p.body, p.user_id AS author_id,
                       u.full_name AS author_name
-               FROM posts p JOIN users u ON u.id = p.user_id WHERE p.id = ?""",
-            (target_id,),
-        ).fetchone()
+               FROM posts p JOIN users u ON u.id = p.user_id WHERE p.id = ?"""
+        )
+        params = [target_id]
+        if cond:
+            query += " AND " + cond
+            params.extend(vals)
+        row = conn.execute(query, params).fetchone()
     elif report["target_type"] == "comment":
-        row = conn.execute(
+        query = (
             """SELECT c.id AS content_id, c.status AS content_status,
                       c.post_id, c.body, c.user_id AS author_id,
                       u.full_name AS author_name
-               FROM comments c JOIN users u ON u.id = c.user_id WHERE c.id = ?""",
-            (target_id,),
-        ).fetchone()
+               FROM comments c JOIN users u ON u.id = c.user_id WHERE c.id = ?"""
+        )
+        params = [target_id]
+        if cond:
+            query += " AND " + cond
+            params.extend(vals)
+        row = conn.execute(query, params).fetchone()
     else:
-        row = conn.execute(
+        query = (
             """SELECT pp.id AS content_id, pp.verification_status AS content_status,
                       pp.profession_type, u.full_name AS author_name
                FROM professional_profiles pp JOIN users u ON u.id = pp.user_id
-               WHERE pp.id = ?""",
-            (target_id,),
-        ).fetchone()
+               WHERE pp.id = ?"""
+        )
+        params = [target_id]
+        if cond:
+            query += " AND " + cond
+            params.extend(vals)
+        row = conn.execute(query, params).fetchone()
     return dict(row) if row else None
 
 
 def _moderate_report_row(conn, admin_id, report_id, action):
     if action not in MODERATION_ACTIONS:
         raise AdminError("action يجب أن يكون dismiss أو hide أو remove", 400)
-    row = conn.execute(
-        "SELECT * FROM reports WHERE id = ?", (report_id,)
-    ).fetchone()
+    sel_q = "SELECT * FROM reports WHERE id = ?"
+    sel_params = [report_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        sel_q += " AND " + cond
+        sel_params.extend(vals)
+    row = conn.execute(sel_q, sel_params).fetchone()
     if row is None:
         raise AdminError("البلاغ غير موجود", 404)
     if row["status"] != "open":
@@ -576,17 +955,24 @@ def _moderate_report_row(conn, admin_id, report_id, action):
             )
         new_status = "actioned"
         table = row["target_type"] + "s"
-        updated = conn.execute(
+        upd_q = (
             f"UPDATE {table} SET status = ?, updated_at = datetime('now') "
-            "WHERE id = ?",
-            (action, row["target_id"]),
+            "WHERE id = ?"
         )
+        upd_params = [action, row["target_id"]]
+        if cond:
+            upd_q += " AND " + cond
+            upd_params.extend(vals)
+        updated = conn.execute(upd_q, upd_params)
         if updated.rowcount == 0:
             raise AdminError("المحتوى الهدف غير موجود", 404)
         # إشعار صاحب المحتوى بقرار الإشراف (إزالة/حجب)
-        owner = conn.execute(
-            f"SELECT user_id FROM {table} WHERE id = ?", (row["target_id"],)
-        ).fetchone()
+        owner_q = f"SELECT user_id FROM {table} WHERE id = ?"
+        owner_params = [row["target_id"]]
+        if cond:
+            owner_q += " AND " + cond
+            owner_params.extend(vals)
+        owner = conn.execute(owner_q, owner_params).fetchone()
         if owner:
             if action == "remove":
                 type_, title, body = (
@@ -600,11 +986,15 @@ def _moderate_report_row(conn, admin_id, report_id, action):
                 )
             notify(conn, owner["user_id"], type_, title, body=body,
                    actor_id=admin_id)
-    conn.execute(
+    upd2_q = (
         "UPDATE reports SET status = ?, resolved_at = datetime('now'), "
-        "resolved_by = ? WHERE id = ?",
-        (new_status, admin_id, report_id),
+        "resolved_by = ? WHERE id = ?"
     )
+    upd2_params = [new_status, admin_id, report_id]
+    if cond:
+        upd2_q += " AND " + cond
+        upd2_params.extend(vals)
+    conn.execute(upd2_q, upd2_params)
     _log_admin_action(
         conn, admin_id, f"moderation.{action}", "report", report_id,
         f"target={row['target_type']}:{row['target_id']}",

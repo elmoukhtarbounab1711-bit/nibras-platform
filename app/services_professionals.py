@@ -13,7 +13,7 @@ import os
 import secrets
 from pathlib import Path
 
-from . import config, services_auth
+from . import config, services_auth, tenant_scope
 from .database import db_session
 
 # أنواع مهنة الدليل (وثيقة 17 §1) — company/institution خارج قائمة الدليل
@@ -87,11 +87,16 @@ def _specialties_map(conn, profile_ids: list) -> dict:
     if not profile_ids:
         return {}
     placeholders = ",".join("?" for _ in profile_ids)
-    rows = conn.execute(
+    query = (
         f"SELECT profile_id, specialty FROM professional_specialties "
-        f"WHERE profile_id IN ({placeholders}) ORDER BY id",
-        profile_ids,
-    ).fetchall()
+        f"WHERE profile_id IN ({placeholders}) ORDER BY id"
+    )
+    params = list(profile_ids)
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        query += " AND " + cond
+        params.extend(vals)
+    rows = conn.execute(query, params).fetchall()
     out = {}
     for row in rows:
         out.setdefault(row["profile_id"], []).append(row["specialty"])
@@ -109,22 +114,43 @@ def _public_profile(row, specialties: list, reviews=None) -> dict:
         "rating": round(row["rating"], 1) if row["rating"] else 0,
         "review_count": row["review_count"],
         "contact_preference": row["contact_preference"],
+        "photo_url": row.get("photo_url"),
+        "registration_number": row.get("registration_number"),
+        "address": row.get("address"),
+        "website": row.get("website"),
+        "years_of_experience": row.get("years_of_experience"),
+        "work_hours": row.get("work_hours"),
+        "map_embed": row.get("map_embed"),
     }
+    if row.get("social_links"):
+        import json
+
+        try:
+            item["social_links"] = json.loads(row["social_links"])
+        except (TypeError, ValueError):
+            item["social_links"] = {}
+    else:
+        item["social_links"] = {}
     if row["contact_preference"] == "visible":
         item["phone"] = row["phone"]
+        item["email"] = row.get("email")
     if reviews is not None:
         item["reviews"] = reviews
     return item
 
 
 def _list_columns() -> str:
+    # عزل المستأجر (D-036): إحصاءات التقييمات تُحسب ضمن مستأجر الملف فقط
+    review_scope = " AND r.tenant_id IS p.tenant_id" if tenant_scope.active() else ""
     return (
-        "SELECT p.id, u.full_name, p.profession_type, p.city, p.bio, "
-        "p.contact_preference, p.phone, "
+        "SELECT p.id, u.full_name, u.email, p.profession_type, p.city, p.bio, "
+        "p.contact_preference, p.phone, p.photo_url, p.registration_number, "
+        "p.address, p.website, p.years_of_experience, p.work_hours, "
+        "p.social_links, p.map_embed, "
         "COALESCE((SELECT ROUND(AVG(r.rating), 1) FROM professional_reviews r "
-        "          WHERE r.profile_id = p.id), 0) AS rating, "
-        "(SELECT COUNT(*) FROM professional_reviews r "
-        " WHERE r.profile_id = p.id) AS review_count "
+        f"          WHERE r.profile_id = p.id{review_scope}), 0) AS rating, "
+        f"(SELECT COUNT(*) FROM professional_reviews r "
+        f" WHERE r.profile_id = p.id{review_scope}) AS review_count "
         "FROM professional_profiles p JOIN users u ON u.id = p.user_id"
     )
 
@@ -136,6 +162,10 @@ def list_professionals(profession_type=None, specialty=None, city=None,
     query = _list_columns()
     conditions = ["p.verification_status = 'verified'", "u.status = 'active'"]
     params = []
+    p_cond, p_vals = tenant_scope.tenant_eq("p")
+    if p_cond:
+        conditions.append(p_cond)
+        params.extend(p_vals)
     if profession_type:
         if profession_type not in PROFESSION_TYPES:
             raise ProfessionalError("نوع المهنة غير صالح.", 400)
@@ -145,11 +175,19 @@ def list_professionals(profession_type=None, specialty=None, city=None,
         conditions.append("p.city = ?")
         params.append(city)
     if specialty:
-        conditions.append(
+        s_cond, s_vals = tenant_scope.tenant_eq("s")
+        spec_q = (
             "EXISTS (SELECT 1 FROM professional_specialties s "
             "        WHERE s.profile_id = p.id AND s.specialty = ?)"
         )
         params.append(specialty)
+        if s_cond:
+            spec_q = (
+                "EXISTS (SELECT 1 FROM professional_specialties s "
+                f"        WHERE s.profile_id = p.id AND s.specialty = ? AND {s_cond})"
+            )
+            params.extend(s_vals)
+        conditions.append(spec_q)
     query += " WHERE " + " AND ".join(conditions)
     query += " ORDER BY u.full_name LIMIT ? OFFSET ?"
     params += [limit, offset]
@@ -162,21 +200,37 @@ def list_professionals(profession_type=None, specialty=None, city=None,
 
 def get_profile_public(profile_id: int):
     query = _list_columns()
-    query += (
-        " WHERE p.id = ? AND p.verification_status = 'verified' "
-        "AND u.status = 'active'"
-    )
+    conditions = [
+        "p.id = ?", "p.verification_status = 'verified'", "u.status = 'active'",
+    ]
+    params = [profile_id]
+    p_cond, p_vals = tenant_scope.tenant_eq("p")
+    if p_cond:
+        conditions.append(p_cond)
+        params.extend(p_vals)
+    query += " WHERE " + " AND ".join(conditions)
     with db_session() as conn:
-        row = conn.execute(query, (profile_id,)).fetchone()
+        row = conn.execute(query, params).fetchone()
         if not row:
             return None
         specs = _specialties_map(conn, [profile_id]).get(profile_id, [])
-        reviews = conn.execute(
+        reviews_q = (
             """SELECT r.rating, r.comment, r.created_at, u.full_name AS reviewer_name
                FROM professional_reviews r JOIN users u ON u.id = r.reviewer_id
-               WHERE r.profile_id = ? ORDER BY r.created_at DESC, r.id DESC""",
-            (profile_id,),
-        ).fetchall()
+               WHERE r.profile_id = ? ORDER BY r.created_at DESC, r.id DESC"""
+        )
+        reviews_params = [profile_id]
+        r_cond, r_vals = tenant_scope.tenant_eq("r")
+        if r_cond:
+            reviews_q = (
+                """SELECT r.rating, r.comment, r.created_at, u.full_name AS reviewer_name
+                   FROM professional_reviews r JOIN users u ON u.id = r.reviewer_id
+                   WHERE r.profile_id = ? AND """
+                + r_cond
+                + " ORDER BY r.created_at DESC, r.id DESC"
+            )
+            reviews_params.extend(r_vals)
+        reviews = conn.execute(reviews_q, reviews_params).fetchall()
         return _public_profile(
             dict(row), specs, reviews=[dict(r) for r in reviews]
         )
@@ -184,15 +238,21 @@ def get_profile_public(profile_id: int):
 
 def get_profile_for_user(user_id: int):
     """ملف المستخدم المهني بحالة تحققه — للاستجابة الذاتية (يرى وثيقته)."""
+    review_scope = " AND r.tenant_id IS p.tenant_id" if tenant_scope.active() else ""
+    query = (
+        f"""SELECT p.*, u.full_name, u.email,
+                   (SELECT COUNT(*) FROM professional_reviews r
+                    WHERE r.profile_id = p.id{review_scope}) AS review_count
+            FROM professional_profiles p JOIN users u ON u.id = p.user_id
+            WHERE p.user_id = ?"""
+    )
+    params = [user_id]
+    p_cond, p_vals = tenant_scope.tenant_eq("p")
+    if p_cond:
+        query += " AND " + p_cond
+        params.extend(p_vals)
     with db_session() as conn:
-        row = conn.execute(
-            """SELECT p.*, u.full_name,
-                      (SELECT COUNT(*) FROM professional_reviews r
-                       WHERE r.profile_id = p.id) AS review_count
-               FROM professional_profiles p JOIN users u ON u.id = p.user_id
-               WHERE p.user_id = ?""",
-            (user_id,),
-        ).fetchone()
+        row = conn.execute(query, params).fetchone()
         if not row:
             return None
         d = dict(row)
@@ -200,7 +260,54 @@ def get_profile_for_user(user_id: int):
         d["has_document"] = bool(d.pop("verification_document_key"))
         d.pop("verification_document_key", None)
         d.pop("verification_document_name", None)
+        if d.get("social_links"):
+            import json
+
+            try:
+                d["social_links"] = json.loads(d["social_links"])
+            except (TypeError, ValueError):
+                d["social_links"] = {}
+        else:
+            d["social_links"] = {}
         return d
+
+
+def _optional_text(value) -> str | None:
+    value = (value or "").strip()
+    return value or None
+
+
+def _optional_int(value) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise ProfessionalError("years_of_experience يجب أن يكون رقمًا.", 400)
+    if parsed < 0:
+        raise ProfessionalError("years_of_experience لا يمكن أن يكون سالبًا.", 400)
+    return parsed
+
+
+def _social_links_json(value) -> str | None:
+    """يقبّل كائن JSON لوسائل التواصل (أو نص JSON) ويعيده نص JSON موحَّدًا."""
+    import json
+
+    if value in (None, ""):
+        return None
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError):
+            parsed = None
+    else:
+        parsed = value
+    if not isinstance(parsed, dict):
+        raise ProfessionalError("social_links يجب أن يكون كائنًا.", 400)
+    allowed = ("facebook", "twitter", "linkedin", "instagram", "whatsapp")
+    cleaned = {k: str(v).strip() for k, v in parsed.items()
+               if k in allowed and str(v).strip()}
+    return json.dumps(cleaned, ensure_ascii=False) if cleaned else None
 
 
 def upsert_profile(user_id: int, data: dict) -> dict:
@@ -214,38 +321,74 @@ def upsert_profile(user_id: int, data: dict) -> dict:
     if contact_pref not in CONTACT_PREFERENCES:
         raise ProfessionalError("contact_preference يجب أن يكون visible أو platform.", 400)
     specialties = _normalize_specialties(data.get("specialties"))
+    extra = {
+        "photo_url": _optional_text(data.get("photo_url")),
+        "registration_number": _optional_text(data.get("registration_number")),
+        "address": _optional_text(data.get("address")),
+        "website": _optional_text(data.get("website")),
+        "years_of_experience": _optional_int(data.get("years_of_experience")),
+        "work_hours": _optional_text(data.get("work_hours")),
+        "social_links": _social_links_json(data.get("social_links")),
+        "map_embed": _optional_text(data.get("map_embed")),
+    }
     with db_session() as conn:
         if not _has_usable_professional_role(conn, user_id):
             raise ProfessionalError("يتطلب حسابًا مهنيًا.", 403)
-        existing = conn.execute(
-            "SELECT id FROM professional_profiles WHERE user_id = ?", (user_id,)
-        ).fetchone()
+        sel_q = "SELECT id FROM professional_profiles WHERE user_id = ?"
+        sel_params = [user_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            sel_q += " AND " + cond
+            sel_params.extend(vals)
+        existing = conn.execute(sel_q, sel_params).fetchone()
         if existing:
-            conn.execute(
+            upd_q = (
                 "UPDATE professional_profiles SET profession_type = ?, bio = ?, "
-                "city = ?, phone = ?, contact_preference = ?, "
-                "updated_at = datetime('now') WHERE id = ?",
-                (profession_type, bio, city, phone, contact_pref, existing["id"]),
+                "city = ?, phone = ?, contact_preference = ?, photo_url = ?, "
+                "registration_number = ?, address = ?, website = ?, "
+                "years_of_experience = ?, work_hours = ?, social_links = ?, "
+                "map_embed = ?, updated_at = datetime('now') WHERE id = ?"
             )
+            upd_params = [
+                profession_type, bio, city, phone, contact_pref,
+                extra["photo_url"], extra["registration_number"],
+                extra["address"], extra["website"],
+                extra["years_of_experience"], extra["work_hours"],
+                extra["social_links"], extra["map_embed"], existing["id"],
+            ]
+            if cond:
+                upd_q += " AND " + cond
+                upd_params.extend(vals)
+            conn.execute(upd_q, upd_params)
             profile_id = existing["id"]
-            conn.execute(
-                "DELETE FROM professional_specialties WHERE profile_id = ?",
-                (profile_id,),
-            )
+            del_q = "DELETE FROM professional_specialties WHERE profile_id = ?"
+            del_params = [profile_id]
+            if cond:
+                del_q += " AND " + cond
+                del_params.extend(vals)
+            conn.execute(del_q, del_params)
         else:
             cur = conn.execute(
                 "INSERT INTO professional_profiles "
                 "(user_id, profession_type, bio, city, contact_preference, phone, "
-                "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, "
+                "photo_url, registration_number, address, website, "
+                "years_of_experience, work_hours, social_links, map_embed, "
+                "tenant_id, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
                 "datetime('now'), datetime('now'))",
-                (user_id, profession_type, bio, city, contact_pref, phone),
+                (user_id, profession_type, bio, city, contact_pref, phone,
+                 extra["photo_url"], extra["registration_number"],
+                 extra["address"], extra["website"],
+                 extra["years_of_experience"], extra["work_hours"],
+                 extra["social_links"], extra["map_embed"],
+                 tenant_scope.insert_tenant_id()),
             )
             profile_id = cur.lastrowid
         for specialty in specialties:
             conn.execute(
-                "INSERT INTO professional_specialties (profile_id, specialty) "
-                "VALUES (?, ?)",
-                (profile_id, specialty),
+                "INSERT INTO professional_specialties (profile_id, specialty, "
+                "tenant_id) VALUES (?, ?, ?)",
+                (profile_id, specialty, tenant_scope.insert_tenant_id()),
             )
     return get_profile_for_user(user_id)
 
@@ -270,11 +413,16 @@ def upload_verification_document(user_id: int, file) -> dict:
     with db_session() as conn:
         if not _has_usable_professional_role(conn, user_id):
             raise ProfessionalError("يتطلب حسابًا مهنيًا.", 403)
-        row = conn.execute(
+        sel_q = (
             "SELECT id, verification_document_key FROM professional_profiles "
-            "WHERE user_id = ?",
-            (user_id,),
-        ).fetchone()
+            "WHERE user_id = ?"
+        )
+        sel_params = [user_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            sel_q += " AND " + cond
+            sel_params.extend(vals)
+        row = conn.execute(sel_q, sel_params).fetchone()
         if not row:
             raise ProfessionalError(
                 "أنشئ ملفك المهني أولًا (POST /api/professionals/profile).", 400
@@ -289,12 +437,16 @@ def upload_verification_document(user_id: int, file) -> dict:
                 (uploads / os.path.basename(old_key)).unlink(missing_ok=True)
             except OSError:
                 pass
-        conn.execute(
+        upd_q = (
             "UPDATE professional_profiles SET verification_document_key = ?, "
             "verification_document_name = ?, updated_at = datetime('now') "
-            "WHERE id = ?",
-            (storage_name, filename, row["id"]),
+            "WHERE id = ?"
         )
+        upd_params = [storage_name, filename, row["id"]]
+        if cond:
+            upd_q += " AND " + cond
+            upd_params.extend(vals)
+        conn.execute(upd_q, upd_params)
         profile_id = row["id"]
     return {
         "id": profile_id,
@@ -305,12 +457,17 @@ def upload_verification_document(user_id: int, file) -> dict:
 
 def get_verification_document(user_id: int):
     """مسار/اسم وثيقة التحقق المخزنة لمستخدم — يُستخدم من المسار الإداري فقط."""
+    query = (
+        "SELECT verification_document_key, verification_document_name "
+        "FROM professional_profiles WHERE user_id = ?"
+    )
+    params = [user_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        query += " AND " + cond
+        params.extend(vals)
     with db_session() as conn:
-        row = conn.execute(
-            "SELECT verification_document_key, verification_document_name "
-            "FROM professional_profiles WHERE user_id = ?",
-            (user_id,),
-        ).fetchone()
+        row = conn.execute(query, params).fetchone()
     if not row or not row["verification_document_key"]:
         raise ProfessionalError("لا توجد وثيقة تحقق لهذا المستخدم.", 404)
     path = _uploads_dir() / os.path.basename(row["verification_document_key"])
@@ -330,36 +487,53 @@ def add_review(reviewer_id: int, profile_id: int, rating, comment=None) -> dict:
         raise ProfessionalError("التقييم (rating) يجب أن يكون بين 1 و 5.", 400)
     comment = (comment or "").strip()
     with db_session() as conn:
-        row = conn.execute(
+        sel_q = (
             """SELECT p.user_id, p.verification_status
                FROM professional_profiles p JOIN users u ON u.id = p.user_id
-               WHERE p.id = ? AND u.status = 'active'""",
-            (profile_id,),
-        ).fetchone()
+               WHERE p.id = ? AND u.status = 'active'"""
+        )
+        sel_params = [profile_id]
+        p_cond, p_vals = tenant_scope.tenant_eq("p")
+        if p_cond:
+            sel_q += " AND " + p_cond
+            sel_params.extend(p_vals)
+        row = conn.execute(sel_q, sel_params).fetchone()
         if not row or row["verification_status"] != "verified":
             raise ProfessionalError("الملف المهني غير موجود.", 404)
         if row["user_id"] == reviewer_id:
             raise ProfessionalError("لا يمكنك تقييم ملفك الخاص.", 403)
         conn.execute(
             """INSERT INTO professional_reviews
-               (profile_id, reviewer_id, rating, comment, created_at, updated_at)
-               VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+               (profile_id, reviewer_id, rating, comment, tenant_id,
+                created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
                ON CONFLICT(profile_id, reviewer_id) DO UPDATE SET
                  rating = excluded.rating,
                  comment = excluded.comment,
+                 tenant_id = excluded.tenant_id,
                  updated_at = datetime('now')""",
-            (profile_id, reviewer_id, rating, comment or None),
+            (profile_id, reviewer_id, rating, comment or None,
+             tenant_scope.insert_tenant_id()),
         )
-        review_id = conn.execute(
+        rid_q = (
             "SELECT id FROM professional_reviews "
-            "WHERE profile_id = ? AND reviewer_id = ?",
-            (profile_id, reviewer_id),
-        ).fetchone()["id"]
-        agg = conn.execute(
+            "WHERE profile_id = ? AND reviewer_id = ?"
+        )
+        rid_params = [profile_id, reviewer_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            rid_q += " AND " + cond
+            rid_params.extend(vals)
+        review_id = conn.execute(rid_q, rid_params).fetchone()["id"]
+        agg_q = (
             """SELECT ROUND(AVG(rating), 1) AS avg_rating, COUNT(*) AS count
-               FROM professional_reviews WHERE profile_id = ?""",
-            (profile_id,),
-        ).fetchone()
+               FROM professional_reviews WHERE profile_id = ?"""
+        )
+        agg_params = [profile_id]
+        if cond:
+            agg_q += " AND " + cond
+            agg_params.extend(vals)
+        agg = conn.execute(agg_q, agg_params).fetchone()
     return {
         "id": review_id,
         "rating": agg["avg_rating"] if agg["avg_rating"] else 0,

@@ -1,21 +1,37 @@
-# قاعدة بيانات SQLite المحلية (تُنشأ بالتشغيل/البذر)
-nibras.db
-
-# بايثون
+# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
 venv/
+env/
 
-# اختبارات
+# التطبيق/البيانات (لا تُرفع إلى المستودع — تُنسخ عبر القرص المُثبَّت)
+nibras.db
+nibras.db-wal
+nibras.db-shm
+*.sqlite
+*.sqlite3
+backups/
+
+# الملفات المحمَّلة (وثائق التحقق + قوالب السوق)
+uploads/
+!uploads/.gitkeep
+
+# السجلات
+*.log
+*.err
+
+# البيئة والأسرار (لا تُرفع أبدًا — النموذج في .env.example)
+.env
+.env.*
+!.env.example
+
+# أدوات
 .pytest_cache/
 .ruff_cache/
+node_modules/
 
-# أدوات/بيئة
-.vscode/
-.idea/
+# أنظمة
 .DS_Store
-
-# \u0648\u062b\u0627\u0626\u0642 \u0627\u0644\u062a\u062d\u0642\u0642 \u0627\u0644\u0645\u0647\u0646\u064a (\u062a\u062e\u0632\u064a\u0646 \u0645\u062d\u0644\u064a - \u0642\u0631\u0627\u0631 D-023)
-uploads/
+Thumbs.db

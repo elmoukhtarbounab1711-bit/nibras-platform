@@ -13,7 +13,6 @@ import io
 import pytest
 
 from app import config, services_auth
-from app.routes.auth import _attempts as _auth_attempts
 
 PASSWORD = "test-password-123"
 
@@ -31,29 +30,24 @@ def _isolate_uploads(tmp_path, monkeypatch):
     yield
 
 
-@pytest.fixture(autouse=True)
-def _reset_rate_limits():
-    _auth_attempts.clear()
-    yield
-    _auth_attempts.clear()
-
-
 def _auth_headers(token):
     return {"Authorization": f"Bearer {token}"}
 
 
 def _register(client, email, full_name="مستخدم", role="citizen"):
-    return client.post(
-        "/api/auth/register",
-        json={"email": email, "password": PASSWORD, "full_name": full_name,
-              "role": role},
+    from app.services_auth import role_status_for_code
+    return services_auth.create_user_with_role(
+        email=email, password=PASSWORD, full_name=full_name,
+        role_code=role, role_status=role_status_for_code(role),
+        user_status="active",
     )
 
 
 def _login(client, email):
-    return client.post(
-        "/api/auth/login", json={"email": email, "password": PASSWORD}
-    ).get_json()
+    profile = services_auth.get_user_by_email(email)
+    return {
+        "access_token": services_auth.create_access_token(profile.id)[0],
+    }
 
 
 def _admin():
@@ -80,11 +74,9 @@ def _docx_bytes(paragraphs):
 # ---------------------------------------------------------------------------
 
 def test_professional_journey_end_to_end(client):
-    reg = _register(client, "lawyer@journey.test", full_name="المحامية أمينة",
-                    role="lawyer")
-    assert reg.status_code == 201
-    lawyer = reg.get_json()["user"]
-    lh = _auth_headers(reg.get_json()["access_token"])
+    lawyer = _register(client, "lawyer@journey.test", full_name="المحامية أمينة",
+                       role="lawyer")
+    lh = _auth_headers(services_auth.create_access_token(lawyer.id)[0])
 
     # إنشاء الملف المهني (حالة pending — لا يظهر في الدليل بعد)
     resp = client.post("/api/professionals/profile", json=PROFILE, headers=lh)
@@ -104,8 +96,8 @@ def test_professional_journey_end_to_end(client):
     admin = _admin()
     ah = _auth_headers(services_auth.create_access_token(admin.id)[0])
     queue = client.get("/api/admin/verification-queue", headers=ah).get_json()
-    assert [q["user_id"] for q in queue["requests"]] == [lawyer["id"]]
-    assert client.post(f"/api/admin/verification/{lawyer['id']}/approve",
+    assert [q["user_id"] for q in queue["requests"]] == [lawyer.id]
+    assert client.post(f"/api/admin/verification/{lawyer.id}/approve",
                        headers=ah).status_code == 200
 
     notif = client.get("/api/notifications", headers=lh).get_json()
@@ -223,30 +215,20 @@ def test_ingestion_library_search_ai(client):
 # (4) دورة جلسة المصادقة (تسجيل → دخول → تجديد → خروج)
 # ---------------------------------------------------------------------------
 
-def test_session_lifecycle(client):
+def test_internal_token_lifecycle(client):
     _register(client, "session@flow.test", full_name="مستخدم الجلسة")
-    login = _login(client, "session@flow.test")
-    access, refresh = login["access_token"], login["refresh_token"]
+    profile = services_auth.get_user_by_email("session@flow.test")
+    access = services_auth.create_access_token(profile.id)[0]
 
-    # التوكن يعمل على نقطة محمية
+    # التوكن الداخلي يعمل على نقطة محمية
     assert client.get("/api/auth/me",
                       headers=_auth_headers(access)).status_code == 200
 
-    # تجديد يدوّر التوكن؛ القديم يُرفض والجديد يعمل
-    rotated = client.post("/api/auth/refresh",
-                          json={"refresh_token": refresh}).get_json()
+    # لا تجديد عام للتوكنات (لا جلسات عمومية)
     assert client.post("/api/auth/refresh",
-                       json={"refresh_token": refresh}).status_code == 401
-    new_refresh = rotated["refresh_token"]
-    assert client.get("/api/auth/me",
-                      headers=_auth_headers(rotated["access_token"])).status_code == 200
-
-    # تسجيل الخروج يبطل التوكن الجديد
-    assert client.post("/api/auth/logout",
-                       json={"refresh_token": new_refresh},
-                       headers=_auth_headers(rotated["access_token"])).status_code == 200
+                       json={"refresh_token": "x"}).status_code == 403
     assert client.post("/api/auth/refresh",
-                       json={"refresh_token": new_refresh}).status_code == 401
+                       json={"refresh_token": "x"}).status_code == 403
 
 
 # ---------------------------------------------------------------------------

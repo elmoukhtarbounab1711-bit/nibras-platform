@@ -1,0 +1,37 @@
+# Render Blueprint (Infrastructure as Code) — نشر نبراس على Render.
+# الاستخدام: ادفع المستودع إلى GitHub ثم أنشئ خدمة من هذا الملف (Blueprint).
+# انظر README قسم "النشر" لمتغيرات البيئة والقرص المُثبَّت (Disk).
+services:
+  - type: web
+    name: nibras
+    runtime: python
+    plan: free
+    healthCheckPath: /api/ready
+    buildCommand: pip install -r requirements.txt
+    # release: يُشغَّل مرة واحدة قبل كل إصدار — يضمن قاعدة سليمة على القرص
+    releaseCommand: python scripts/paas_bootstrap.py ensure
+    startCommand: gunicorn "app:create_app()" --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 --access-logfile -
+    # قرص مُثبَّت (يتطلب خطة مدفوعة أو الأقراص المتوفرة للخطة) — SQLite وملفات
+    # الرفع لا تعيش على نظام الملفات العابر. عند أي تغيير، عطّل الخدمة وأضِف
+    # القرص ثم عدّل NIBRAS_DB_PATH إلى /data/nibras.db.
+    # disk:
+    #   name: nibras-data
+    #   mountPath: /data
+    #   sizeGB: 1
+    envVars:
+      - key: NIBRAS_DB_PATH
+        value: /data/nibras.db
+        # عند غياب قرص (خطة مجانية) يُحذف هذا المتغير ليستخدم السكربت الافتراضي
+        # المحلي داخل الحاوية (عابر يُبذر عند كل إصدار ثم يُفقد — للعرض فقط).
+      - key: NIBRAS_JWT_SECRET
+        generateValue: true
+      - key: NIBRAS_CORS_ORIGINS
+        value: "*"
+      - key: NIBRAS_AI_PROVIDER
+        value: noop
+        # مزوّدات Gemini/Groq/OpenRouter تُضبط من لوحة التحكم (ai_providers) بعد
+        # الإقلاع الأول؛ بيئةً يدعم الاحتياطي Anthropic فقط (ANTHROPIC_API_KEY).
+      - key: NIBRAS_LOG_FORMAT
+        value: json
+      - key: PYTHONIOENCODING
+        value: utf-8

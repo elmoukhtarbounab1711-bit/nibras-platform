@@ -5,12 +5,16 @@
 والتفويض (§2.2) والمواصفة التقنية (§2: مجلد middleware/auth_middleware.py).
 يحمل هذا الوسيط المسارات الإدارية السابقة من مفتاح X-Admin-Key إلى
 مصادقة Bearer JWT + دور admin (الترحيل §2.5).
+
+حل مستأجر الطلب (رأس X-Tenant-Id) يتم مركزيًا في before_request
+(الفرض الشامل — المرحلة 18 D-036)؛ هنا فقط يُفحص تطابق مستأجر المستخدم
+مع مستأجر الطلب عند التفعيل (403 للتعارض).
 """
 from functools import wraps
 
 from flask import jsonify, request
 
-from .. import config, services_auth, services_tenants
+from .. import config, services_auth, tenant_scope
 
 
 def _bearer_token() -> str | None:
@@ -23,39 +27,27 @@ def _bearer_token() -> str | None:
     return None
 
 
-class _TenantDenied(Exception):
-    """رفض نطاق المستأجر في طلب مُصادَق (يُترجم إلى 403)."""
+def public_auth(fn):
+    """يضبط request.user=None دائمًا (منصة عامة بلا حسابات مستخدمين).
 
-    def __init__(self, message: str):
-        super().__init__(message)
-        self.message = message
-
-
-def _resolve_tenant(user_id: int) -> int:
-    """يحدد مستأجر الطلب الفعّال وفق وضع multi-tenant ورأس X-Tenant-Id.
-
-    الوضع غير مفعّل (الافتراضي): يُتجاهل الرأس — كل المستخدمين في
-    مستأجرهم (الافتراضي) كما في السلوك أحادي المستأجر الحالي.
-    الوضع مفعّل (NIBRAS_MULTI_TENANT=1): رأس X-Tenant-Id إلزامي —
-    غيابه، أو تعطله (غير معروف/معلّق)، أو تعارضه مع مستأجر المستخدم
-    يرفض الطلب (403) — يضبط request.tenant_id لاستخدامات المرحلة اللاحقة.
+    تُستخدم للخدمات العامة المفتوحة للزوار دون تسجيل: المساعد القانوني،
+    مولِّد الوثائق، الحاسبات، المساطر، المكتبة. لا تتطلب أي توكن؛ الحماية
+    تبقى لمحتوى الوحدات (rate limiting + التحقق من المدخلات). مسارات
+    الإدارة تحافظ على مصادقتها عبر require_role("admin").
     """
-    tenant_id = services_tenants.get_user_tenant_id(user_id)
-    if not config.MULTI_TENANT:
-        return tenant_id or services_tenants.default_tenant_id()
-    header = request.headers.get("X-Tenant-Id")
-    if not header:
-        raise _TenantDenied("رأس X-Tenant-Id مطلوب في الوضع متعدد المستأجرين.")
-    tenant = services_tenants.resolve_tenant(header)
-    if tenant is None or tenant["status"] != "active":
-        raise _TenantDenied("مستأجر غير معروف أو غير نشط.")
-    if tenant_id is not None and tenant["id"] != tenant_id:
-        raise _TenantDenied("لا تملك صلاحية داخل هذا المستأجر.")
-    return tenant["id"]
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        request.user = None
+        return fn(*args, **kwargs)
+    return wrapper
 
 
 def require_auth(fn):
-    """يتطلب توكن وصول JWT صالحًا. يضبط request.user بملف المستخدم."""
+    """يتطلب توكن وصول JWT صالحًا. يضبط request.user بملف المستخدم.
+
+    يستخدم حصريًا في المسارات الإدارية والداخلية بعد التحول إلى منصة
+    عامة بلا حسابات — لا مسار تسجيل/دخول عام، فلا وصول للجمهور.
+    """
     @wraps(fn)
     def wrapper(*args, **kwargs):
         token = _bearer_token()
@@ -68,10 +60,10 @@ def require_auth(fn):
         if profile is None or profile.status != "active":
             return jsonify({"error": "غير مصرح. الحساب غير نشط."}), 401
         request.user = profile
-        try:
-            request.tenant_id = _resolve_tenant(user_id)
-        except _TenantDenied as exc:
-            return jsonify({"error": exc.message}), 403
+        if config.MULTI_TENANT:
+            tid = tenant_scope.current_tenant_id()
+            if profile.tenant_id is not None and tid != profile.tenant_id:
+                return jsonify({"error": "لا تملك صلاحية داخل هذا المستأجر."}), 403
         return fn(*args, **kwargs)
     return wrapper
 

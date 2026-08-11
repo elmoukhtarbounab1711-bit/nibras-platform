@@ -8,6 +8,7 @@ professional_profile) لطابور الإشراف، وشارة تحقُّق عل
 verified (وثيقة 16 §5). النقاط (reputation) والمتابعة (follows) مؤجَّلتان
 لحسم صيغة النقاط (وثيقة 16 §2) — قرار D-024.
 """
+from . import tenant_scope
 from .database import db_session
 from .services_notifications import notify
 
@@ -67,22 +68,42 @@ def _category_exists(conn, category_id) -> bool:
     ).fetchone() is not None
 
 
-def _author_verified_flag(user_id: int) -> str:
+def _author_verified_flag(user_id: str) -> str:
+    # عزل المستأجر (D-036): شارة التحقق تُحسب ضمن مستأجر كاتب المحتوى فقط
+    scope = " AND pp.tenant_id IS u.tenant_id" if tenant_scope.active() else ""
     return (
         "EXISTS (SELECT 1 FROM professional_profiles pp "
-        f"WHERE pp.user_id = {user_id} AND pp.verification_status = 'verified')"
+        f"WHERE pp.user_id = {user_id} AND pp.verification_status = 'verified'{scope})"
     )
 
 
-_POST_COLUMNS = (
-    "SELECT p.id, p.user_id, u.full_name AS author_name, "
-    + _author_verified_flag("u.id")
-    + " AS author_verified, "
-    "p.category_id, p.title, p.body, p.status, p.created_at, p.updated_at, "
-    "(SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id "
-    " AND c.status = 'visible') AS comment_count "
-    "FROM posts p JOIN users u ON u.id = p.user_id"
-)
+def _post_columns() -> tuple:
+    """أعمدة المنشور + عدد التعليقات، مع عزل التعليقات ضمن مستأجر المنشور.
+
+    تُعيد (جملة SELECT, قيم أولية) لأن عدّ التعليقات قد يُقيَّد بمستأجر
+    (قيمته تسبق شروط WHERE في الربط الموضعي للمعلمات)."""
+    count_sub = (
+        "(SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id "
+        " AND c.status = 'visible')"
+    )
+    pre = []
+    c_cond, c_vals = tenant_scope.tenant_eq("c")
+    if c_cond:
+        count_sub = (
+            f"(SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id "
+            f" AND c.status = 'visible' AND {c_cond})"
+        )
+        pre = list(c_vals)
+    sql = (
+        "SELECT p.id, p.user_id, u.full_name AS author_name, "
+        + _author_verified_flag("u.id")
+        + " AS author_verified, "
+        "p.category_id, p.title, p.body, p.status, p.created_at, p.updated_at, "
+        + count_sub
+        + " AS comment_count "
+        "FROM posts p JOIN users u ON u.id = p.user_id"
+    )
+    return sql, pre
 
 
 def _reactions_map(conn, post_ids: list) -> dict:
@@ -90,11 +111,17 @@ def _reactions_map(conn, post_ids: list) -> dict:
     if not post_ids:
         return {}
     placeholders = ",".join("?" for _ in post_ids)
-    rows = conn.execute(
+    query = (
         f"SELECT post_id, type, COUNT(*) AS c FROM reactions "
-        f"WHERE post_id IN ({placeholders}) GROUP BY post_id, type",
-        post_ids,
-    ).fetchall()
+        f"WHERE post_id IN ({placeholders})"
+    )
+    params = list(post_ids)
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        query += " AND " + cond
+        params.extend(vals)
+    query += " GROUP BY post_id, type"
+    rows = conn.execute(query, params).fetchall()
     out = {}
     for row in rows:
         out.setdefault(row["post_id"], {})[row["type"]] = row["c"]
@@ -140,10 +167,13 @@ def _comment_item(row) -> dict:
 def _my_reactions(conn, user_id, post_id) -> list:
     if user_id is None:
         return []
-    rows = conn.execute(
-        "SELECT type FROM reactions WHERE user_id = ? AND post_id = ?",
-        (user_id, post_id),
-    ).fetchall()
+    query = "SELECT type FROM reactions WHERE user_id = ? AND post_id = ?"
+    params = [user_id, post_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        query += " AND " + cond
+        params.extend(vals)
+    rows = conn.execute(query, params).fetchall()
     return [r["type"] for r in rows]
 
 
@@ -152,13 +182,23 @@ def _my_reactions(conn, user_id, post_id) -> list:
 # ---------------------------------------------------------------------------
 
 def list_categories():
+    post_count = (
+        "(SELECT COUNT(*) FROM posts p WHERE p.category_id = c.id"
+        " AND p.status = 'visible')"
+    )
+    params = []
+    p_cond, p_vals = tenant_scope.tenant_eq("p")
+    if p_cond:
+        post_count = (
+            "(SELECT COUNT(*) FROM posts p WHERE p.category_id = c.id"
+            " AND p.status = 'visible' AND " + p_cond + ")"
+        )
+        params = list(p_vals)
     with db_session() as conn:
         rows = conn.execute(
-            """SELECT c.id, c.slug, c.name,
-                      (SELECT COUNT(*) FROM posts p
-                       WHERE p.category_id = c.id AND p.status = 'visible')
-                      AS post_count
-               FROM community_categories c ORDER BY c.id"""
+            f"""SELECT c.id, c.slug, c.name, {post_count} AS post_count
+                FROM community_categories c ORDER BY c.id""",
+            params,
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -167,13 +207,17 @@ def list_posts(category_id=None, limit: int = DEFAULT_LIST_LIMIT,
                offset: int = 0):
     limit = max(1, min(int(limit or DEFAULT_LIST_LIMIT), MAX_LIST_LIMIT))
     offset = max(0, int(offset or 0))
-    query = _POST_COLUMNS
+    base, pre = _post_columns()
     conditions = ["p.status = 'visible'"]
-    params = []
+    params = list(pre)
+    p_cond, p_vals = tenant_scope.tenant_eq("p")
+    if p_cond:
+        conditions.append(p_cond)
+        params.extend(p_vals)
     if category_id is not None:
         conditions.append("p.category_id = ?")
         params.append(int(category_id))
-    query += " WHERE " + " AND ".join(conditions)
+    query = base + " WHERE " + " AND ".join(conditions)
     query += " ORDER BY p.created_at DESC, p.id DESC LIMIT ? OFFSET ?"
     params += [limit, offset]
     with db_session() as conn:
@@ -184,22 +228,33 @@ def list_posts(category_id=None, limit: int = DEFAULT_LIST_LIMIT,
 
 
 def get_post(post_id: int, viewer_id=None):
+    base, pre = _post_columns()
+    conditions = ["p.id = ?", "(p.status = 'visible' OR p.user_id = ?)"]
+    params = list(pre) + [post_id, viewer_id or -1]
+    p_cond, p_vals = tenant_scope.tenant_eq("p")
+    if p_cond:
+        conditions.append(p_cond)
+        params.extend(p_vals)
     with db_session() as conn:
         row = conn.execute(
-            _POST_COLUMNS
-            + " WHERE p.id = ? AND (p.status = 'visible' OR p.user_id = ?)",
-            (post_id, viewer_id or -1),
+            base + " WHERE " + " AND ".join(conditions), params
         ).fetchone()
         if not row:
             return None
-        comments = conn.execute(
+        comments_q = (
             """SELECT c.id, c.post_id, c.user_id, u.full_name AS author_name,
                       """ + _author_verified_flag("u.id") + """ AS author_verified,
                       c.body, c.status, c.created_at, c.updated_at
                FROM comments c JOIN users u ON u.id = c.user_id
-               WHERE c.post_id = ? AND c.status = 'visible'
-               ORDER BY c.created_at, c.id""",
-            (post_id,),
+               WHERE c.post_id = ? AND c.status = 'visible'"""
+        )
+        comments_params = [post_id]
+        c_cond, c_vals = tenant_scope.tenant_eq("c")
+        if c_cond:
+            comments_q += " AND " + c_cond
+            comments_params.extend(c_vals)
+        comments = conn.execute(
+            comments_q + " ORDER BY c.created_at, c.id", comments_params
         ).fetchall()
         reactions = _reactions_map(conn, [post_id]).get(post_id, {})
         return _post_item(
@@ -216,9 +271,13 @@ def get_post(post_id: int, viewer_id=None):
 # ---------------------------------------------------------------------------
 
 def _visible_or_owner_post(conn, post_id, user_id):
-    row = conn.execute(
-        "SELECT id, user_id, status FROM posts WHERE id = ?", (post_id,)
-    ).fetchone()
+    query = "SELECT id, user_id, status FROM posts WHERE id = ?"
+    params = [post_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        query += " AND " + cond
+        params.extend(vals)
+    row = conn.execute(query, params).fetchone()
     if not row:
         raise CommunityError("المنشور غير موجود.", 404)
     if row["status"] != "visible" and row["user_id"] != user_id:
@@ -239,9 +298,10 @@ def create_post(user_id: int, data: dict) -> dict:
             raise CommunityError("الفئة غير موجودة.", 400)
         cur = conn.execute(
             "INSERT INTO posts (user_id, category_id, title, body, status, "
-            "created_at, updated_at) VALUES (?, ?, ?, ?, 'visible', "
-            "datetime('now'), datetime('now'))",
-            (user_id, category_id, title, body),
+            "tenant_id, created_at, updated_at) VALUES (?, ?, ?, ?, 'visible', "
+            "?, datetime('now'), datetime('now'))",
+            (user_id, category_id, title, body,
+             tenant_scope.insert_tenant_id()),
         )
         post_id = cur.lastrowid
     return get_post(post_id, viewer_id=user_id)
@@ -256,11 +316,16 @@ def update_post(user_id: int, post_id: int, data: dict) -> dict:
         body = (data.get("body") or "").strip()
         if not title or not body:
             raise CommunityError("العنوان والمحتوى (body) مطلوبان.", 400)
-        conn.execute(
+        query = (
             "UPDATE posts SET title = ?, body = ?, updated_at = datetime('now') "
-            "WHERE id = ?",
-            (_cap(title, POST_TITLE_MAX), _cap(body, POST_BODY_MAX), post_id),
+            "WHERE id = ?"
         )
+        params = [_cap(title, POST_TITLE_MAX), _cap(body, POST_BODY_MAX), post_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            query += " AND " + cond
+            params.extend(vals)
+        conn.execute(query, params)
     return get_post(post_id, viewer_id=user_id)
 
 
@@ -269,20 +334,28 @@ def delete_post(user_id: int, post_id: int) -> dict:
         row = _visible_or_owner_post(conn, post_id, user_id)
         if row["user_id"] != user_id:
             raise CommunityError("غير مصرح. يمكنك حذف منشوراتك فقط.", 403)
-        conn.execute(
+        query = (
             "UPDATE posts SET status = 'removed', updated_at = datetime('now') "
-            "WHERE id = ?",
-            (post_id,),
+            "WHERE id = ?"
         )
+        params = [post_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            query += " AND " + cond
+            params.extend(vals)
+        conn.execute(query, params)
     return {"id": post_id, "status": "removed", "message": "تم حذف المنشور."}
 
 
 def _comment_row(conn, post_id, comment_id):
-    row = conn.execute(
-        "SELECT id, post_id, user_id, status FROM comments "
-        "WHERE id = ? AND post_id = ?",
-        (comment_id, post_id),
-    ).fetchone()
+    query = "SELECT id, post_id, user_id, status FROM comments " \
+            "WHERE id = ? AND post_id = ?"
+    params = [comment_id, post_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        query += " AND " + cond
+        params.extend(vals)
+    row = conn.execute(query, params).fetchone()
     if not row:
         raise CommunityError("التعليق غير موجود.", 404)
     return row
@@ -297,15 +370,19 @@ def add_comment(user_id: int, post_id: int, data: dict) -> dict:
         _visible_or_owner_post(conn, post_id, user_id)
         cur = conn.execute(
             "INSERT INTO comments (post_id, user_id, body, status, "
-            "created_at, updated_at) VALUES (?, ?, ?, 'visible', "
-            "datetime('now'), datetime('now'))",
-            (post_id, user_id, body),
+            "tenant_id, created_at, updated_at) VALUES (?, ?, ?, 'visible', "
+            "?, datetime('now'), datetime('now'))",
+            (post_id, user_id, body, tenant_scope.insert_tenant_id()),
         )
         comment_id = cur.lastrowid
         # إشعار صاحب المنشور بتعليق جديد (لا إشعار لفعل الذات)
-        owner = conn.execute(
-            "SELECT p.user_id, p.title FROM posts p WHERE p.id = ?", (post_id,)
-        ).fetchone()
+        owner_query = "SELECT p.user_id, p.title FROM posts p WHERE p.id = ?"
+        owner_params = [post_id]
+        p_cond, p_vals = tenant_scope.tenant_eq("p")
+        if p_cond:
+            owner_query += " AND " + p_cond
+            owner_params.extend(p_vals)
+        owner = conn.execute(owner_query, owner_params).fetchone()
         if owner and owner["user_id"] != user_id:
             notify(
                 conn, owner["user_id"], "community.comment",
@@ -315,14 +392,19 @@ def add_comment(user_id: int, post_id: int, data: dict) -> dict:
                 actor_id=user_id,
             )
     with db_session() as conn:
-        row = conn.execute(
+        query = (
             """SELECT c.id, c.post_id, c.user_id, u.full_name AS author_name,
                       """ + _author_verified_flag("u.id") + """ AS author_verified,
                       c.body, c.status, c.created_at, c.updated_at
                FROM comments c JOIN users u ON u.id = c.user_id
-               WHERE c.id = ?""",
-            (comment_id,),
-        ).fetchone()
+               WHERE c.id = ?"""
+        )
+        params = [comment_id]
+        c_cond, c_vals = tenant_scope.tenant_eq("c")
+        if c_cond:
+            query += " AND " + c_cond
+            params.extend(c_vals)
+        row = conn.execute(query, params).fetchone()
     return _comment_item(dict(row))
 
 
@@ -334,19 +416,29 @@ def update_comment(user_id: int, post_id: int, comment_id: int, data: dict) -> d
         row = _comment_row(conn, post_id, comment_id)
         if row["user_id"] != user_id:
             raise CommunityError("غير مصرح. يمكنك تعديل تعليقاتك فقط.", 403)
-        conn.execute(
+        query = (
             "UPDATE comments SET body = ?, updated_at = datetime('now') "
-            "WHERE id = ?",
-            (_cap(body, COMMENT_BODY_MAX), comment_id),
+            "WHERE id = ?"
         )
-        updated = conn.execute(
+        params = [_cap(body, COMMENT_BODY_MAX), comment_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            query += " AND " + cond
+            params.extend(vals)
+        conn.execute(query, params)
+        updated_q = (
             """SELECT c.id, c.post_id, c.user_id, u.full_name AS author_name,
                       """ + _author_verified_flag("u.id") + """ AS author_verified,
                       c.body, c.status, c.created_at, c.updated_at
                FROM comments c JOIN users u ON u.id = c.user_id
-               WHERE c.id = ?""",
-            (comment_id,),
-        ).fetchone()
+               WHERE c.id = ?"""
+        )
+        updated_params = [comment_id]
+        c_cond, c_vals = tenant_scope.tenant_eq("c")
+        if c_cond:
+            updated_q += " AND " + c_cond
+            updated_params.extend(c_vals)
+        updated = conn.execute(updated_q, updated_params).fetchone()
     return _comment_item(dict(updated))
 
 
@@ -355,11 +447,16 @@ def delete_comment(user_id: int, post_id: int, comment_id: int) -> dict:
         row = _comment_row(conn, post_id, comment_id)
         if row["user_id"] != user_id:
             raise CommunityError("غير مصرح. يمكنك حذف تعليقاتك فقط.", 403)
-        conn.execute(
+        query = (
             "UPDATE comments SET status = 'removed', updated_at = datetime('now') "
-            "WHERE id = ?",
-            (comment_id,),
+            "WHERE id = ?"
         )
+        params = [comment_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            query += " AND " + cond
+            params.extend(vals)
+        conn.execute(query, params)
     return {"id": comment_id, "status": "removed", "message": "تم حذف التعليق."}
 
 
@@ -372,27 +469,40 @@ def toggle_reaction(user_id: int, post_id: int, reaction_type: str = "like") -> 
         raise CommunityError("نوع التفاعل يجب أن يكون like أو helpful.", 400)
     with db_session() as conn:
         _visible_or_owner_post(conn, post_id, user_id)
-        existing = conn.execute(
-            "SELECT 1 FROM reactions WHERE user_id = ? AND post_id = ? AND type = ?",
-            (user_id, post_id, reaction_type),
-        ).fetchone()
+        sel_q = (
+            "SELECT 1 FROM reactions WHERE user_id = ? AND post_id = ? AND type = ?"
+        )
+        sel_params = [user_id, post_id, reaction_type]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            sel_q += " AND " + cond
+            sel_params.extend(vals)
+        existing = conn.execute(sel_q, sel_params).fetchone()
         if existing:
-            conn.execute(
-                "DELETE FROM reactions WHERE user_id = ? AND post_id = ? AND type = ?",
-                (user_id, post_id, reaction_type),
+            del_q = (
+                "DELETE FROM reactions WHERE user_id = ? AND post_id = ? AND type = ?"
             )
+            del_params = [user_id, post_id, reaction_type]
+            if cond:
+                del_q += " AND " + cond
+                del_params.extend(vals)
+            conn.execute(del_q, del_params)
             reacted = False
         else:
             conn.execute(
-                "INSERT INTO reactions (user_id, post_id, type, created_at) "
-                "VALUES (?, ?, ?, datetime('now'))",
-                (user_id, post_id, reaction_type),
+                "INSERT INTO reactions (user_id, post_id, type, tenant_id, "
+                "created_at) VALUES (?, ?, ?, ?, datetime('now'))",
+                (user_id, post_id, reaction_type, tenant_scope.insert_tenant_id()),
             )
             reacted = True
             # إشعار صاحب المنشور بتفاعل جديد (لا إشعار لتفاعل الذات)
-            owner = conn.execute(
-                "SELECT p.user_id FROM posts p WHERE p.id = ?", (post_id,)
-            ).fetchone()
+            owner_q = "SELECT p.user_id FROM posts p WHERE p.id = ?"
+            owner_params = [post_id]
+            p_cond, p_vals = tenant_scope.tenant_eq("p")
+            if p_cond:
+                owner_q += " AND " + p_cond
+                owner_params.extend(p_vals)
+            owner = conn.execute(owner_q, owner_params).fetchone()
             if owner and owner["user_id"] != user_id:
                 notify(
                     conn, owner["user_id"], "community.reaction",
@@ -401,11 +511,15 @@ def toggle_reaction(user_id: int, post_id: int, reaction_type: str = "like") -> 
                     link=f"/posts/{post_id}",
                     actor_id=user_id,
                 )
-        counts = conn.execute(
+        counts_q = (
             "SELECT type, COUNT(*) AS c FROM reactions WHERE post_id = ? "
-            "GROUP BY type",
-            (post_id,),
-        ).fetchall()
+            "GROUP BY type"
+        )
+        counts_params = [post_id]
+        if cond:
+            counts_q += " AND " + cond
+            counts_params.extend(vals)
+        counts = conn.execute(counts_q, counts_params).fetchall()
     return {
         "reacted": reacted,
         "reactions": {r["type"]: r["c"] for r in counts},
@@ -431,18 +545,25 @@ def create_report(reporter_id: int, data: dict) -> dict:
         raise CommunityError("target_id يجب أن يكون رقمًا.", 400)
     with db_session() as conn:
         _report_target_owner(conn, target_type, target_id, reporter_id)
-        existing = conn.execute(
+        sel_q = (
             "SELECT id FROM reports WHERE reporter_id = ? AND target_type = ? "
-            "AND target_id = ? AND status = 'open'",
-            (reporter_id, target_type, target_id),
-        ).fetchone()
+            "AND target_id = ? AND status = 'open'"
+        )
+        sel_params = [reporter_id, target_type, target_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            sel_q += " AND " + cond
+            sel_params.extend(vals)
+        existing = conn.execute(sel_q, sel_params).fetchone()
         if existing:
             return {"id": existing["id"], "already_reported": True,
                     "message": "سبق أن أبلغت عن هذا المحتوى."}
         cur = conn.execute(
             "INSERT INTO reports (reporter_id, target_type, target_id, reason, "
-            "status, created_at) VALUES (?, ?, ?, ?, 'open', datetime('now'))",
-            (reporter_id, target_type, target_id, reason),
+            "status, tenant_id, created_at) VALUES (?, ?, ?, ?, 'open', ?, "
+            "datetime('now'))",
+            (reporter_id, target_type, target_id, reason,
+             tenant_scope.insert_tenant_id()),
         )
         report_id = cur.lastrowid
     return {"id": report_id, "message": "تم استلام البلاغ."}
@@ -451,26 +572,37 @@ def create_report(reporter_id: int, data: dict) -> dict:
 def _report_target_owner(conn, target_type, target_id, reporter_id):
     """يتحقق من وجود الهدف ويرد بصاحبه؛ يرفض الإبلاغ عن محتوى الذات."""
     if target_type == "post":
-        row = conn.execute(
-            "SELECT user_id, status FROM posts WHERE id = ?", (target_id,)
-        ).fetchone()
+        query = "SELECT user_id, status FROM posts WHERE id = ?"
+        params = [target_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            query += " AND " + cond
+            params.extend(vals)
+        row = conn.execute(query, params).fetchone()
         if not row:
             raise CommunityError("المنشور غير موجود.", 404)
         if row["status"] != "visible":
             raise CommunityError("المحتوى غير قابل للإبلاغ (تمت معالجته).", 400)
     elif target_type == "comment":
-        row = conn.execute(
-            "SELECT user_id, status FROM comments WHERE id = ?", (target_id,)
-        ).fetchone()
+        query = "SELECT user_id, status FROM comments WHERE id = ?"
+        params = [target_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            query += " AND " + cond
+            params.extend(vals)
+        row = conn.execute(query, params).fetchone()
         if not row:
             raise CommunityError("التعليق غير موجود.", 404)
         if row["status"] != "visible":
             raise CommunityError("المحتوى غير قابل للإبلاغ (تمت معالجته).", 400)
     else:
-        row = conn.execute(
-            "SELECT user_id FROM professional_profiles WHERE id = ?",
-            (target_id,),
-        ).fetchone()
+        query = "SELECT user_id FROM professional_profiles WHERE id = ?"
+        params = [target_id]
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            query += " AND " + cond
+            params.extend(vals)
+        row = conn.execute(query, params).fetchone()
         if not row:
             raise CommunityError("الملف المهني غير موجود.", 404)
     if row["user_id"] == reporter_id:

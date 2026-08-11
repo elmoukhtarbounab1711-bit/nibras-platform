@@ -68,6 +68,64 @@ _ARTICLE_PREFIXES = ("ال", "وال", "فال", "بال", "كال", "لل")
 # حروف العطف/الجر الملتصقة: تطبَّق على الصيغ المجرّدة والمعرّفة
 _CONJUNCTIONS = ("و", "ف", "ب", "ك")
 
+# مرادفات معجمية بين صيغ شائعة في أسئلة المواطنين وصيغ النصوص القانونية
+# (التطليق ↔ الطلاق، الابتدائية ↔ الابتدائي ...). تُوسَّع قبل البحث حتى
+# تُلتقط المواد رغم اختلاف الصياغة (تكمّل متغيّرات "ال" في article_variants).
+LEGAL_SYNONYMS = {
+    "طلاق": "تطليق",
+    "الطلاق": "التطليق",
+    "تطليق": "طلاق",
+    "التطليق": "الطلاق",
+    "خلع": "تطليق",
+    "الخلع": "التطليق",
+    "صداق": "مهر",
+    "الصداق": "المهر",
+    "مهر": "صداق",
+    "المهر": "الصداق",
+    "نفقة": "إعالة",
+    "النفقة": "الإعالة",
+    "حضانة": "ولاية",
+    "الحضانة": "الولاية",
+    "إرث": "ميراث",
+    "الإرث": "الميراث",
+    "ميراث": "إرث",
+    "الميراث": "الإرث",
+    "وصية": "وصية",
+    "شيك": "شيك",
+    "المستأجر": "المكتري",
+    "المكتري": "المستأجر",
+    "الكراء": "الإيجار",
+    "الإيجار": "الكراء",
+    "تعويض": "ضرر",
+    "التعويض": "الضرر",
+    "عقد": "اتفاق",
+    "العقد": "الاتفاق",
+}
+
+
+def synonym_variants(term: str) -> list:
+    """متغيّرات مرادفة للكلمة (إن وُجدت) لالتقاط صيغ قانونية متقابلة."""
+    out = []
+    seen = set()
+    queue = [term]
+    while queue:
+        t = queue.pop(0)
+        if t in seen:
+            continue
+        seen.add(t)
+        out.append(t)
+        syn = LEGAL_SYNONYMS.get(t) or LEGAL_SYNONYMS.get(
+            t.lstrip("ووفبكل")  # noqa: B005 — نزع حروف العطف/الجر العربية الملتصقة مقصود
+        )
+        if syn and syn not in seen:
+            queue.append(syn)
+    return out
+
+
+def group_fts_or(candidates: list) -> str:
+    """استعلام FTS بـ OR لكل متغيرات/مرادفات مجموعة واحدة (لاختبار الوجود)."""
+    return ' OR '.join(f'"{c}"*' for c in candidates)
+
 
 def article_variants(term: str) -> list:
     """متغيّرات الكلمة لالتقاط مطابقات رغم اختلاف التعريف وحروف العطف.
@@ -136,13 +194,28 @@ def article_variants(term: str) -> list:
 
 
 def build_search_terms(query_text: str) -> list:
-    """يطبّع ويقسّم الاستعلام ويعيد متغيّرات كل كلمة (بدون كلمات وظيفية)."""
+    """يطبّع ويقسّم الاستعلام ويعيد متغيّرات كل كلمة (بدون كلمات وظيفية).
+
+    لكل كلمة: متغيّرات "ال" التعريفية (article_variants) ثم المرادفات
+    القانونية (synonym_variants) لكل صيغة — لالتقاط «الطلاق» ↔ «التطليق»
+    ونحوها حتى تُسترجَع المواد رغم اختلاف الصياغة.
+    """
     normalized = normalize_arabic(query_text)
     raw_terms = (
         t for t in normalized.split()
         if len(t) >= 2 and t not in ARABIC_STOPWORDS
     )
-    return [article_variants(t) for t in raw_terms]
+    groups = []
+    for t in raw_terms:
+        candidates = []
+        seen = set()
+        for variant in article_variants(t):
+            for syn in synonym_variants(variant):
+                if syn not in seen:
+                    seen.add(syn)
+                    candidates.append(syn)
+        groups.append(candidates)
+    return groups
 
 
 def build_fts_query(term_groups: list) -> str:

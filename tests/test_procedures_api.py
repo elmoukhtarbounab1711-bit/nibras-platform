@@ -1,32 +1,11 @@
 """
-اختبارات مساعد المساطر (API) — المرحلة 3.
+اختبارات مساعد المساطر (API) — المرحلة 3 (منصة عامة).
 
-التصفح والتفصيل عامان (FR-6.1)، وتحديث التقدم للمسجّلين فقط (FR-6.2).
-المسطرة النموذجية succession-liquidation لها 5 خطوات.
+التصفح والتفصيل عامان (FR-6.1). بعد التحول إلى منصة عامة بلا حسابات لا
+يُخزَّن تقدم شخصي (الخصوصية بالتصميم): POST progress يعيد اعترافًا فقط
+دون كتابة، و GET يعيد تعريفًا عامًا. المسطرة النموذجية
+succession-liquidation لها 5 خطوات.
 """
-import pytest
-
-from app.routes.auth import _attempts
-
-PASSWORD = "test-password-123"
-
-
-@pytest.fixture(autouse=True)
-def _reset_rate_limits():
-    _attempts.clear()
-    yield
-    _attempts.clear()
-
-
-def _register(client, email="citizen@example.com"):
-    return client.post(
-        "/api/auth/register",
-        json={"email": email, "password": PASSWORD, "full_name": "مواطن اختبار"},
-    )
-
-
-def _auth_headers(token):
-    return {"Authorization": f"Bearer {token}"}
 
 
 def test_list_procedures_with_step_count(client):
@@ -61,106 +40,28 @@ def test_procedure_unknown_404(client):
     assert resp.status_code == 404
 
 
-def test_progress_requires_auth(client):
+def test_progress_public_no_persistence(client):
     resp = client.post(
         "/api/procedures/succession-liquidation/progress",
         json={"step_number": 1},
-    )
-    assert resp.status_code == 401
-
-
-def test_progress_mark_and_unmark(client):
-    _register(client)
-    login = client.post(
-        "/api/auth/login", json={"email": "citizen@example.com", "password": PASSWORD}
-    )
-    token = login.get_json()["access_token"]
-    headers = _auth_headers(token)
-
-    resp = client.post(
-        "/api/procedures/succession-liquidation/progress",
-        json={"step_number": 1},
-        headers=headers,
     )
     assert resp.status_code == 200
-    assert resp.get_json()["progress"] == {"completed": 1, "total": 5}
-
-    resp = client.post(
-        "/api/procedures/succession-liquidation/progress",
-        json={"step_number": 1, "completed": False},
-        headers=headers,
-    )
-    assert resp.get_json()["progress"] == {"completed": 0, "total": 5}
+    body = resp.get_json()
+    assert body["progress"] == []
+    assert "لا يُحفظ" in body["message"]
 
 
-def test_progress_invalid_step_number(client):
-    _register(client)
-    token = client.post(
-        "/api/auth/login", json={"email": "citizen@example.com", "password": PASSWORD}
-    ).get_json()["access_token"]
-    headers = _auth_headers(token)
-
-    resp = client.post(
-        "/api/procedures/succession-liquidation/progress",
-        json={"step_number": 0},
-        headers=headers,
-    )
-    assert resp.status_code == 400
+def test_progress_get_public_definition(client):
+    resp = client.get("/api/procedures/succession-liquidation/progress")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["procedure_slug"] == "succession-liquidation"
+    assert body["progress"] == []
 
 
-def test_progress_unknown_procedure_or_step(client):
-    _register(client)
-    token = client.post(
-        "/api/auth/login", json={"email": "citizen@example.com", "password": PASSWORD}
-    ).get_json()["access_token"]
-    headers = _auth_headers(token)
-
+def test_progress_unknown_procedure_public(client):
     resp = client.post(
         "/api/procedures/nonexistent/progress",
         json={"step_number": 1},
-        headers=headers,
     )
-    assert resp.status_code == 404
-
-    resp = client.post(
-        "/api/procedures/succession-liquidation/progress",
-        json={"step_number": 99},
-        headers=headers,
-    )
-    assert resp.status_code == 404
-
-
-def test_progress_is_per_user(client):
-    _register(client, email="a@example.com")
-    _register(client, email="b@example.com")
-    token_a = client.post(
-        "/api/auth/login", json={"email": "a@example.com", "password": PASSWORD}
-    ).get_json()["access_token"]
-    token_b = client.post(
-        "/api/auth/login", json={"email": "b@example.com", "password": PASSWORD}
-    ).get_json()["access_token"]
-
-    client.post(
-        "/api/procedures/succession-liquidation/progress",
-        json={"step_number": 1},
-        headers=_auth_headers(token_a),
-    )
-    resp = client.post(
-        "/api/procedures/succession-liquidation/progress",
-        json={"step_number": 2},
-        headers=_auth_headers(token_b),
-    )
-    assert resp.get_json()["progress"] == {"completed": 1, "total": 5}
-
-    # إعادة نفس الخطوة لا تكررها (idempotent)
-    client.post(
-        "/api/procedures/succession-liquidation/progress",
-        json={"step_number": 2},
-        headers=_auth_headers(token_b),
-    )
-    resp = client.post(
-        "/api/procedures/succession-liquidation/progress",
-        json={"step_number": 3},
-        headers=_auth_headers(token_b),
-    )
-    assert resp.get_json()["progress"] == {"completed": 2, "total": 5}
+    assert resp.status_code == 200
