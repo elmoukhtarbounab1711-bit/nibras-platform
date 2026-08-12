@@ -25,6 +25,10 @@ SLOT_SEED = (
 CAMPAIGN_TYPES = ("general", "sponsored", "professional_promotion")
 CAMPAIGN_STATUSES = ("active", "paused", "ended")
 
+# الاستهداف الفئوي (المرحلة 19 — قرار D-037): أنواع الفئات المستهدفة
+# (فئتا الدليل/المجتمع عامتان بلا استهداف فئوي — تُفعَّل لاحقًا).
+TARGET_CATEGORY_TYPES = ("library", "marketplace", "jurisprudence")
+
 
 class AdError(Exception):
     def __init__(self, message: str, status_code: int = 400):
@@ -96,12 +100,65 @@ def _check_profile(conn, profile_id: int):
         raise AdError("الملف المهني يجب أن يكون محقَّقًا (verified).", 400)
 
 
+# جدول الفئات لكل نوع استهداف (المرحلة 19 — D-037)
+_TARGET_TABLE = {
+    "library": "categories",
+    "marketplace": "marketplace_categories",
+    "jurisprudence": "jurisprudence_categories",
+}
+
+
+def _parse_target(conn, data: dict) -> tuple:
+    """يحلّل الاستهداف الفئوي إلى (target_category_type, target_category_id).
+
+    غياب الحقلين = حملة عامة (None, None). حضور أحدهما فقط يرفض. نوعٌ غير
+    مدعوم أو فئة غير موجودة ضمن مستأجر الطلب يرفض (تحقق عبر الجدول المعني).
+    """
+    dtype = (data.get("target_category_type") or "").strip() or None
+    if "target_category_type" in data and not dtype:
+        # قيمة فارغة صراحة = إلغاء الاستهداف (تحويل حملة مستهدفة إلى عامة)
+        if (data.get("target_category_id") or "") not in ("", None):
+            raise AdError("target_category_id يتطلب target_category_type.", 400)
+        return None, None
+    if dtype is None:
+        if data.get("target_category_id") not in (None, ""):
+            raise AdError(
+                "target_category_id يتطلب target_category_type.", 400
+            )
+        return None, None
+    if dtype not in TARGET_CATEGORY_TYPES:
+        raise AdError(
+            "target_category_type يجب أن يكون library أو marketplace أو "
+            "jurisprudence.",
+            400,
+        )
+    try:
+        cid = int(data.get("target_category_id"))
+    except (TypeError, ValueError):
+        raise AdError("target_category_id مطلوب للاستهداف الفئوي.", 400)
+    query = f"SELECT 1 FROM {_TARGET_TABLE[dtype]} WHERE id = ?"
+    params = [cid]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        query += " AND " + cond
+        params.extend(vals)
+    if conn.execute(query, params).fetchone() is None:
+        raise AdError("الفئة المستهدفة غير موجودة.", 400)
+    return dtype, cid
+
+
 # ---------------------------------------------------------------------------
 # الخدمة العامة
 # ---------------------------------------------------------------------------
 
-def serve(slot_slug: str):
-    """يعيد الحملة النشطة للفتحة أو None (بلا أي كتابة — التتبع منفصل)."""
+def serve(slot_slug: str, category_type: str | None = None,
+          category_id: int | None = None):
+    """يعيد الحملة النشطة للفتحة أو None (بلا أي كتابة — التتبع منفصل).
+
+    الاستهداف الفئوي (المرحلة 19 — D-037): عند تمرير سياق الفئة
+    (category_type/category_id) تُفضَّل الحملات المستهدفة لنفس الفئة أولًا
+    ثم تُعاد العامة بلا استهداف؛ ودون سياق تُرسَل الحملات العامة فقط —
+    المستهدفة لا تظهر إلا في سياق فئة مطابقة."""
     with db_session() as conn:
         slot = conn.execute(
             "SELECT id FROM ad_slots WHERE slug = ?", (slot_slug,)
@@ -114,14 +171,25 @@ def serve(slot_slug: str):
                FROM ad_campaigns
                WHERE slot_id = ? AND status = 'active'
                  AND (starts_at IS NULL OR starts_at <= datetime('now'))
-                 AND (ends_at IS NULL OR ends_at >= datetime('now'))"""
+                 AND (ends_at IS NULL OR ends_at >= datetime('now'))
+                 AND (target_category_type IS NULL OR ? = target_category_type
+                      AND ? = target_category_id)"""
         )
         params = [slot["id"]]
+        if category_type is not None:
+            params.extend([category_type, category_id])
+        else:
+            # دون سياق فئة: لا تُعرض المستهدفة إلا العامة
+            params.extend([None, None])
         cond, vals = tenant_scope.tenant_eq()
         if cond:
             query += " AND " + cond
             params.extend(vals)
-        query += " ORDER BY id LIMIT 1"
+        # تفصيلية: المستهدفة المطابقة أولًا ثم العامة ثم الأحدث (id)
+        query += (
+            " ORDER BY CASE WHEN target_category_type IS NULL THEN 1 "
+            "ELSE 0 END, id LIMIT 1"
+        )
         row = conn.execute(query, params).fetchone()
         if row is None:
             return None
@@ -273,14 +341,16 @@ def create_campaign(admin_id: int, data: dict) -> int:
             raise AdError("الفتحة غير موجودة.", 400)
         if campaign_type == "professional_promotion":
             _check_profile(conn, profile_id)
+        target_type, target_id = _parse_target(conn, data)
         cur = conn.execute(
             """INSERT INTO ad_campaigns (slot_id, campaign_type,
                advertiser_name, creative_url, target_url, profile_id,
-               starts_at, ends_at, status, tenant_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               starts_at, ends_at, status, target_category_type,
+               target_category_id, tenant_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (slot_id, campaign_type, advertiser_name, creative_url,
              target_url, profile_id, starts_at, ends_at, status,
-             tenant_scope.insert_tenant_id()),
+             target_type, target_id, tenant_scope.insert_tenant_id()),
         )
         campaign_id = cur.lastrowid
         _log_admin_action(
@@ -359,6 +429,10 @@ def update_campaign(admin_id: int, campaign_id: int, data: dict) -> int:
                     raise AdError("profile_id يجب أن يكون رقمًا.", 400)
                 _check_profile(conn, profile_id)
                 updates["profile_id"] = profile_id
+        if "target_category_type" in data or "target_category_id" in data:
+            target_type, target_id = _parse_target(conn, data)
+            updates["target_category_type"] = target_type
+            updates["target_category_id"] = target_id
         if not updates:
             raise AdError("لا توجد حقول للتحديث.", 400)
         sets = ", ".join(f"{k} = ?" for k in updates)

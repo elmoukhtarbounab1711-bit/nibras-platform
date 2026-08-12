@@ -51,8 +51,12 @@ def serve():
     slot = request.args.get("slot", "").strip()
     if not slot:
         return jsonify({"error": "معامل slot مطلوب."}), 400
+    category_type = request.args.get("category_type", "").strip() or None
     try:
-        campaign = services_ads.serve(slot)
+        campaign = services_ads.serve(
+            slot, category_type,
+            request.args.get("category_id", type=int),
+        )
     except AdError as exc:
         return _handle_ad_error(exc)
     return jsonify({"campaign": campaign}), 200

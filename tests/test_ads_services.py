@@ -178,3 +178,104 @@ def test_audit_log_records_ads_actions(fresh_db):
             )
         ]
     assert actions == ["ads.create", "ads.update", "ads.delete"]
+
+
+# ---------------------------------------------------------------------------
+# الاستهداف الفئوي (المرحلة 19 — قرار D-037)
+# ---------------------------------------------------------------------------
+
+def _category_id(table: str, slug: str) -> int:
+    with db_session() as conn:
+        return conn.execute(
+            f"SELECT id FROM {table} WHERE slug = ?", (slug,)
+        ).fetchone()["id"]
+
+
+def test_create_with_category_target(fresh_db):
+    admin = _admin()
+    lib_cat = _category_id("categories", "madani")
+    cid = _create(
+        admin, target_category_type="library",
+        target_category_id=lib_cat,
+    )
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT target_category_type, target_category_id "
+            "FROM ad_campaigns WHERE id = ?", (cid,),
+        ).fetchone()
+    assert row["target_category_type"] == "library"
+    assert row["target_category_id"] == lib_cat
+
+
+def test_targeted_served_only_in_matching_context(fresh_db):
+    admin = _admin()
+    lib_cat = _category_id("categories", "madani")
+    _create(admin, advertiser_name="مستهدفة مدني",
+            target_category_type="library", target_category_id=lib_cat)
+    # بلا سياق فئة: لا تُعرض الحملة المستهدفة
+    assert services_ads.serve("library_sidebar") is None
+    # بسياق مطابق: تُعرض
+    campaign = services_ads.serve(
+        "library_sidebar", "library", lib_cat
+    )
+    assert campaign["advertiser_name"] == "مستهدفة مدني"
+    # بسياق مختلف (نوع فئة آخر): لا تُعرض — حتى لو تطابق المعرّف رقميًا
+    other_cat = _category_id("marketplace_categories", "tijari")
+    assert services_ads.serve("library_sidebar", "marketplace", other_cat) is None
+
+
+def test_targeted_wins_over_general(fresh_db):
+    admin = _admin()
+    lib_cat = _category_id("categories", "madani")
+    _create(admin, advertiser_name="عامة", status="active")
+    cid = _create(admin, advertiser_name="مستهدفة مدني",
+                  target_category_type="library", target_category_id=lib_cat)
+    campaign = services_ads.serve("library_sidebar", "library", lib_cat)
+    assert campaign["advertiser_name"] == "مستهدفة مدني"
+    assert campaign["campaign_id"] == cid
+
+
+def test_general_fallback_to_untargeted(fresh_db):
+    admin = _admin()
+    lib_cat = _category_id("categories", "madani")
+    _create(admin, advertiser_name="عامة عامة")
+    campaign = services_ads.serve("library_sidebar", "library", lib_cat)
+    assert campaign["advertiser_name"] == "عامة عامة"
+
+
+def test_target_validation(fresh_db):
+    admin = _admin()
+    with pytest.raises(AdError):
+        _create(admin, target_category_type="bogus",
+                target_category_id=1)
+    with pytest.raises(AdError):
+        _create(admin, target_category_type="library")
+    with pytest.raises(AdError):
+        _create(admin, target_category_id=1)
+    with pytest.raises(AdError):
+        _create(admin, target_category_type="library",
+                target_category_id=9999)
+    with pytest.raises(AdError):
+        _create(admin, target_category_type="library",
+                target_category_id="madani")
+
+
+def test_update_clears_target(fresh_db):
+    admin = _admin()
+    lib_cat = _category_id("categories", "madani")
+    cid = _create(admin, target_category_type="library",
+                  target_category_id=lib_cat)
+    services_ads.update_campaign(admin.id, cid, {"target_category_type": ""})
+    campaign = services_ads.serve("library_sidebar")
+    assert campaign["advertiser_name"] == "شركة اختبار"
+    services_ads.update_campaign(
+        admin.id, cid, {"target_category_type": "jurisprudence",
+                        "target_category_id": _category_id(
+                            "jurisprudence_categories", "madani")}
+    )
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT target_category_type FROM ad_campaigns WHERE id = ?",
+            (cid,),
+        ).fetchone()
+    assert row["target_category_type"] == "jurisprudence"

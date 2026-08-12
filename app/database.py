@@ -696,6 +696,10 @@ CREATE TABLE IF NOT EXISTS ad_campaigns (
     starts_at       TEXT,
     ends_at         TEXT,
     status          TEXT NOT NULL DEFAULT 'active',  -- active|paused|ended
+    -- الاستهداف الفئوي (المرحلة 19 — قرار D-037): نوع الفئة (library|
+    -- marketplace|jurisprudence) ومعرّفها؛ NULL = حملة عامة بلا استهداف.
+    target_category_type  TEXT,
+    target_category_id    INTEGER,
     tenant_id       INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
@@ -950,6 +954,9 @@ def init_db(reset: bool = False):
         # premium_listing إداريًا، ويُقرأ في ترتيب الدليل وأولوية الظهور.
         _ensure_column(conn, "professional_profiles", "premium_until",
                        "TEXT")
+        # الاستهداف الفئوي للحملات الإعلانية (المرحلة 19 — قرار D-037):
+        _ensure_column(conn, "ad_campaigns", "target_category_type", "TEXT")
+        _ensure_column(conn, "ad_campaigns", "target_category_id", "INTEGER")
         # رابط التحميل الأصلي للقرار القضائي (الاجتهاد يبقى PDF قابلاً للتحميل):
         _ensure_column(conn, "jurisprudence", "pdf_url", "TEXT")
     # بذر الأدوار الثابتة وبيانات الإسناد بعد إنشاء المخطط (استيراد مؤجَّل

@@ -268,3 +268,110 @@ def test_delete_campaign(client):
     assert _serve(client) is None
     assert client.get("/api/admin/ads/campaigns",
                       headers=admin_h).get_json()["campaigns"] == []
+
+
+# ---------------------------------------------------------------------------
+# الاستهداف الفئوي (المرحلة 19 — قرار D-037)
+# ---------------------------------------------------------------------------
+
+def _cat_id(table, slug):
+    with db_session() as conn:
+        return conn.execute(
+            f"SELECT id FROM {table} WHERE slug = ?", (slug,)
+        ).fetchone()["id"]
+
+
+def _serve_ctx(client, category_type, category_id, slot="library_sidebar"):
+    resp = client.get(
+        f"/api/ads/serve?slot={slot}&category_type={category_type}"
+        f"&category_id={category_id}"
+    )
+    assert resp.status_code == 200
+    return resp.get_json()["campaign"]
+
+
+def test_create_campaign_with_category_target(client):
+    admin_h = _headers(_admin())
+    lib_cat = _cat_id("categories", "madani")
+    cid = _create_campaign(client, admin_h,
+                           target_category_type="library",
+                           target_category_id=lib_cat)
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT target_category_type, target_category_id "
+            "FROM ad_campaigns WHERE id = ?", (cid,),
+        ).fetchone()
+    assert (row["target_category_type"], row["target_category_id"]) == \
+        ("library", lib_cat)
+
+
+def test_serve_with_category_context(client):
+    admin_h = _headers(_admin())
+    lib_cat = _cat_id("categories", "madani")
+    _create_campaign(client, admin_h, advertiser_name="مستهدفة",
+                     target_category_type="library",
+                     target_category_id=lib_cat)
+    assert _serve(client) is None
+    campaign = _serve_ctx(client, "library", lib_cat)
+    assert campaign["advertiser_name"] == "مستهدفة"
+    other = _cat_id("marketplace_categories", "tijari")
+    assert _serve_ctx(client, "marketplace", other) is None
+
+
+def test_serve_falls_back_to_general(client):
+    admin_h = _headers(_admin())
+    lib_cat = _cat_id("categories", "madani")
+    _create_campaign(client, admin_h, advertiser_name="عامة")
+    campaign = _serve_ctx(client, "library", lib_cat)
+    assert campaign["advertiser_name"] == "عامة"
+
+
+def test_targeted_wins_over_general_api(client):
+    admin_h = _headers(_admin())
+    lib_cat = _cat_id("categories", "madani")
+    generic = _create_campaign(client, admin_h, advertiser_name="عامة")
+    targeted = _create_campaign(client, admin_h, advertiser_name="مستهدفة",
+                                target_category_type="library",
+                                target_category_id=lib_cat)
+    campaign = _serve_ctx(client, "library", lib_cat)
+    assert campaign["campaign_id"] == targeted
+    assert campaign["campaign_id"] != generic
+
+
+def test_update_targeting_via_api(client):
+    admin_h = _headers(_admin())
+    lib_cat = _cat_id("categories", "madani")
+    cid = _create_campaign(client, admin_h)
+    resp = client.put(
+        f"/api/admin/ads/campaigns/{cid}",
+        json={"target_category_type": "library",
+              "target_category_id": lib_cat},
+        headers=admin_h,
+    )
+    assert resp.status_code == 200
+    assert _serve(client) is None
+    assert _serve_ctx(client, "library", lib_cat)["campaign_id"] == cid
+    resp = client.put(
+        f"/api/admin/ads/campaigns/{cid}",
+        json={"target_category_type": ""}, headers=admin_h,
+    )
+    assert resp.status_code == 200
+    assert _serve(client)["campaign_id"] == cid
+
+
+def test_invalid_targeting_rejected(client):
+    admin_h = _headers(_admin())
+    resp = client.post("/api/admin/ads/campaigns",
+                       json=_campaign_data(target_category_type="bogus",
+                                           target_category_id=1),
+                       headers=admin_h)
+    assert resp.status_code == 400
+    resp = client.post("/api/admin/ads/campaigns",
+                       json=_campaign_data(target_category_type="library"),
+                       headers=admin_h)
+    assert resp.status_code == 400
+    resp = client.post("/api/admin/ads/campaigns",
+                       json=_campaign_data(target_category_type="library",
+                                           target_category_id=9999),
+                       headers=admin_h)
+    assert resp.status_code == 400
