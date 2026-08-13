@@ -152,6 +152,9 @@ _ISOLATED_TABLES = (
     "ad_events",
     "jurisprudence_categories",
     "jurisprudence",
+    "law_jurisdictions",
+    "comparative_studies",
+    "comparative_entries",
 )
 
 

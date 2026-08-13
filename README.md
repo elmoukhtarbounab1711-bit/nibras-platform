@@ -559,3 +559,17 @@ NIBRAS_DB_PATH=/data/nibras.db \
     لـ `target_category_type` تُلغي الاستهداف؛ `GET /api/ads/serve` تقبل
     `category_type`/`category_id` اختياريين. البوابة بعدها: 544 اختبارًا
     ناجحًا (532+12) + ruff نظيف.
+20. **وحدة القانون المقارن (المرحلة 20 — اكتمل)**: مكتمل (قرار D-038):
+    دراسات مقارنة قانونية معزولة multi-tenant (عزل D-036) بثلاثة جداول —
+    `law_jurisdictions` (8 ولايات قضائية مبذورة idempotent في
+    `ensure_defaults`) و`comparative_studies` (عنوان ووصف وحالة؛ يُنشئها
+    أي مستخدم مسجَّل كـ draft) و`comparative_entries` (مقارنة ترجع لولاية
+    مع نص ومادة اختياريين من مكتبة النصوص وملاحظة الباحث وترتيب).
+    النشر/الإخفاء إداري حصري (`comparative.status`) وتصفح العموم للمنشور
+    فقط؛ تعديل/حذف الدراسة والمقارنات للمالك أو الإدارة؛ صحة الإسناد
+    النصي تُتحقق ضمن المستأجر والمادة وحدها تُحل نصّها تلقائيًا. إدارة
+    الولايات (CRUD بتدقيق `comparative.jurisdiction.*`، حذف الولاية
+    المستخدمة مرفوض 409). نقاط نهاية: `/api/comparative/jurisdictions`،
+    `/api/comparative/studies` (+`/<id>` و`/my` و`/<id>/entries`) و
+    `/api/admin/comparative/jurisdictions` و`/studies` و`/<id>/status`.
+    البوابة بعدها: 571 اختبارًا ناجحًا (544+27) + ruff نظيف.

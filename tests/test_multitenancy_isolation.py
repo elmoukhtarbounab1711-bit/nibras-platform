@@ -19,6 +19,7 @@ from app import (
     services_analytics,
     services_auth,
     services_community,
+    services_comparative,
     services_marketplace,
     services_professionals,
     services_tenants,
@@ -27,6 +28,7 @@ from app import (
 from app.database import db_session
 from app.services_ads import AdError
 from app.services_community import CommunityError
+from app.services_comparative import ComparativeError
 from app.services_marketplace import MarketplaceError
 
 PASSWORD = "test-password-123"
@@ -461,3 +463,81 @@ def test_analytics_summary_scoped(fresh_db):
     with _scope(tns.globex["id"]):
         summary = services_analytics.summary()
         assert summary["community"]["posts"] == 1
+
+
+# ---------------------------------------------------------------------------
+# القانون المقارن (المرحلة 20 — D-038): ولايات/دراسات/مقارنات معزولة
+# ---------------------------------------------------------------------------
+
+def test_comparative_studies_isolated(fresh_db):
+    tns = _Tenants()
+    owner_a = tns.user(tns.acme, _unique_email("cmpa"), "citizen")
+    with _scope(tns.acme["id"]):
+        admin_a = tns.admin(tns.acme)
+        services_comparative.create_jurisdiction(
+            admin_a.id, {"slug": "acme-land", "name": "ولاية أكسي"}
+        )
+        a_study = services_comparative.create_study(
+            owner_a.id, {"title": "دراسة المستأجر أ"}
+        )
+    owner_g = tns.user(tns.globex, _unique_email("cmpg"), "citizen")
+    with _scope(tns.globex["id"]):
+        admin_g = tns.admin(tns.globex)
+        services_comparative.create_jurisdiction(
+            admin_g.id, {"slug": "globex-land", "name": "ولاية غلوبكس"}
+        )
+        g_study = services_comparative.create_study(
+            owner_g.id, {"title": "دراسة المستأجر ب"}
+        )
+    # كل مستأجر يرى دراسته وولاياته فقط (على مستوى الخدمة والتفاصيل)
+    with _scope(tns.acme["id"]):
+        studies = services_comparative.list_studies_admin()
+        assert [s["id"] for s in studies] == [a_study["id"]]
+        assert services_comparative.get_study(g_study["id"]) is None
+        assert [j["slug"] for j in services_comparative.list_jurisdictions()] \
+            == ["acme-land"]
+    with _scope(tns.globex["id"]):
+        assert services_comparative.get_study(a_study["id"]) is None
+        assert [j["slug"] for j in services_comparative.list_jurisdictions()] \
+            == ["globex-land"]
+
+
+def test_comparative_cross_tenant_entries_hidden(fresh_db):
+    tns = _Tenants()
+    owner_a = tns.user(tns.acme, _unique_email("cmpa2"), "citizen")
+    with db_session() as conn:
+        # مادة في نطاق المستأجر (للإسناد)
+        cat = conn.execute(
+            "INSERT INTO categories (slug, name, tenant_id) VALUES (?,?,?)",
+            ("acme-cmp-cat", "فئة", tns.acme["id"]),
+        ).lastrowid
+        lt = conn.execute(
+            "INSERT INTO legal_texts (category_id, type, title, tenant_id) "
+            "VALUES (?,?,?,?)",
+            (cat, "code", "نص أكسي", tns.acme["id"]),
+        ).lastrowid
+        aid = conn.execute(
+            "INSERT INTO articles (legal_text_id, number, label, content, "
+            "tenant_id) VALUES (?,?,?,?,?)",
+            (lt, "1", "المادة 1", "محتوى", tns.acme["id"]),
+        ).lastrowid
+    with _scope(tns.acme["id"]):
+        admin_a = tns.admin(tns.acme)
+        services_comparative.create_jurisdiction(
+            admin_a.id, {"slug": "acme-land", "name": "ولاية أكسي"}
+        )
+        a_study = services_comparative.create_study(
+            owner_a.id, {"title": "دراسة أكسي"}
+        )
+        jid = services_comparative.list_jurisdictions()[0]["id"]
+        services_comparative.add_entry(
+            owner_a.id, a_study["id"],
+            {"jurisdiction_id": jid, "article_id": aid, "note": "مقارنة أكسي"},
+        )
+    # مستأجر آخر لا يرى مقارنات الدراسة ولا يستطيع تعديلها
+    with _scope(tns.globex["id"]):
+        assert services_comparative.get_study(a_study["id"]) is None
+    # تعديل مقارنة أكسي عبر نطاق غلوبكس مرفوض (المقارنة غير موجودة في نطاقه)
+    owner_g = tns.user(tns.globex, _unique_email("cmpg2"), "citizen")
+    with _scope(tns.globex["id"]), pytest.raises(ComparativeError):
+        services_comparative.update_entry(owner_g.id, 1, {"note": "مقتحم"})

@@ -157,6 +157,7 @@ def create_app():
     from .routes.blog import blog_bp
     from .routes.calculators import calculators_bp
     from .routes.community import community_bp
+    from .routes.comparative import comparative_bp
     from .routes.documents import documents_bp
     from .routes.jurisprudence import jurisprudence_bp
     from .routes.library import library_bp
@@ -176,6 +177,7 @@ def create_app():
     app.register_blueprint(professionals_bp)
     app.register_blueprint(jurisprudence_bp)
     app.register_blueprint(community_bp)
+    app.register_blueprint(comparative_bp)
     app.register_blueprint(marketplace_bp)
     app.register_blueprint(notifications_bp)
     app.register_blueprint(ai_bp)

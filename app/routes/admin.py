@@ -13,6 +13,7 @@ from .. import (
     services_ads,
     services_analytics,
     services_blog,
+    services_comparative,
     services_ingestion,
     services_marketplace,
     services_notifications,
@@ -22,6 +23,7 @@ from ..middleware.auth_middleware import require_role
 from ..services_admin import AdminError
 from ..services_ads import AdError
 from ..services_blog import BlogError
+from ..services_comparative import ComparativeError
 from ..services_ingestion import IngestionError
 from ..services_marketplace import MarketplaceError
 from ..services_procedures import ProcedureError
@@ -51,6 +53,10 @@ def _handle_blog_error(exc: BlogError):
 
 
 def _handle_procedure_error(exc: ProcedureError):
+    return jsonify({"error": exc.message}), exc.status_code
+
+
+def _handle_comparative_error(exc: ComparativeError):
     return jsonify({"error": exc.message}), exc.status_code
 
 
@@ -660,3 +666,80 @@ def procedures_admin_delete(procedure_id):
     except AdminError as exc:
         return _handle_admin_error(exc)
     return jsonify({"id": procedure_id, "message": "تم حذف المسطرة."}), 200
+
+
+# ---------------------------------------------------------------------------
+# القانون المقارن (المرحلة 20 — D-038): إدارة الولايات القضائية وحالات الدراسات
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/api/admin/comparative/jurisdictions", methods=["GET"])
+@require_role("admin")
+def comparative_jurisdictions_list():
+    return jsonify({
+        "jurisdictions": services_comparative.list_jurisdictions()
+    }), 200
+
+
+@admin_bp.route("/api/admin/comparative/jurisdictions", methods=["POST"])
+@require_role("admin")
+def comparative_jurisdictions_create():
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        new_id = services_comparative.create_jurisdiction(_admin_id(), data)
+    except ComparativeError as exc:
+        return _handle_comparative_error(exc)
+    return jsonify({"id": new_id, "message": "تم إنشاء النظام القضائي."}), 201
+
+
+@admin_bp.route("/api/admin/comparative/jurisdictions/<int:jurisdiction_id>",
+                methods=["PUT"])
+@require_role("admin")
+def comparative_jurisdictions_update(jurisdiction_id):
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        services_comparative.update_jurisdiction(
+            _admin_id(), jurisdiction_id, data
+        )
+    except ComparativeError as exc:
+        return _handle_comparative_error(exc)
+    return jsonify({
+        "id": jurisdiction_id, "message": "تم تحديث النظام القضائي."
+    }), 200
+
+
+@admin_bp.route("/api/admin/comparative/jurisdictions/<int:jurisdiction_id>",
+                methods=["DELETE"])
+@require_role("admin")
+def comparative_jurisdictions_delete(jurisdiction_id):
+    try:
+        services_comparative.delete_jurisdiction(_admin_id(), jurisdiction_id)
+    except ComparativeError as exc:
+        return _handle_comparative_error(exc)
+    return jsonify({
+        "id": jurisdiction_id, "message": "تم حذف النظام القضائي."
+    }), 200
+
+
+@admin_bp.route("/api/admin/comparative/studies", methods=["GET"])
+@require_role("admin")
+def comparative_studies_list():
+    return jsonify({
+        "studies": services_comparative.list_studies_admin(
+            status=request.args.get("status") or None,
+            q=request.args.get("q"),
+        ),
+    }), 200
+
+
+@admin_bp.route("/api/admin/comparative/studies/<int:study_id>/status",
+                methods=["PUT"])
+@require_role("admin")
+def comparative_studies_status(study_id):
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        result = services_comparative.set_study_status(
+            _admin_id(), study_id, data.get("status")
+        )
+    except ComparativeError as exc:
+        return _handle_comparative_error(exc)
+    return jsonify(result), 200

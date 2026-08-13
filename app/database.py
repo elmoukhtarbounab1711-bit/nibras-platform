@@ -757,6 +757,57 @@ CREATE INDEX IF NOT EXISTS idx_jurisprudence_categories_tenant
 CREATE INDEX IF NOT EXISTS idx_jurisprudence_tenant
     ON jurisprudence(tenant_id);
 
+-- =====================================================================
+-- القانون المقارن (المرحلة 20 — قرار D-038): مقارنة نصوص من ولايات
+-- قضائية متعددة حول موضوع واحد. دراسة مقارنة (comparative_studies)
+-- تجمع مقارنات (comparative_entries) كلٌّ منها يرجع إلى ولاية قضائية
+-- (law_jurisdictions) ونصٍّ ومادة في مكتبة النصوص.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS law_jurisdictions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug        TEXT UNIQUE NOT NULL COLLATE NOCASE,
+    name        TEXT NOT NULL,
+    tenant_id   INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS comparative_studies (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                -- منشئ الدراسة (أي مستخدم مسجَّل)
+    title       TEXT NOT NULL,
+    description TEXT,
+    status      TEXT NOT NULL DEFAULT 'draft',
+                -- draft | published | hidden (نشر إداري حصري)
+    tenant_id   INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS comparative_entries (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    study_id        INTEGER NOT NULL REFERENCES comparative_studies(id)
+                            ON DELETE CASCADE,
+    jurisdiction_id INTEGER NOT NULL REFERENCES law_jurisdictions(id),
+    legal_text_id   INTEGER REFERENCES legal_texts(id) ON DELETE CASCADE,
+                    -- النص المقارن (اختياري مع المادة)
+    article_id      INTEGER REFERENCES articles(id) ON DELETE CASCADE,
+                    -- المادة المقارنة داخل النص
+    note            TEXT,             -- ملاحظة الباحث حول الجانب المقارن
+    position        INTEGER NOT NULL DEFAULT 0,
+    tenant_id       INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_law_jurisdictions_tenant
+    ON law_jurisdictions(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_comparative_studies_tenant
+    ON comparative_studies(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_comparative_entries_tenant
+    ON comparative_entries(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_comparative_entries_study
+    ON comparative_entries(study_id);
+
 -- فهارس عزل المستأجر (D-036): تسريع كل بحث مُقيَّد بـ tenant_id
 -- (تُنشأ بعد كل الجداول لأن marketplace/ads تُعرَّف لاحقًا في المخطط)
 CREATE INDEX IF NOT EXISTS idx_categories_tenant ON categories(tenant_id);
@@ -913,6 +964,9 @@ def init_db(reset: bool = False):
             "ad_events",
             "jurisprudence_categories",
             "jurisprudence",
+            "law_jurisdictions",
+            "comparative_studies",
+            "comparative_entries",
         ):
             if _table_exists(conn, _t):
                 _ensure_column(conn, _t, "tenant_id", "INTEGER REFERENCES tenants(id)")
@@ -968,6 +1022,7 @@ def init_db(reset: bool = False):
         services_blog,
         services_calculators,
         services_community,
+        services_comparative,
         services_documents,
         services_jurisprudence,
         services_marketplace,
@@ -985,6 +1040,7 @@ def init_db(reset: bool = False):
     services_ads.ensure_defaults()
     services_blog.ensure_defaults()
     services_jurisprudence.ensure_defaults()
+    services_comparative.ensure_defaults()
     # المستأجر الافتراضي ثم إلحاق المستخدمين الموجودين به (idempotent)
     services_tenants.ensure_defaults()
     services_tenants.backfill_default_tenant()
