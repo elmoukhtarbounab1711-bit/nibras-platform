@@ -245,6 +245,13 @@ def create_app():
     def frontend_vendor(filename):
         return send_from_directory(str(_vendor_dir), filename)
 
+    @app.route("/<path:path>")
+    def spa_catch_all(path):
+        _api_prefixes = ("api/", "assets/", "vendor/")
+        if any(path.startswith(p) for p in _api_prefixes):
+            abort(404)
+        return send_from_directory(str(frontend_dir), "index.html")
+
     @app.errorhandler(404)
     def not_found(e):
         return jsonify({"error": "المسار غير موجود"}), 404
