@@ -216,6 +216,28 @@ async function adsPanel() {
   const searchI = el("input", { type: "search", placeholder: t("search"), oninput: (e) => { q = e.target.value.trim().toLowerCase(); page = 1; draw(); } });
   const pager = el("div", { class: "adm-pager" });
 
+  // خريطة أسماء الفئات للاستهداف الفئوي (المرحلة 19 — D-037)
+  const catNames = {};
+  (async () => {
+    const sources = {
+      library: "/api/categories",
+      marketplace: "/api/marketplace/categories",
+      jurisprudence: "/api/admin/jurisprudence/categories",
+    };
+    for (const [dtype, url] of Object.entries(sources)) {
+      try {
+        const data = await api.get(url);
+        const cats = data.categories || data || [];
+        for (const c of cats) catNames[`${dtype}:${c.id}`] = c.name;
+      } catch (e) { /* تجاهل */ }
+    }
+    draw();
+  })();
+
+  const catLabel = (c) => c.target_category_type
+    ? `${t("targetCategory")}: ${catNames[`${c.target_category_type}:${c.target_category_id}`] || c.target_category_type} (#${c.target_category_id})`
+    : t("targetCategoryNone");
+
   async function setBulkStatus(status) {
     const ids = camps.map((c) => c.id);
     if (!ids.length) return;
@@ -238,6 +260,9 @@ async function adsPanel() {
         el("td", { class: "cell-main" }, [
           el("span", { class: "t", text: c.advertiser_name || `#${c.id}` }),
           el("span", { class: "s", text: [c.campaign_type, c.slot_name].filter(Boolean).join(" · ") }),
+          c.target_category_type
+            ? el("span", { class: "s", text: catLabel(c) })
+            : null,
         ]),
         el("td", {}, badge(c.status || "—", c.status === "active" ? "green" : c.status === "paused" ? "gold" : "red")),
         el("td", { class: "num", text: num(c.impressions) }),
@@ -302,6 +327,48 @@ function campaignModal(c, slots, onDone) {
   ]);
   if (c?.status) statusS.value = c.status;
 
+  // ---- الاستهداف الفئوي (المرحلة 19 — D-037) ----
+  const CAT_SOURCES = {
+    library: "/api/categories",
+    marketplace: "/api/marketplace/categories",
+    jurisprudence: "/api/admin/jurisprudence/categories",
+  };
+  const targetTypeS = select({}, [
+    el("option", { value: "", text: t("targetCategoryNone") }),
+    el("option", { value: "library", text: t("library") }),
+    el("option", { value: "marketplace", text: t("templatesTitle") }),
+    el("option", { value: "jurisprudence", text: t("jurisprudence") }),
+  ]);
+  const targetCatS = select({ disabled: true }, [el("option", { value: "", text: "--" })]);
+  if (c?.target_category_type) targetTypeS.value = c.target_category_type;
+
+  async function loadTargetCategories(dtype) {
+    targetCatS.replaceChildren(el("option", { value: "", text: "--" }));
+    targetCatS.disabled = true;
+    if (!dtype) return;
+    try {
+      const data = await api.get(CAT_SOURCES[dtype]);
+      const cats = data.categories || data || [];
+      targetCatS.replaceChildren(
+        el("option", { value: "", text: "--" }),
+        ...cats.map((x) => el("option", { value: String(x.id), text: x.name })),
+      );
+      targetCatS.disabled = false;
+      if (c?.target_category_type === dtype && c?.target_category_id != null) {
+        targetCatS.value = String(c.target_category_id);
+      }
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  }
+  loadTargetCategories(targetTypeS.value);
+  targetTypeS.addEventListener("change", () => loadTargetCategories(targetTypeS.value));
+  const targetWrap = el("div", { class: "adm-grid-2" }, [
+    field(t("targetCategoryType"), targetTypeS),
+    field(t("targetCategoryId"), targetCatS),
+  ]);
+  const targetHint = el("div", { class: "small muted", style: "margin-top:-6px", text: t("targetHint") });
+
   openModal(el("div", {}, [
     el("h2", { text: c ? t("editCampaign") : t("newCampaign") }),
     field(t("advertiserName") + " *", advertiser),
@@ -311,6 +378,8 @@ function campaignModal(c, slots, onDone) {
     ]),
     field(t("creativeUrl"), creative),
     field(t("targetUrl"), target),
+    targetWrap,
+    targetHint,
     el("div", { class: "adm-grid-2" }, [
       field(t("startsAt"), starts),
       field(t("endsAt"), ends),
@@ -326,6 +395,14 @@ function campaignModal(c, slots, onDone) {
           creative_url: creative.value.trim() || undefined, target_url: target.value.trim() || undefined,
           starts_at: starts.value || undefined, ends_at: ends.value || undefined,
         };
+        if (targetTypeS.value) {
+          payload.target_category_type = targetTypeS.value;
+          payload.target_category_id = Number(targetCatS.value);
+          if (!targetCatS.value) return toast(t("required"), "warn");
+        } else {
+          payload.target_category_type = "";
+          payload.target_category_id = undefined;
+        }
         try {
           if (c) await api.put(`/api/admin/ads/campaigns/${c.id}`, payload);
           else await api.post("/api/admin/ads/campaigns", payload);

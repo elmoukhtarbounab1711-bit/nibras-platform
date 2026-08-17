@@ -13,13 +13,21 @@ from . import tenant_scope
 from .database import db_session
 
 # فئات بوابة المقالات (مستقلة عن فئات مكتبة النصوص والمجتمع — قرار D-024)
+# فئات قانونية موضوعية + فئة "الدراسات المقارنة" المرتبطة بالدول.
 CATEGORY_SEED = (
-    ("news", "أخبار قانونية"),
-    ("explanations", "شروحات وملخصات"),
-    ("opinions", "آراء وتحليلات"),
-    ("guides", "دليل عملي"),
-    ("career", "المسار المهني"),
+    ("madani", "المدني"),
+    ("jinai", "الجنائي"),
+    ("idari", "الإداري"),
+    ("tijari", "التجاري"),
+    ("dostouri", "الدستوري"),
+    ("ijtimai", "الاجتماعي"),
+    ("ahwal-shakhsiya", "الأحوال الشخصية"),
+    ("mali", "المالي"),
+    ("ijrai-aqari", "الإجرائي العقاري"),
+    ("comparative", "الدراسات المقارنة"),
 )
+
+COMPARATIVE_CATEGORY_SLUG = "comparative"
 
 DEFAULT_LIST_LIMIT = 12
 MAX_LIST_LIMIT = 100
@@ -35,11 +43,15 @@ class BlogError(Exception):
 
 
 def ensure_defaults():
-    """بذر فئات المقالات إن كانت فارغة (idempotent — نمط ensure_defaults)."""
+    """بذر فئات المقالات الناقصة (idempotent — تُدرج المفقود فقط)."""
     with db_session() as conn:
-        count = conn.execute("SELECT COUNT(*) AS c FROM blog_categories").fetchone()["c"]
-        if count == 0:
-            for slug, name in CATEGORY_SEED:
+        existing = {
+            r["slug"] for r in conn.execute(
+                "SELECT slug FROM blog_categories"
+            ).fetchall()
+        }
+        for slug, name in CATEGORY_SEED:
+            if slug not in existing:
                 conn.execute(
                     "INSERT INTO blog_categories (slug, name, tenant_id) "
                     "VALUES (?, ?, ?)",
@@ -55,6 +67,52 @@ def _category_exists(conn, category_id) -> bool:
         query += " AND " + cond
         params.extend(vals)
     return conn.execute(query, params).fetchone() is not None
+
+
+def _category_slug(conn, category_id) -> str:
+    query = "SELECT slug FROM blog_categories WHERE id = ?"
+    params = [category_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        query += " AND " + cond
+        params.extend(vals)
+    row = conn.execute(query, params).fetchone()
+    return row["slug"] if row else None
+
+
+def _comparative_jurisdiction_exists(conn, jurisdiction_id) -> bool:
+    query = ("SELECT 1 FROM law_jurisdictions "
+             "WHERE id = ? AND is_comparative = 1")
+    params = [jurisdiction_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        query += " AND " + cond
+        params.extend(vals)
+    return conn.execute(query, params).fetchone() is not None
+
+
+def _resolve_jurisdiction(conn, category_slug, raw):
+    """يجعل اختيار الدولة حصرًا على فئة «الدراسات المقارنة».
+
+    عودة: jurisdiction_id (عدد أو None) أو IOException للفئة غير المقارنة.
+    """
+    if raw in (None, ""):
+        jurisdiction_id = None
+    else:
+        try:
+            jurisdiction_id = int(raw)
+        except (TypeError, ValueError):
+            raise BlogError("jurisdiction_id يجب أن يكون رقمًا.", 400)
+    if category_slug == COMPARATIVE_CATEGORY_SLUG:
+        if jurisdiction_id is None:
+            raise BlogError(
+                "أخبر الدولة القضائية عند اختيار فئة الدراسات المقارنة.", 400)
+        if not _comparative_jurisdiction_exists(conn, jurisdiction_id):
+            raise BlogError("الدولة القضائية غير موجودة.", 400)
+    elif jurisdiction_id is not None:
+        raise BlogError(
+            "اختيار الدولة مخصص لفئة الدراسات المقارنة فقط.", 400)
+    return jurisdiction_id
 
 
 def _author_fields(conn, user_id: int) -> dict:
@@ -93,7 +151,8 @@ def _base_columns(extra: str = "") -> str:
     like_scope = " AND l.tenant_id IS a.tenant_id" if tenant_scope.active() else ""
     com_scope = " AND c.tenant_id IS a.tenant_id" if tenant_scope.active() else ""
     return (
-        "SELECT a.id, a.user_id, a.category_id, a.title, a.cover_url, a.summary, "
+        "SELECT a.id, a.user_id, a.category_id, a.jurisdiction_id, a.title, "
+        "a.cover_url, a.summary, "
         "a.body, a.keywords, a.status, a.views, a.published_at, a.created_at, "
         "a.updated_at, u.full_name AS author_name, "
         "COALESCE((SELECT COUNT(*) FROM blog_likes l "
@@ -101,11 +160,13 @@ def _base_columns(extra: str = "") -> str:
         "COALESCE((SELECT COUNT(*) FROM blog_comments c "
         f"          WHERE c.article_id = a.id AND c.status = 'visible'{com_scope}), 0) "
         "AS comment_count, "
-        "bc.name AS category_name, bc.slug AS category_slug"
+        "bc.name AS category_name, bc.slug AS category_slug, "
+        "j.name AS jurisdiction_name, j.slug AS jurisdiction_slug"
         + extra
         + " FROM blog_articles a "
         "JOIN users u ON u.id = a.user_id "
-        "LEFT JOIN blog_categories bc ON bc.id = a.category_id"
+        "LEFT JOIN blog_categories bc ON bc.id = a.category_id "
+        "LEFT JOIN law_jurisdictions j ON j.id = a.jurisdiction_id"
     )
 
 
@@ -135,8 +196,8 @@ def list_categories():
         return [dict(r) for r in rows]
 
 
-def list_articles(category=None, q=None, limit: int = DEFAULT_LIST_LIMIT,
-                  offset: int = 0):
+def list_articles(category=None, q=None, jurisdiction_id=None,
+                  limit: int = DEFAULT_LIST_LIMIT, offset: int = 0):
     """قائمة المقالات المنشورة فقط (الخاصة بالعموم)."""
     limit = max(1, min(int(limit or DEFAULT_LIST_LIMIT), MAX_LIST_LIMIT))
     offset = max(0, int(offset or 0))
@@ -149,6 +210,9 @@ def list_articles(category=None, q=None, limit: int = DEFAULT_LIST_LIMIT,
     if category:
         conditions.append("bc.slug = ?")
         params.append(category)
+    if jurisdiction_id:
+        conditions.append("a.jurisdiction_id = ?")
+        params.append(int(jurisdiction_id))
     if q:
         like = f"%{q.strip()}%"
         conditions.append("(a.title LIKE ? OR a.summary LIKE ? OR a.body LIKE ? "
@@ -166,6 +230,34 @@ def list_articles(category=None, q=None, limit: int = DEFAULT_LIST_LIMIT,
         rows = conn.execute(query, params + [limit, offset]).fetchall()
         articles = [_scoped(conn, dict(r)) for r in rows]
         return {"count": total, "articles": articles}
+
+
+def list_comparative_articles(jurisdiction_id: int,
+                              limit: int = 100, offset: int = 0):
+    """مقالات «الدراسات المقارنة» المنشورة لدولة قضائية معينة.
+
+    تُغذّي صفحة الدراسات المقارنة داخل صفحة الولاية في القانون المقارن.
+    """
+    limit = max(1, min(int(limit or 100), 200))
+    offset = max(0, int(offset or 0))
+    conditions = [
+        "a.status = 'published'",
+        "a.jurisdiction_id = ?",
+        "bc.slug = ?",
+    ]
+    params = [int(jurisdiction_id), COMPARATIVE_CATEGORY_SLUG]
+    cond, vals = tenant_scope.tenant_eq("a")
+    if cond:
+        conditions.append(cond)
+        params.extend(vals)
+    query = _base_columns() + " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY a.published_at DESC, a.id DESC LIMIT ? OFFSET ?"
+    params += [limit, offset]
+    with db_session() as conn:
+        rows = conn.execute(query, params).fetchall()
+        articles = [_scoped(conn, dict(r)) for r in rows]
+        return {"count": len(articles) if offset == 0 else None,
+                "articles": articles}
 
 
 def get_article(article_id: int, viewer_id=None, include_internal=False):
@@ -227,15 +319,20 @@ def create_article(user_id: int, data: dict, is_admin: bool = False) -> dict:
     with db_session() as conn:
         if category_id is not None and not _category_exists(conn, category_id):
             raise BlogError("التصنيف غير موجود.", 400)
+        category_slug = _category_slug(conn, category_id) if category_id is not None else None
+        jurisdiction_id = _resolve_jurisdiction(
+            conn, category_slug, data.get("jurisdiction_id"))
         published_at = "datetime('now')" if status == "published" else "NULL"
         cur = conn.execute(
             f"""INSERT INTO blog_articles
                 (user_id, category_id, title, cover_url, summary, body, keywords,
-                 status, views, published_at, tenant_id, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, {published_at}, ?,
+                 status, views, published_at, jurisdiction_id, tenant_id,
+                 created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, {published_at}, ?, ?,
                         datetime('now'), datetime('now'))""",
             (user_id, category_id, title, cover_url, summary or None, body,
-             keywords or None, status, tenant_scope.insert_tenant_id()),
+             keywords or None, status, jurisdiction_id,
+             tenant_scope.insert_tenant_id()),
         )
         article_id = cur.lastrowid
     return {"id": article_id, "status": status, "message": "تم إنشاء المقال."}
@@ -262,9 +359,18 @@ def update_article(actor_id: int, article_id: int, data: dict,
             raise BlogError("المقال غير موجود.", 404)
         if row["user_id"] != actor_id and not is_admin:
             raise BlogError("لا يمكنك تعديل مقال لا تملكه.", 403)
+        cur_cat = conn.execute(
+            "SELECT category_id FROM blog_articles WHERE id = ?",
+            (article_id,),
+        ).fetchone()["category_id"]
         if ("category_id" in updates and updates["category_id"] is not None
                 and not _category_exists(conn, updates["category_id"])):
             raise BlogError("التصنيف غير موجود.", 400)
+        if "jurisdiction_id" in data or "category_id" in updates:
+            effective_slug = _category_slug(
+                conn, updates.get("category_id", cur_cat))
+            updates["jurisdiction_id"] = _resolve_jurisdiction(
+                conn, effective_slug, data.get("jurisdiction_id"))
         sets = ", ".join(f"{k} = ?" for k in updates)
         upd_q = (
             f"UPDATE blog_articles SET {sets}, updated_at = datetime('now') "

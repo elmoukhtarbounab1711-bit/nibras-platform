@@ -27,7 +27,13 @@ def _clamped_args():
 
 @jurisprudence_bp.route("/api/jurisprudence/categories", methods=["GET"])
 def list_categories():
-    return jsonify(services_jurisprudence.list_categories())
+    jid = request.args.get("jurisdiction_id")
+    if jid not in (None, ""):
+        try:
+            jid = int(jid)
+        except (TypeError, ValueError):
+            return jsonify({"error": "jurisdiction_id يجب أن يكون رقمًا."}), 400
+    return jsonify(services_jurisprudence.list_categories(jurisdiction_id=jid))
 
 
 @jurisprudence_bp.route("/api/jurisprudence", methods=["GET"])
@@ -38,6 +44,7 @@ def list_decisions():
     limit, offset = args
     return jsonify(services_jurisprudence.list_decisions(
         category_slug=request.args.get("category"),
+        jurisdiction_id=request.args.get("jurisdiction_id"),
         limit=limit,
         offset=offset,
     ))

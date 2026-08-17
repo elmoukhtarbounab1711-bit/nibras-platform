@@ -145,6 +145,16 @@ function textModal(r, cats, onDone) {
   const source = el("textarea", { text: r?.source_note || "", placeholder: t("sourceNote") });
   const sampleCb = el("input", { type: "checkbox" });
   sampleCb.checked = r ? Number(r.is_sample_data) === 1 : true;
+  const jurS = select({}, [el("option", { value: "", text: "—" })]);
+  (async () => {
+    try {
+      const data = await api.get("/api/comparative/jurisdictions");
+      const juris = data.jurisdictions || [];
+      jurS.replaceChildren(el("option", { value: "", text: "—" }),
+        ...juris.map((j) => el("option", { value: String(j.id), text: j.name })));
+      if (r?.jurisdiction_id) jurS.value = String(r.jurisdiction_id);
+    } catch (e) { /* تجاهل */ }
+  })();
 
   openModal(el("div", {}, [
     el("h2", { text: r ? t("editText") : t("newText") }),
@@ -153,6 +163,7 @@ function textModal(r, cats, onDone) {
       field(t("category") + " *", catS),
       field(t("type") + " *", typeS),
     ]),
+    field(t("jurisdiction") + " (" + t("comparative") + ")", jurS),
     field(t("officialRef"), officialRef),
     el("div", { class: "adm-grid-2" }, [
       field(t("enactedDate"), enacted),
@@ -173,6 +184,7 @@ function textModal(r, cats, onDone) {
           official_ref: officialRef.value.trim() || undefined,
           enacted_date: enacted.value || undefined, last_amended: amended.value || undefined,
           source_note: source.value.trim() || undefined,
+          jurisdiction_id: jurS.value ? Number(jurS.value) : undefined,
           is_sample_data: sampleCb.checked ? 1 : 0,
         };
         try {

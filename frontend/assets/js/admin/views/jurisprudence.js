@@ -91,6 +91,16 @@ function decisionModal(d, onDone) {
   const numI = input({ value: d?.decision_number || "" });
   const dateI = input({ type: "date", value: d?.decision_date || "" });
   const srcI = input({ value: d?.source_note || "" });
+  const jurS = select({}, [el("option", { value: "", text: "—" })]);
+  (async () => {
+    try {
+      const data = await api.get("/api/comparative/jurisdictions");
+      const juris = data.jurisdictions || [];
+      jurS.replaceChildren(el("option", { value: "", text: "—" }),
+        ...juris.map((j) => el("option", { value: String(j.id), text: j.name })));
+      if (d?.jurisdiction_id) jurS.value = String(d.jurisdiction_id);
+    } catch { }
+  })();
 
   (async () => {
     try {
@@ -106,6 +116,7 @@ function decisionModal(d, onDone) {
       field(t("title") + " *", titleI),
       field(t("category"), catEl),
     ]),
+    field(t("jurisdiction") + " (" + t("comparative") + ")", jurS),
     field(t("court"), courtI),
     el("div", { class: "adm-grid-2" }, [
       field(t("decisionNr"), numI),
@@ -123,6 +134,7 @@ function decisionModal(d, onDone) {
           content: contentI.value.trim(),
           principles: principlesI.value.trim() || "",
           category_slug: catEl.value || "",
+          jurisdiction_id: jurS.value ? Number(jurS.value) : undefined,
           court: courtI.value.trim() || "",
           decision_number: numI.value.trim() || "",
           decision_date: dateI.value || "",

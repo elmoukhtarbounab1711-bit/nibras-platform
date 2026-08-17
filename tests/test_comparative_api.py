@@ -26,7 +26,7 @@ def _admin():
     return _user("admin-cmp@nibras.test", "admin")
 
 
-def _jurisdiction(client, slug="morocco"):
+def _jurisdiction(client, slug="france"):
     resp = client.get("/api/comparative/jurisdictions")
     assert resp.status_code == 200
     return next(
@@ -51,7 +51,7 @@ def test_public_jurisdictions(client):
     resp = client.get("/api/comparative/jurisdictions")
     assert resp.status_code == 200
     data = resp.get_json()["jurisdictions"]
-    assert len(data) >= 8
+    assert len(data) >= 7
     assert all("name" in j and "slug" in j for j in data)
 
 

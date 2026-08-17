@@ -48,12 +48,27 @@ def _create_article(client, token, **overrides):
     return client.post("/api/blog/articles", json=data, headers=_headers(token))
 
 
+def _blog_cat_id(slug):
+    with db_session() as conn:
+        return conn.execute(
+            "SELECT id FROM blog_categories WHERE slug = ?", (slug,)
+        ).fetchone()["id"]
+
+
+def _jur_id(slug):
+    with db_session() as conn:
+        return conn.execute(
+            "SELECT id FROM law_jurisdictions WHERE slug = ?", (slug,)
+        ).fetchone()["id"]
+
+
 def test_categories_public(client):
     resp = client.get("/api/blog/categories")
     assert resp.status_code == 200
     slugs = [c["slug"] for c in resp.get_json()]
-    assert "explanations" in slugs
-    assert "guides" in slugs
+    assert "madani" in slugs
+    assert "comparative" in slugs
+    assert "ahwal-shakhsiya" in slugs
 
 
 def test_blog_list_requires_no_auth(client):
@@ -243,3 +258,60 @@ def test_my_articles(client):
     resp = client.get("/api/blog/my", headers=_headers(token))
     assert resp.status_code == 200
     assert len(resp.get_json()["articles"]) == 1
+
+
+def test_comparative_category_requires_jurisdiction(client):
+    _register(client)
+    token = _login(client, "citizen@blog.test")
+    resp = _create_article(
+        client, token, category_id=_blog_cat_id("comparative"))
+    assert resp.status_code == 400
+    assert "الدولة" in resp.get_json()["error"]
+
+
+def test_jurisdiction_rejected_outside_comparative(client):
+    admin_token = _make_admin_token()
+    resp = _create_article(
+        client, admin_token, category_id=_blog_cat_id("madani"),
+        jurisdiction_id=_jur_id("egypt"))
+    assert resp.status_code == 400
+    assert "مخصص" in resp.get_json()["error"]
+
+
+def test_comparative_article_published_shows_on_jurisdiction_page(client):
+    admin_token = _make_admin_token()
+    resp = _create_article(
+        client, admin_token, title="مقارنة مصر",
+        category_id=_blog_cat_id("comparative"),
+        jurisdiction_id=_jur_id("egypt"))
+    assert resp.status_code == 201
+    assert resp.get_json()["status"] == "published"
+
+    egypt = client.get(
+        "/api/comparative/jurisdictions/egypt/articles").get_json()["articles"]
+    assert any(a["title"] == "مقارنة مصر" for a in egypt)
+    france = client.get(
+        "/api/comparative/jurisdictions/france/articles").get_json()["articles"]
+    assert not any(a["title"] == "مقارنة مصر" for a in france)
+    listing = client.get(
+        "/api/blog/articles?category=comparative").get_json()["articles"]
+    assert any(a["title"] == "مقارنة مصر" for a in listing)
+
+
+def test_update_comparative_article_keeps_jurisdiction(client):
+    _register(client)
+    token = _login(client, "citizen@blog.test")
+    # المستخدم ينشئ مقارنة مع الدولة (يبدأ pending) ثم يُحدِّث النص فقط
+    article_id = _create_article(
+        client, token, category_id=_blog_cat_id("comparative"),
+        jurisdiction_id=_jur_id("egypt")).get_json()["id"]
+    resp = client.put(
+        f"/api/blog/articles/{article_id}",
+        json={"body": "نص محدث"},
+        headers=_headers(token),
+    )
+    assert resp.status_code == 200
+    detail = client.get(
+        f"/api/blog/articles/{article_id}", headers=_headers(token)).get_json()
+    assert detail["jurisdiction_id"] == _jur_id("egypt")
+    assert detail["category_slug"] == "comparative"

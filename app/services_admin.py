@@ -30,7 +30,7 @@ _PROFESSIONAL_ROLES = tuple(sorted(PROFESSIONAL_ROLES))
 _TEXT_FIELDS = (
     "category_id", "type", "title", "official_ref",
     "enacted_date", "last_amended", "source_note",
-    "description", "issuing_body",
+    "description", "issuing_body", "jurisdiction_id",
 )
 _ARTICLE_FIELDS = ("number", "label", "content", "plain_explanation", "keywords")
 
@@ -116,6 +116,27 @@ def _coerce_sample_flag(value):
     raise AdminError("قيمة is_sample_data غير صالحة", 400)
 
 
+def _coerce_jurisdiction_id(data):
+    """يعيد معرّف الولاية القضائية كعدد صحيح أو None (فارغ/غائب)."""
+    value = data.get("jurisdiction_id")
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise AdminError("jurisdiction_id يجب أن يكون رقمًا.", 400)
+
+
+def _jurisdiction_exists(conn, jurisdiction_id):
+    query = "SELECT 1 FROM law_jurisdictions WHERE id = ?"
+    params = [jurisdiction_id]
+    cond, vals = tenant_scope.tenant_eq()
+    if cond:
+        query += " AND " + cond
+        params.extend(vals)
+    return conn.execute(query, params).fetchone() is not None
+
+
 # ---------------------------------------------------------------------------
 # إدارة النصوص القانونية
 # ---------------------------------------------------------------------------
@@ -146,13 +167,13 @@ def create_text(admin_id, data):
             raise AdminError("القسم غير موجود", 404)
         cur = conn.execute(
             """INSERT INTO legal_texts
-               (category_id, type, title, official_ref, enacted_date, last_amended, source_note, is_sample_data, tenant_id)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
+               (category_id, type, title, official_ref, enacted_date, last_amended, source_note, is_sample_data, jurisdiction_id, tenant_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (
                 category_id, text_type, title,
                 data.get("official_ref"), data.get("enacted_date"),
                 data.get("last_amended"), data.get("source_note"), is_sample_data,
-                tenant_scope.insert_tenant_id(),
+                _coerce_jurisdiction_id(data), tenant_scope.insert_tenant_id(),
             ),
         )
         new_id = cur.lastrowid
@@ -168,6 +189,11 @@ def _compute_text_updates(conn, data):
             updates[field] = data[field]
     if "is_sample_data" in data:
         updates["is_sample_data"] = _coerce_sample_flag(data["is_sample_data"])
+    if "jurisdiction_id" in updates:
+        jid = _coerce_jurisdiction_id(updates)
+        if jid is not None and not _jurisdiction_exists(conn, jid):
+            raise AdminError("الولاية القضائية غير موجودة", 404)
+        updates["jurisdiction_id"] = jid
     if "category_id" in updates:
         cat_q = "SELECT id FROM categories WHERE id = ?"
         cat_params = [updates["category_id"]]

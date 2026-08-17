@@ -5,61 +5,67 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>لوحة إدارة نبراس</title>
 <style>
-  :root{
-    --bg:#0f1419; --panel:#161d26; --panel2:#1c2530; --line:#2a3542;
-    --text:#e8edf2; --muted:#9fb0c0; --accent:#3b6b4f; --accent2:#7FBF9A;
-    --danger:#b83c3c; --warn:#d9a13b;
-  }
-  *{box-sizing:border-box; margin:0; padding:0;}
-  body{background:var(--bg); color:var(--text);
-    font-family:"IBM Plex Sans Arabic","Segoe UI",system-ui,sans-serif;
-    line-height:1.6; padding:0 16px 60px;}
-  header{padding:20px 0 14px; border-bottom:1px solid var(--line); margin-bottom:18px;
-    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;}
-  header h1{font-size:20px; font-weight:700;}
-  header .sub{color:var(--muted); font-size:12px;}
-  nav{display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;}
-  nav button{background:var(--panel); color:var(--text); border:1px solid var(--line);
-    padding:8px 16px; border-radius:8px; cursor:pointer; font-size:14px;}
-  nav button.active{background:var(--accent); border-color:var(--accent); color:#fff;}
-  nav button:hover{border-color:var(--accent2);}
-  .panel{background:var(--panel); border:1px solid var(--line); border-radius:12px;
-    padding:18px; margin-bottom:18px;}
-  .panel h2{font-size:16px; margin-bottom:12px; color:var(--accent2);}
-  table{width:100%; border-collapse:collapse; font-size:13px;}
-  th,td{text-align:right; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top;}
-  th{color:var(--muted); font-weight:600; white-space:nowrap;}
-  tr:hover td{background:var(--panel2);}
-  input,select,textarea{width:100%; background:var(--panel2); border:1px solid var(--line);
-    color:var(--text); padding:8px 10px; border-radius:8px; font-size:13px; font-family:inherit;}
-  input:focus,select:focus,textarea:focus{outline:none; border-color:var(--accent2);}
-  textarea{min-height:90px; resize:vertical;}
-  label{display:block; font-size:12px; color:var(--muted); margin:10px 0 4px;}
-  .row{display:flex; gap:10px; flex-wrap:wrap;}
-  .row > div{flex:1; min-width:150px;}
-  .btn{background:var(--panel2); border:1px solid var(--line); color:var(--text);
-    padding:6px 14px; border-radius:8px; cursor:pointer; font-size:13px;}
-  .btn:hover{border-color:var(--accent2);}
-  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
-  .btn.danger{background:transparent; border-color:var(--danger); color:#e39b9b;}
-  .btn.small{padding:3px 10px; font-size:12px;}
-  .btn:disabled{opacity:.5; cursor:not-allowed;}
-  .actions{display:flex; gap:6px; flex-wrap:wrap;}
-  .muted{color:var(--muted); font-size:12px;}
-  .badge{display:inline-block; padding:2px 10px; border-radius:20px; font-size:11px;
-    background:var(--panel2); border:1px solid var(--line);}
-  .badge.pending{color:var(--warn); border-color:var(--warn);}
-  #login{max-width:380px; margin:60px auto 0;}
-  #login h1{text-align:center; margin-bottom:22px; font-size:22px;}
-  .form-actions{margin-top:16px; display:flex; gap:8px; justify-content:flex-start;}
-  #toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
-    background:#1c2530; border:1px solid var(--accent2); color:var(--text);
-    padding:10px 20px; border-radius:8px; display:none; z-index:10; max-width:90%;}
-  #toast.show{display:block;}
-  #toast.error{border-color:var(--danger);}
-  .empty{color:var(--muted); text-align:center; padding:24px 0;}
-  .article-content{max-width:480px; white-space:nowrap; overflow:hidden;
-    text-overflow:ellipsis;}
+:root{
+  --bg:#0f1419; --panel:#161d26; --panel2:#1c2530; --line:#2a3542;
+  --text:#e8edf2; --muted:#9fb0c0; --accent:#3b6b4f; --accent2:#7FBF9A;
+  --danger:#b83c3c; --warn:#d9a13b; --blue:#3b6b8f;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:"IBM Plex Sans Arabic","Segoe UI",system-ui,sans-serif;line-height:1.6}
+a{color:var(--accent2);text-decoration:none}
+header{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;background:var(--panel)}
+header h1{font-size:18px;font-weight:700}
+header .sub{color:var(--muted);font-size:12px}
+.layout{display:flex;min-height:calc(100vh - 60px)}
+.sidebar{width:220px;background:var(--panel);border-left:1px solid var(--line);padding:12px 0;flex-shrink:0}
+.sidebar button{display:block;width:100%;text-align:right;background:none;border:none;color:var(--muted);padding:10px 18px;font-size:13px;cursor:pointer;font-family:inherit;border-right:3px solid transparent}
+.sidebar button:hover{color:var(--text);background:var(--panel2)}
+.sidebar button.active{color:var(--accent2);border-right-color:var(--accent2);background:var(--panel2)}
+.main{flex:1;padding:20px;overflow-y:auto;max-height:calc(100vh - 60px)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:18px}
+.panel h2{font-size:15px;margin-bottom:12px;color:var(--accent2)}
+.stat-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.stat-card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:16px;flex:1;min-width:140px}
+.stat-card .num{font-size:26px;font-weight:700;color:var(--accent2)}
+.stat-card .label{font-size:11px;color:var(--muted);margin-top:2px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:right;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;white-space:nowrap}
+tr:hover td{background:var(--panel2)}
+input,select,textarea{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:8px 10px;border-radius:8px;font-size:13px;font-family:inherit}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent2)}
+textarea{min-height:80px;resize:vertical}
+label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row>div{flex:1;min-width:150px}
+.btn{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-family:inherit}
+.btn:hover{border-color:var(--accent2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger{background:transparent;border-color:var(--danger);color:#e39b9b}
+.btn.small{padding:3px 10px;font-size:12px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.actions{display:flex;gap:6px;flex-wrap:wrap}
+.muted{color:var(--muted);font-size:12px}
+.badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;background:var(--panel2);border:1px solid var(--line)}
+.badge.pending{color:var(--warn);border-color:var(--warn)}
+.badge.active{color:var(--accent2);border-color:var(--accent2)}
+.badge.danger{color:#e39b9b;border-color:var(--danger)}
+.empty{color:var(--muted);text-align:center;padding:24px 0}
+.form-actions{margin-top:14px;display:flex;gap:8px}
+#login{max-width:380px;margin:60px auto 0}
+#login h1{text-align:center;margin-bottom:22px;font-size:22px}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1c2530;border:1px solid var(--accent2);color:var(--text);padding:10px 20px;border-radius:8px;display:none;z-index:100;max-width:90%}
+#toast.show{display:block}
+#toast.error{border-color:var(--danger)}
+.section{display:none}
+.section.active{display:block}
+.tab-bar{display:flex;gap:4px;margin-bottom:14px;flex-wrap:wrap}
+.tab-bar button{background:var(--panel2);color:var(--muted);border:1px solid var(--line);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-family:inherit}
+.tab-bar button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+table.detail-table th{font-size:11px;padding:4px 8px}
+table.detail-table td{font-size:12px;padding:4px 8px}
+.progress{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:6px}
+.progress-fill{height:100%;background:var(--accent2);border-radius:3px}
 </style>
 </head>
 <body>
@@ -81,498 +87,474 @@
   <div class="form-actions">
     <button class="btn primary" id="loginBtn">دخول</button>
   </div>
-  <p class="muted" style="margin-top:10px">يتطلب الدور الإداري (admin) — لا يُمنح عبر التسجيل العام.</p>
+  <p class="muted" style="margin-top:10px">يتطلب الدور الإداري (admin).</p>
 </div>
 
-<div id="app" hidden>
-  <nav>
-    <button id="tabContent" class="active">إدارة المحتوى</button>
-    <button id="tabVerification">طابور التحقق</button>
+<div id="app" class="layout" hidden>
+  <nav class="sidebar" id="sidebar">
+    <button data-section="dashboard" class="active">الرئيسية</button>
+    <button data-section="content">إدارة المحتوى</button>
+    <button data-section="verification">طابور التحقق</button>
+    <button data-section="moderation">الإشراف</button>
+    <button data-section="blog">المقالات</button>
+    <button data-section="ads">الإعلانات</button>
+    <button data-section="marketplace">السوق</button>
+    <button data-section="tenants">المستأجرون</button>
+    <button data-section="comparative">القانون المقارن</button>
+    <button data-section="notifications">الإشعارات</button>
   </nav>
 
-  <section id="viewContent">
-    <div class="panel">
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <h2>النصوص القانونية</h2>
-        <div class="actions">
-          <button class="btn primary" id="newTextBtn">+ نص جديد</button>
-          <button class="btn" id="refreshTextsBtn">تحديث</button>
+  <div class="main" id="main">
+    <!-- Dashboard -->
+    <div class="section active" id="sec-dashboard">
+      <div class="panel"><h2>ملخص الاستخدام</h2><div id="dashStats"><div class="empty">جارٍ التحميل…</div></div></div>
+      <div class="panel"><h2>الإحصائيات التفصيلية</h2><div id="dashDetail"><div class="empty">—</div></div></div>
+    </div>
+
+    <!-- Content Management -->
+    <div class="section" id="sec-content">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h2>النصوص القانونية</h2>
+          <div class="actions"><button class="btn primary" onclick="showTextForm()">+ نص جديد</button><button class="btn" onclick="loadTexts()">تحديث</button></div>
         </div>
+        <div id="textsTableWrap" style="margin-top:12px"><div class="empty">جارٍ التحميل…</div></div>
       </div>
-      <div id="textsTableWrap" style="margin-top:12px"><div class="empty">جارٍ التحميل…</div></div>
-    </div>
-
-    <div class="panel" id="textFormPanel" hidden>
-      <h2 id="textFormTitle">نص جديد</h2>
-      <div class="row">
-        <div><label>القسم (مطلوب)</label><select id="textCategory"></select></div>
-        <div><label>النوع (مطلوب)</label><select id="textType"></select></div>
+      <div class="panel" id="textFormPanel" hidden>
+        <h2 id="textFormTitle">نص جديد</h2>
+        <div class="row"><div><label>القسم</label><select id="textCategory"></select></div><div><label>النوع</label><select id="textType"></select></div></div>
+        <label>العنوان</label><input type="text" id="textTitle">
+        <div class="row"><div><label>المرجع الرسمي</label><input id="textOfficialRef"></div><div><label>تاريخ الصدور</label><input id="textEnactedDate" placeholder="YYYY-MM-DD"></div></div>
+        <label>ملاحظة المصدر</label><input id="textSourceNote">
+        <div class="form-actions"><button class="btn primary" onclick="saveText()">حفظ</button><button class="btn" onclick="$('textFormPanel').hidden=true">إلغاء</button></div>
       </div>
-      <label>العنوان (مطلوب)</label>
-      <input type="text" id="textTitle">
-      <div class="row">
-        <div><label>المرجع الرسمي</label><input type="text" id="textOfficialRef"></div>
-        <div><label>تاريخ الصدور</label><input type="text" id="textEnactedDate" placeholder="YYYY-MM-DD"></div>
-        <div><label>آخر تعديل</label><input type="text" id="textLastAmended" placeholder="YYYY-MM-DD"></div>
-      </div>
-      <label>ملاحظة المصدر</label>
-      <input type="text" id="textSourceNote">
-      <label style="display:flex; gap:8px; align-items:center; margin-top:12px;">
-        <input type="checkbox" id="textIsSample" style="width:auto" checked> بيانات نموذجية للعرض (is_sample_data)
-      </label>
-      <div class="form-actions">
-        <button class="btn primary" id="saveTextBtn">حفظ</button>
-        <button class="btn" id="cancelTextBtn">إلغاء</button>
-      </div>
-    </div>
-
-    <div class="panel" id="textDetailPanel" hidden>
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <h2 id="detailTitle"></h2>
-        <button class="btn" id="backToTextsBtn">← رجوع للقائمة</button>
-      </div>
-      <p class="muted" id="detailMeta"></p>
-
-      <div class="panel" id="articleFormPanel" style="margin-top:14px">
-        <h2 id="articleFormTitle">إضافة مادة</h2>
-        <div class="row">
-          <div><label>الرقم (مطلوب)</label><input type="text" id="artNumber"></div>
-          <div><label>التسمية (مطلوب)</label><input type="text" id="artLabel"></div>
+      <div class="panel" id="textDetailPanel" hidden>
+        <div style="display:flex;justify-content:space-between;align-items:center"><h2 id="detailTitle"></h2><button class="btn" onclick="closeText()">رجوع</button></div>
+        <p class="muted" id="detailMeta"></p>
+        <div class="panel" style="margin-top:12px">
+          <h3 id="artFormTitle">إضافة مادة</h3>
+          <div class="row"><div><label>الرقم</label><input id="artNumber"></div><div><label>التسمية</label><input id="artLabel"></div></div>
+          <label>المحتوى</label><textarea id="artContent"></textarea>
+          <label>الشرح</label><textarea id="artExplanation"></textarea>
+          <label>الكلمات المفتاحية</label><input id="artKeywords">
+          <div class="form-actions"><button class="btn primary" onclick="saveArticle()">إضافة</button><button class="btn" onclick="resetArticleForm()">إلغاء</button></div>
         </div>
-        <label>المحتوى (مطلوب)</label>
-        <textarea id="artContent"></textarea>
-        <label>الشرح المبسّط</label>
-        <textarea id="artExplanation"></textarea>
-        <label>الكلمات المفتاحية (مفصولة بفواصل)</label>
-        <input type="text" id="artKeywords">
-        <div class="form-actions">
-          <button class="btn primary" id="saveArticleBtn">إضافة</button>
-          <button class="btn" id="cancelArticleBtn">إلغاء</button>
+        <div id="articlesTableWrap"></div>
+      </div>
+    </div>
+
+    <!-- Verification Queue -->
+    <div class="section" id="sec-verification">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h2>طلبات التحقق</h2>
+          <div class="actions"><button class="btn" onclick="loadVerification()">تحديث</button></div>
         </div>
+        <div id="verificationTableWrap" style="margin-top:12px"><div class="empty">جارٍ التحميل…</div></div>
       </div>
-
-      <div id="articlesTableWrap"><div class="empty">لا مواد بعد.</div></div>
     </div>
-  </section>
 
-  <section id="viewVerification" hidden>
-    <div class="panel">
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <h2>طلبات التحقق من الأدوار المهنية</h2>
-        <button class="btn" id="refreshVerificationBtn">تحديث</button>
+    <!-- Moderation Queue -->
+    <div class="section" id="sec-moderation">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h2>بلاغات الإشراف</h2>
+          <button class="btn" onclick="loadModeration()">تحديث</button>
+        </div>
+        <div id="moderationTableWrap" style="margin-top:12px"><div class="empty">جارٍ التحميل…</div></div>
       </div>
-      <div id="verificationTableWrap" style="margin-top:12px"><div class="empty">جارٍ التحميل…</div></div>
     </div>
-  </section>
+
+    <!-- Blog Management -->
+    <div class="section" id="sec-blog">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h2>إدارة المقالات</h2>
+          <button class="btn" onclick="loadBlog()">تحديث</button>
+        </div>
+        <div id="blogTableWrap" style="margin-top:12px"><div class="empty">جارٍ التحميل…</div></div>
+      </div>
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h2>بلاغات المقالات</h2>
+          <button class="btn" onclick="loadBlogReports()">تحديث</button>
+        </div>
+        <div id="blogReportsWrap" style="margin-top:12px"><div class="empty">جارٍ التحميل…</div></div>
+      </div>
+    </div>
+
+    <!-- Ads Management -->
+    <div class="section" id="sec-ads">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h2>الحملات الإعلانية</h2>
+          <button class="btn" onclick="loadAds()">تحديث</button>
+        </div>
+        <div id="adsTableWrap" style="margin-top:12px"><div class="empty">جارٍ التحميل…</div></div>
+      </div>
+      <div class="panel">
+        <h2>الفتحات الإعلانية</h2>
+        <div id="slotsTableWrap" style="margin-top:12px"><div class="empty">—</div></div>
+      </div>
+    </div>
+
+    <!-- Marketplace -->
+    <div class="section" id="sec-marketplace">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h2>قوالب السوق</h2>
+          <button class="btn" onclick="loadMarketplace()">تحديث</button>
+        </div>
+        <div id="marketplaceTableWrap" style="margin-top:12px"><div class="empty">جارٍ التحميل…</div></div>
+      </div>
+      <div class="panel">
+        <h2>فئات السوق</h2>
+        <div id="marketplaceCatsWrap" style="margin-top:12px"><div class="empty">—</div></div>
+      </div>
+    </div>
+
+    <!-- Tenants -->
+    <div class="section" id="sec-tenants">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h2>المستأجرون</h2>
+          <button class="btn" onclick="loadTenants()">تحديث</button>
+        </div>
+        <div id="tenantsTableWrap" style="margin-top:12px"><div class="empty">جارٍ التحميل…</div></div>
+      </div>
+    </div>
+
+    <!-- Comparative Law -->
+    <div class="section" id="sec-comparative">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h2>الولايات القضائية</h2>
+          <button class="btn" onclick="loadComparative()">تحديث</button>
+        </div>
+        <div id="jurisdictionsTableWrap" style="margin-top:12px"><div class="empty">جارٍ التحميل…</div></div>
+      </div>
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h2>الدراسات المقارنة</h2>
+          <button class="btn" onclick="loadComparative()">تحديث</button>
+        </div>
+        <div id="studiesTableWrap" style="margin-top:12px"><div class="empty">—</div></div>
+      </div>
+    </div>
+
+    <!-- Notifications -->
+    <div class="section" id="sec-notifications">
+      <div class="panel">
+        <h2>إحصائيات التسليم</h2>
+        <div id="notifStatsWrap" style="margin-top:12px"><div class="empty">جارٍ التحميل…</div></div>
+      </div>
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <h2>تفريغ صندوق الإشعارات</h2>
+          <button class="btn primary" onclick="deliverNotifications()">تفريغ الآن</button>
+        </div>
+        <div id="notifDeliverWrap" style="margin-top:12px" class="muted"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div id="toast"></div>
 
 <script>
 const API_BASE = 'http://localhost:8000/api';
-const TEXT_TYPES = ['constitution', 'code', 'law', 'decree', 'gazette', 'treaty', 'ruling'];
-
+const TEXT_TYPES = ['constitution','code','law','decree','gazette','treaty','ruling'];
 let accessToken = sessionStorage.getItem('nibras_admin_token') || null;
-let categories = [];
-let texts = [];
-let currentText = null;       // النص المفتوح لتفاصيله
-let editTextId = null;        // لا null = تعديل نص
-let editArticleId = null;     // لا null = تعديل مادة
+let categories = [], texts = [], currentText = null, editTextId = null, editArticleId = null;
 
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
-  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-function toast(msg, isError = false) {
-  const el = $('toast');
-  el.textContent = msg;
+function toast(msg, isError) {
+  const el = $('toast'); el.textContent = msg;
   el.className = 'show' + (isError ? ' error' : '');
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => (el.className = ''), 3500);
+  clearTimeout(toast._t); toast._t = setTimeout(() => el.className = '', 3500);
 }
 
-async function api(path, options = {}) {
-  const headers = { ...(options.headers || {}) };
-  if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
-  if (options.body !== undefined) headers['Content-Type'] = 'application/json';
-  const res = await fetch(API_BASE + path, { ...options, headers });
-  const data = await res.json().catch(() => ({}));
-  if (res.status === 401) {
-    showLogin();
-    throw new Error('انتهت الجلسة — سجّل الدخول مجددًا');
-  }
-  if (!res.ok) throw new Error(data.error || 'خطأ غير متوقع (' + res.status + ')');
-  return data;
+async function api(path, opts = {}) {
+  const h = { ...(opts.headers || {}) };
+  if (accessToken) h['Authorization'] = 'Bearer ' + accessToken;
+  if (opts.body !== undefined) h['Content-Type'] = 'application/json';
+  const r = await fetch(API_BASE + path, { ...opts, headers: h });
+  const d = await r.json().catch(() => ({}));
+  if (r.status === 401) { showLogin(); throw new Error('انتهت الجلسة'); }
+  if (!r.ok) throw new Error(d.error || 'خطأ (' + r.status + ')');
+  return d;
 }
 
-// ---------------------------------------------------------------------------
-// الدخول والخروج
-// ---------------------------------------------------------------------------
+// --- Auth ---
 function showLogin() {
-  accessToken = null;
-  sessionStorage.removeItem('nibras_admin_token');
-  $('app').hidden = true;
-  $('logoutBtn').hidden = true;
-  $('login').hidden = false;
+  accessToken = null; sessionStorage.removeItem('nibras_admin_token');
+  $('app').hidden = true; $('logoutBtn').hidden = true; $('login').hidden = false;
 }
-
 function enterApp() {
-  $('login').hidden = true;
-  $('logoutBtn').hidden = false;
-  $('app').hidden = false;
-  renderWhoami();
-  renderContent();
-  renderVerification();
+  $('login').hidden = true; $('logoutBtn').hidden = false; $('app').hidden = false;
+  renderWhoami(); loadDashboard();
 }
-
 async function renderWhoami() {
-  try {
-    const data = await api('/auth/me');
-    const user = data.user;
-    $('whoami').textContent = 'مسجل الدخول: ' + user.full_name + ' (' + user.email + ')';
-  } catch (e) { /* 401 يعيد عرض تسجيل الدخول */ }
+  try { const d = await api('/auth/me'); $('whoami').textContent = d.user.full_name + ' (' + d.user.email + ')'; } catch(e) {}
 }
-
 async function doLogin() {
-  const email = $('loginEmail').value.trim();
-  const password = $('loginPassword').value;
+  const email = $('loginEmail').value.trim(), password = $('loginPassword').value;
   if (!email || !password) return toast('أدخل البريد وكلمة المرور', true);
   $('loginBtn').disabled = true;
   try {
-    const res = await fetch(API_BASE + '/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'تعذر الدخول');
-    accessToken = data.access_token;
-    sessionStorage.setItem('nibras_admin_token', accessToken);
-    const roles = data.user.roles || [];
-    if (!roles.includes('admin')) {
-      accessToken = null;
-      sessionStorage.removeItem('nibras_admin_token');
-      toast('هذا الحساب لا يملك الدور الإداري', true);
-      return;
-    }
+    const r = await fetch(API_BASE + '/auth/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({email, password}) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'تعذر الدخول');
+    if (!(d.user.roles || []).includes('admin')) { toast('حساب بلا صلاحيات إدارية', true); return; }
+    accessToken = d.access_token; sessionStorage.setItem('nibras_admin_token', accessToken);
     enterApp();
-  } catch (e) {
-    toast(e.message, true);
-  } finally {
-    $('loginBtn').disabled = false;
-  }
+  } catch(e) { toast(e.message, true); } finally { $('loginBtn').disabled = false; }
 }
 
-// ---------------------------------------------------------------------------
-// إدارة المحتوى: القوائم
-// ---------------------------------------------------------------------------
-function fillTextForm(text) {
+// --- Sidebar Navigation ---
+document.querySelectorAll('#sidebar button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#sidebar button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    const sec = $('sec-' + btn.dataset.section);
+    if (sec) sec.classList.add('active');
+    loadSection(btn.dataset.section);
+  });
+});
+
+function loadSection(name) {
+  const loaders = { dashboard:loadDashboard, content:loadTexts, verification:loadVerification, moderation:loadModeration, blog:loadBlog, ads:loadAds, marketplace:loadMarketplace, tenants:loadTenants, comparative:loadComparative, notifications:loadNotifStats };
+  if (loaders[name]) loaders[name]();
+}
+
+// --- Dashboard ---
+async function loadDashboard() {
+  try {
+    const d = await api('/admin/analytics/summary');
+    $('dashStats').innerHTML = `
+      <div class="stat-row">
+        <div class="stat-card"><div class="num">${d.users?.total ?? 0}</div><div class="label">مستخدم</div></div>
+        <div class="stat-card"><div class="num">${d.users?.admins ?? 0}</div><div class="label">مسؤول</div></div>
+        <div class="stat-card"><div class="num">${d.users?.pending_verification ?? 0}</div><div class="label">بانتظار التحقق</div></div>
+        <div class="stat-card"><div class="num">${d.library?.texts ?? 0}</div><div class="label">نص قانوني</div></div>
+        <div class="stat-card"><div class="num">${d.library?.articles ?? 0}</div><div class="label">مادة قانونية</div></div>
+      </div>
+      <div class="stat-row">
+        <div class="stat-card"><div class="num">${d.ai?.queries ?? 0}</div><div class="label">طلب ذكاء اصطناعي</div></div>
+        <div class="stat-card"><div class="num">${d.calculators?.runs ?? 0}</div><div class="label">تشغيل حاسبة</div></div>
+        <div class="stat-card"><div class="num">${d.documents?.generated ?? 0}</div><div class="label">وثيقة مولّدة</div></div>
+        <div class="stat-card"><div class="num">${d.community?.posts ?? 0}</div><div class="label">منشور</div></div>
+        <div class="stat-card"><div class="num">${d.community?.comments ?? 0}</div><div class="label">تعليق</div></div>
+      </div>
+      <div class="stat-row">
+        <div class="stat-card"><div class="num">${d.professionals?.profiles ?? 0}</div><div class="label">ملف مهني</div></div>
+        <div class="stat-card"><div class="num">${d.marketplace?.templates ?? 0}</div><div class="label">قالب سوق</div></div>
+        <div class="stat-card"><div class="num">${d.ads?.campaigns ?? 0}</div><div class="label">حملة إعلانية</div></div>
+        <div class="stat-card"><div class="num">${d.tenants ?? 0}</div><div class="label">مستأجر</div></div>
+        <div class="stat-card"><div class="num">${d.queues?.verification_pending ?? 0}</div><div class="label">تحقق معلّق</div></div>
+      </div>`;
+    const extra = [];
+    if (d.community?.reports_open) extra.push('بلاغات مفتوحة: ' + d.community.reports_open);
+    if (d.queues?.moderation_pending) extra.push('إشراف معلّق: ' + d.queues.moderation_pending);
+    if (d.ads?.impressions) extra.push('انطباعات: ' + d.ads.impressions);
+    if (d.professionals?.avg_rating) extra.push('متوسط تقييم: ' + d.professionals.avg_rating);
+    $('dashDetail').innerHTML = extra.length ? '<p>' + extra.join(' · ') + '</p>' : '<p class="muted">لا إضافات حالياً</p>';
+  } catch(e) { $('dashStats').innerHTML = '<div class="empty">تعذر: ' + esc(e.message) + '</div>'; }
+}
+
+// --- Content Management ---
+async function loadTexts() {
+  const w = $('textsTableWrap');
+  try {
+    if (!categories.length) categories = await api('/categories');
+    $('textCategory').innerHTML = categories.map(c => '<option value="'+c.id+'">'+esc(c.name)+'</option>').join('');
+    $('textType').innerHTML = TEXT_TYPES.map(t => '<option value="'+t+'">'+t+'</option>').join('');
+    texts = await api('/texts');
+    if (!texts.length) { w.innerHTML = '<div class="empty">لا نصوص.</div>'; return; }
+    w.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>العنوان</th><th>القسم</th><th>النوع</th><th>المواد</th><th>إجراءات</th></tr></thead><tbody>' +
+      texts.map(t => '<tr><td>'+esc(t.title)+'<div class="muted">#'+t.id+'</div></td><td>'+esc(t.category_name)+'</td><td>'+esc(t.type)+'</td><td>'+t.article_count+'</td><td><div class="actions"><button class="btn small primary" onclick="openText('+t.id+')">مواد</button><button class="btn small" onclick="editText('+t.id+')">تعديل</button><button class="btn small danger" onclick="deleteText('+t.id+')">حذف</button></div></td></tr>').join('') +
+      '</tbody></table></div>';
+  } catch(e) { w.innerHTML = '<div class="empty">خطأ: '+esc(e.message)+'</div>'; }
+}
+
+function showTextForm(text) {
   $('textFormTitle').textContent = text ? 'تعديل النص' : 'نص جديد';
   $('textTitle').value = text ? text.title : '';
   $('textCategory').value = text ? text.category_id : (categories[0]?.id ?? '');
-  $('textType').value = text ? text.type : TEXT_TYPES[1];
-  $('textOfficialRef').value = text ? (text.official_ref ?? '') : '';
-  $('textEnactedDate').value = text ? (text.enacted_date ?? '') : '';
-  $('textLastAmended').value = text ? (text.last_amended ?? '') : '';
-  $('textSourceNote').value = text ? (text.source_note ?? '') : '';
-  $('textIsSample').checked = !text ? true : !!text.is_sample_data;
-  $('textFormPanel').hidden = false;
-  $('textFormPanel').scrollIntoView({ behavior: 'smooth' });
+  $('textType').value = text ? text.type : 'code';
+  $('textOfficialRef').value = text?.official_ref ?? '';
+  $('textEnactedDate').value = text?.enacted_date ?? '';
+  $('textSourceNote').value = text?.source_note ?? '';
+  $('textFormPanel').hidden = false; editTextId = text?.id ?? null;
 }
-
-async function renderTexts() {
-  const wrap = $('textsTableWrap');
-  try {
-    texts = await api('/texts');
-    if (!texts.length) {
-      wrap.innerHTML = '<div class="empty">لا توجد نصوص بعد.</div>';
-      return;
-    }
-    wrap.innerHTML =
-      '<div style="overflow-x:auto"><table><thead><tr>' +
-      '<th>العنوان</th><th>القسم</th><th>النوع</th><th>المواد</th><th>إجراءات</th>' +
-      '</tr></thead><tbody>' +
-      texts.map((t) =>
-        '<tr><td>' + esc(t.title) +
-        '<div class="muted">#' + t.id + '</div></td>' +
-        '<td>' + esc(t.category_name) + '</td>' +
-        '<td>' + esc(t.type) + '</td>' +
-        '<td>' + t.article_count + '</td>' +
-        '<td><div class="actions">' +
-        '<button class="btn small primary" onclick="openText(' + t.id + ')">مواد</button>' +
-        '<button class="btn small" onclick="editText(' + t.id + ')">تعديل</button>' +
-        '<button class="btn small danger" onclick="deleteText(' + t.id + ')">حذف</button>' +
-        '</div></td></tr>'
-      ).join('') +
-      '</tbody></table></div>';
-  } catch (e) {
-    wrap.innerHTML = '<div class="empty">تعذر التحميل: ' + esc(e.message) + '</div>';
-  }
-}
-
-async function renderContent() {
-  try {
-    categories = await api('/categories');
-    $('textCategory').innerHTML = categories
-      .map((c) => '<option value="' + c.id + '">' + esc(c.name) + '</option>')
-      .join('');
-  } catch (e) { /* تُعرض لاحقًا عبر toast عند الحفظ */ }
-  await renderTexts();
-}
-
-// ---------------------------------------------------------------------------
-// إدارة المحتوى: النصوص
-// ---------------------------------------------------------------------------
 async function saveText() {
-  const payload = {
-    category_id: parseInt($('textCategory').value, 10),
-    type: $('textType').value,
-    title: $('textTitle').value.trim(),
-    official_ref: $('textOfficialRef').value.trim() || null,
-    enacted_date: $('textEnactedDate').value.trim() || null,
-    last_amended: $('textLastAmended').value.trim() || null,
-    source_note: $('textSourceNote').value.trim() || null,
-    is_sample_data: $('textIsSample').checked ? 1 : 0,
-  };
+  const p = { category_id: +$('textCategory').value, type: $('textType').value, title: $('textTitle').value.trim(),
+    official_ref: $('textOfficialRef').value.trim()||null, enacted_date: $('textEnactedDate').value.trim()||null,
+    source_note: $('textSourceNote').value.trim()||null, is_sample_data: 1 };
   try {
-    if (editTextId === null) {
-      const r = await api('/admin/texts', {
-        method: 'POST', body: JSON.stringify(payload),
-      });
-      toast('تم إنشاء النص #' + r.id);
-    } else {
-      await api('/admin/texts/' + editTextId, {
-        method: 'PUT', body: JSON.stringify(payload),
-      });
-      toast('تم تحديث النص #' + editTextId);
-    }
-    editTextId = null;
-    $('textFormPanel').hidden = true;
-    await renderTexts();
-  } catch (e) { toast(e.message, true); }
+    if (editTextId === null) { const r = await api('/admin/texts',{method:'POST',body:JSON.stringify(p)}); toast('تم الإنشاء #'+r.id); }
+    else { await api('/admin/texts/'+editTextId,{method:'PUT',body:JSON.stringify(p)}); toast('تم التحديث'); }
+    editTextId = null; $('textFormPanel').hidden = true; loadTexts();
+  } catch(e) { toast(e.message, true); }
 }
-
-function editText(id) {
-  const t = texts.find((x) => x.id === id);
-  if (!t) return;
-  editTextId = id;
-  fillTextForm(t);
-}
-
+function editText(id) { const t = texts.find(x=>x.id===id); if(t) showTextForm(t); }
 async function deleteText(id) {
-  const t = texts.find((x) => x.id === id);
-  if (!confirm('حذف النص «' + (t ? t.title : id) + '» نهائيًا مع جميع مواده؟')) return;
-  try {
-    await api('/admin/texts/' + id, { method: 'DELETE' });
-    toast('تم حذف النص #' + id);
-    if (currentText && currentText.id === id) closeText();
-    await renderTexts();
-  } catch (e) { toast(e.message, true); }
+  if (!confirm('حذف النص #' + id + ' نهائيًا؟')) return;
+  try { await api('/admin/texts/'+id,{method:'DELETE'}); toast('تم الحذف'); if(currentText?.id===id) closeText(); loadTexts(); } catch(e) { toast(e.message,true); }
 }
-
-function cancelTextForm() {
-  editTextId = null;
-  $('textFormPanel').hidden = true;
-}
-
-// ---------------------------------------------------------------------------
-// إدارة المحتوى: المواد
-// ---------------------------------------------------------------------------
 async function openText(id) {
-  try {
-    currentText = await api('/texts/' + id);
-    $('detailTitle').textContent = currentText.title;
-    $('detailMeta').textContent =
-      (currentText.category_name || '') + ' — النوع: ' + currentText.type +
-      (currentText.official_ref ? ' — المرجع: ' + currentText.official_ref : '');
-    $('textDetailPanel').hidden = false;
-    $('textDetailPanel').scrollIntoView({ behavior: 'smooth' });
-    resetArticleForm();
-    renderArticles();
-  } catch (e) { toast(e.message, true); }
+  try { currentText = await api('/texts/'+id); $('detailTitle').textContent = currentText.title;
+    $('detailMeta').textContent = (currentText.category_name||'') + ' — ' + currentText.type;
+    $('textDetailPanel').hidden = false; resetArticleForm(); renderArticles();
+  } catch(e) { toast(e.message,true); }
 }
-
-function closeText() {
-  currentText = null;
-  editArticleId = null;
-  $('textDetailPanel').hidden = true;
-  renderTexts();
-}
-
+function closeText() { currentText = null; $('textDetailPanel').hidden = true; loadTexts(); }
 function renderArticles() {
-  const wrap = $('articlesTableWrap');
-  if (!currentText || !currentText.articles.length) {
-    wrap.innerHTML = '<div class="empty">لا مواد بعد.</div>';
-    return;
-  }
-  wrap.innerHTML =
-    '<div style="overflow-x:auto"><table><thead><tr>' +
-    '<th>التسمية</th><th>المحتوى</th><th>الشرح</th><th>إجراءات</th>' +
-    '</tr></thead><tbody>' +
-    currentText.articles.map((a) =>
-      '<tr><td>' + esc(a.label) +
-      '<div class="muted">#' + a.id + '</div></td>' +
-      '<td class="article-content">' + esc(a.content) + '</td>' +
-      '<td class="muted">' + esc(a.plain_explanation || '—') + '</td>' +
-      '<td><div class="actions">' +
-      '<button class="btn small" onclick="editArticle(' + a.id + ')">تعديل</button>' +
-      '<button class="btn small danger" onclick="deleteArticle(' + a.id + ')">حذف</button>' +
-      '</div></td></tr>'
-    ).join('') +
+  const w = $('articlesTableWrap');
+  if (!currentText?.articles?.length) { w.innerHTML = '<div class="empty">لا مواد.</div>'; return; }
+  w.innerHTML = '<div style="overflow-x:auto;margin-top:12px"><table><thead><tr><th>الرقم</th><th>المحتوى</th><th>إجراءات</th></tr></thead><tbody>' +
+    currentText.articles.map(a => '<tr><td>'+esc(a.label)+'</td><td style="max-width:400px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(a.content)+'</td><td><div class="actions"><button class="btn small" onclick="editArticle('+a.id+')">تعديل</button><button class="btn small danger" onclick="deleteArticle('+a.id+')">حذف</button></div></td></tr>').join('') +
     '</tbody></table></div>';
 }
-
-function resetArticleForm() {
-  editArticleId = null;
-  $('articleFormTitle').textContent = 'إضافة مادة';
-  $('artNumber').value = '';
-  $('artLabel').value = '';
-  $('artContent').value = '';
-  $('artExplanation').value = '';
-  $('artKeywords').value = '';
-  $('saveArticleBtn').textContent = 'إضافة';
-}
-
-function editArticle(id) {
-  const a = currentText.articles.find((x) => x.id === id);
-  if (!a) return;
-  editArticleId = id;
-  $('articleFormTitle').textContent = 'تعديل المادة #' + id;
-  $('artNumber').value = a.number;
-  $('artLabel').value = a.label;
-  $('artContent').value = a.content;
-  $('artExplanation').value = a.plain_explanation || '';
-  $('artKeywords').value = a.keywords || '';
-  $('saveArticleBtn').textContent = 'حفظ التغييرات';
-  $('articleFormPanel').scrollIntoView({ behavior: 'smooth' });
-}
-
+function resetArticleForm() { editArticleId = null; $('artFormTitle').textContent = 'إضافة مادة'; ['artNumber','artLabel','artContent','artExplanation','artKeywords'].forEach(id => $(id).value = ''); }
+function editArticle(id) { const a = currentText.articles.find(x=>x.id===id); if(!a) return; editArticleId = id; $('artFormTitle').textContent = 'تعديل #' + id; $('artNumber').value = a.number; $('artLabel').value = a.label; $('artContent').value = a.content; $('artExplanation').value = a.plain_explanation||''; $('artKeywords').value = a.keywords||''; }
 async function saveArticle() {
-  const payload = {
-    number: $('artNumber').value.trim(),
-    label: $('artLabel').value.trim(),
-    content: $('artContent').value.trim(),
-    plain_explanation: $('artExplanation').value.trim() || null,
-    keywords: $('artKeywords').value.trim() || '',
-  };
+  const p = { number:$('artNumber').value.trim(), label:$('artLabel').value.trim(), content:$('artContent').value.trim(), plain_explanation:$('artExplanation').value.trim()||null, keywords:$('artKeywords').value.trim()||'' };
   try {
-    if (editArticleId === null) {
-      await api('/admin/texts/' + currentText.id + '/articles', {
-        method: 'POST', body: JSON.stringify(payload),
-      });
-      toast('تمت إضافة المادة');
-    } else {
-      await api('/admin/articles/' + editArticleId, {
-        method: 'PUT', body: JSON.stringify(payload),
-      });
-      toast('تم تحديث المادة #' + editArticleId);
-    }
-    resetArticleForm();
-    currentText = await api('/texts/' + currentText.id);
-    renderArticles();
-  } catch (e) { toast(e.message, true); }
+    if (editArticleId===null) await api('/admin/texts/'+currentText.id+'/articles',{method:'POST',body:JSON.stringify(p)});
+    else await api('/admin/articles/'+editArticleId,{method:'PUT',body:JSON.stringify(p)});
+    toast('تم الحفظ'); resetArticleForm(); currentText = await api('/texts/'+currentText.id); renderArticles();
+  } catch(e) { toast(e.message,true); }
 }
+async function deleteArticle(id) { if (!confirm('حذف المادة؟')) return; try { await api('/admin/articles/'+id,{method:'DELETE'}); toast('تم الحذف'); currentText = await api('/texts/'+currentText.id); renderArticles(); } catch(e) { toast(e.message,true); } }
 
-async function deleteArticle(id) {
-  if (!confirm('حذف المادة #' + id + ' نهائيًا؟')) return;
-  try {
-    await api('/admin/articles/' + id, { method: 'DELETE' });
-    toast('تم حذف المادة #' + id);
-    currentText = await api('/texts/' + currentText.id);
-    renderArticles();
-  } catch (e) { toast(e.message, true); }
-}
-
-// ---------------------------------------------------------------------------
-// طابور التحقق
-// ---------------------------------------------------------------------------
-async function renderVerification() {
-  const wrap = $('verificationTableWrap');
-  try {
-    const data = await api('/admin/verification-queue');
-    const items = data.requests || [];
-    if (!items.length) {
-      wrap.innerHTML = '<div class="empty">لا توجد طلبات في انتظار التحقق.</div>';
-      return;
-    }
-    wrap.innerHTML =
-      '<div style="overflow-x:auto"><table><thead><tr>' +
-      '<th>الاسم</th><th>البريد</th><th>الدور</th><th>تاريخ الطلب</th><th>إجراءات</th>' +
-      '</tr></thead><tbody>' +
-      items.map((u) =>
-        '<tr><td>' + esc(u.full_name) + '</td>' +
-        '<td>' + esc(u.email) + '</td>' +
-        '<td><span class="badge pending">' + esc(u.role_name || u.role_code) + '</span>' +
-        ' <span class="muted">(' + esc(u.role_code) + ')</span></td>' +
-        '<td class="muted">' + esc(u.requested_at || '—') + '</td>' +
-        '<td><div class="actions">' +
-        '<button class="btn small primary" onclick="approveVerification(' + u.user_id + ')">قبول</button>' +
-        '<button class="btn small danger" onclick="rejectVerification(' + u.user_id + ')">رفض</button>' +
-        '</div></td></tr>'
-      ).join('') +
+// --- Verification ---
+async function loadVerification() {
+  const w = $('verificationTableWrap');
+  try { const d = await api('/admin/verification-queue'); const items = d.requests || [];
+    if (!items.length) { w.innerHTML = '<div class="empty">لا طلبات.</div>'; return; }
+    w.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>الاسم</th><th>البريد</th><th>الدور</th><th>إجراءات</th></tr></thead><tbody>' +
+      items.map(u => '<tr><td>'+esc(u.full_name)+'</td><td>'+esc(u.email)+'</td><td><span class="badge pending">'+esc(u.role_code)+'</span></td><td><div class="actions"><button class="btn small primary" onclick="approveVer('+u.user_id+')">قبول</button><button class="btn small danger" onclick="rejectVer('+u.user_id+')">رفض</button></div></td></tr>').join('') +
       '</tbody></table></div>';
-  } catch (e) {
-    wrap.innerHTML = '<div class="empty">تعذر التحميل: ' + esc(e.message) + '</div>';
-  }
+  } catch(e) { w.innerHTML = '<div class="empty">خطأ: '+esc(e.message)+'</div>'; }
 }
+async function approveVer(id) { if (!confirm('قبول التحقق؟')) return; try { await api('/admin/verification/'+id+'/approve',{method:'POST'}); toast('تم القبول'); loadVerification(); } catch(e) { toast(e.message,true); } }
+async function rejectVer(id) { const reason = prompt('سبب الرفض:'); if (!reason?.trim()) return; try { await api('/admin/verification/'+id+'/reject',{method:'POST',body:JSON.stringify({reason:reason.trim()})}); toast('تم الرفض'); loadVerification(); } catch(e) { toast(e.message,true); } }
 
-async function approveVerification(userId) {
-  if (!confirm('قبول طلب التحقق لهذا المستخدم؟ سيُفعَّل دوره المهني فورًا.')) return;
+// --- Moderation ---
+async function loadModeration() {
+  const w = $('moderationTableWrap');
+  try { const d = await api('/admin/moderation-queue'); const items = d.reports || [];
+    if (!items.length) { w.innerHTML = '<div class="empty">لا بلاغات مفتوحة.</div>'; return; }
+    w.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>المبلّغ</th><th>النوع</th><th>السبب</th><th>إجراءات</th></tr></thead><tbody>' +
+      items.map(r => '<tr><td>#'+r.reporter_id+'</td><td><span class="badge">'+esc(r.target_type)+'</span> #'+r.target_id+'</td><td>'+esc(r.reason)+'</td><td><div class="actions"><button class="btn small" onclick="modAction('+r.id+',\'dismiss\')">إغلاق</button><button class="btn small danger" onclick="modAction('+r.id+',\'hide\')">إخفاء</button><button class="btn small danger" onclick="modAction('+r.id+',\'remove\')">إزالة</button></div></td></tr>').join('') +
+      '</tbody></table></div>';
+  } catch(e) { w.innerHTML = '<div class="empty">خطأ: '+esc(e.message)+'</div>'; }
+}
+async function modAction(id, action) { try { await api('/admin/moderation/'+id+'/action',{method:'POST',body:JSON.stringify({action})}); toast('تم الإجراء'); loadModeration(); } catch(e) { toast(e.message,true); } }
+
+// --- Blog ---
+async function loadBlog() {
+  const w = $('blogTableWrap');
+  try { const d = await api('/admin/blog/articles'); const items = d.articles || [];
+    if (!items.length) { w.innerHTML = '<div class="empty">لا مقالات.</div>'; return; }
+    w.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>العنوان</th><th>المؤلف</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody>' +
+      items.map(a => '<tr><td>'+esc(a.title)+'</td><td>'+esc(a.author_name||a.author_email||'—')+'</td><td><span class="badge '+(a.status==='published'?'active':'pending')+'">'+esc(a.status)+'</span></td><td><div class="actions">'+(a.status==='published'?`<button class="btn small danger" onclick="blogStatus(${a.id},'draft')">إخفاء</button>`:`<button class="btn small primary" onclick="blogStatus(${a.id},'published')">نشر</button>`)+'</div></td></tr>').join('') +
+      '</tbody></table></div>';
+  } catch(e) { w.innerHTML = '<div class="empty">خطأ: '+esc(e.message)+'</div>'; }
+}
+async function blogStatus(id, status) { try { await api('/admin/blog/articles/'+id+'/status',{method:'PUT',body:JSON.stringify({status})}); toast('تم التحديث'); loadBlog(); } catch(e) { toast(e.message,true); } }
+async function loadBlogReports() {
+  const w = $('blogReportsWrap');
+  try { const d = await api('/admin/blog/reports'); const items = d.reports || [];
+    if (!items.length) { w.innerHTML = '<div class="empty">لا بلاغات.</div>'; return; }
+    w.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>المقال</th><th>السبب</th><th>إجراءات</th></tr></thead><tbody>' +
+      items.map(r => '<tr><td>#'+r.article_id+'</td><td>'+esc(r.reason)+'</td><td><div class="actions"><button class="btn small" onclick="blogReportAction('+r.id+',\'dismiss\')">إغلاق</button><button class="btn small danger" onclick="blogReportAction('+r.id+',\'hide\')">إخفاء المقال</button></div></td></tr>').join('') +
+      '</tbody></table></div>';
+  } catch(e) { w.innerHTML = '<div class="empty">خطأ: '+esc(e.message)+'</div>'; }
+}
+async function blogReportAction(id, action) { try { await api('/admin/blog/reports/'+id+'/action',{method:'POST',body:JSON.stringify({action})}); toast('تم'); loadBlogReports(); } catch(e) { toast(e.message,true); } }
+
+// --- Ads ---
+async function loadAds() {
+  const w = $('adsTableWrap'), sw = $('slotsTableWrap');
   try {
-    await api('/admin/verification/' + userId + '/approve', { method: 'POST' });
-    toast('تم قبول الطلب');
-    await renderVerification();
-  } catch (e) { toast(e.message, true); }
+    const [slots, campaigns] = await Promise.all([api('/admin/ads/slots'), api('/admin/ads/campaigns')]);
+    const sl = slots.slots || [];
+    sw.innerHTML = sl.length ? '<table><thead><tr><th>الslug</th><th>الاسم</th><th>الحملات النشطة</th></tr></thead><tbody>' + sl.map(s => '<tr><td><code>'+esc(s.slug)+'</code></td><td>'+esc(s.name)+'</td><td>'+(s.active_count ?? 0)+'</td></tr>').join('') + '</tbody></table>' : '<div class="empty">—</div>';
+    const camps = campaigns.campaigns || [];
+    if (!camps.length) { w.innerHTML = '<div class="empty">لا حملات.</div>'; return; }
+    w.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>الاسم</th><th>الفتحة</th><th>النوع</th><th>الحالة</th><th>انطباعات</th><th>نقرات</th><th>إجراءات</th></tr></thead><tbody>' +
+      camps.map(c => '<tr><td>'+esc(c.advertiser_name)+'</td><td><code>'+esc(c.slot_slug||c.slot_id)+'</code></td><td>'+esc(c.campaign_type)+'</td><td><span class="badge '+(c.status==='active'?'active':'pending')+'">'+esc(c.status)+'</span></td><td>'+(c.impressions ?? 0)+'</td><td>'+(c.clicks ?? 0)+'</td><td><div class="actions">'+(c.status==='active'?`<button class="btn small" onclick="adStatus(${c.id},'paused')">إيقاف</button>`:`<button class="btn small primary" onclick="adStatus(${c.id},'active')">تفعيل</button>`)+'<button class="btn small danger" onclick="adDelete('+c.id+')">حذف</button></div></td></tr>').join('') +
+      '</tbody></table></div>';
+  } catch(e) { w.innerHTML = '<div class="empty">خطأ: '+esc(e.message)+'</div>'; }
 }
+async function adStatus(id, status) { try { await api('/admin/ads/campaigns/'+id,{method:'PUT',body:JSON.stringify({status})}); toast('تم'); loadAds(); } catch(e) { toast(e.message,true); } }
+async function adDelete(id) { if (!confirm('حذف الحملة؟')) return; try { await api('/admin/ads/campaigns/'+id,{method:'DELETE'}); toast('تم الحذف'); loadAds(); } catch(e) { toast(e.message,true); } }
 
-async function rejectVerification(userId) {
-  const reason = prompt('سبب الرفض (مطلوب — سيُحفظ ويُظهر للمستخدم):');
-  if (reason === null) return;
-  if (!reason.trim()) return toast('السبب مطلوب للرفض', true);
+// --- Marketplace ---
+async function loadMarketplace() {
+  const w = $('marketplaceTableWrap'), cw = $('marketplaceCatsWrap');
   try {
-    await api('/admin/verification/' + userId + '/reject', {
-      method: 'POST',
-      body: JSON.stringify({ reason: reason.trim() }),
-    });
-    toast('تم رفض الطلب مع تسجيل السبب');
-    await renderVerification();
-  } catch (e) { toast(e.message, true); }
+    const [tpls, cats] = await Promise.all([api('/admin/marketplace/templates'), api('/marketplace/categories')]);
+    const cl = cats.categories || cats || [];
+    cw.innerHTML = cl.length ? '<table><thead><tr><th>الاسم</th><th>القوالب</th></tr></thead><tbody>' + cl.map(c => '<tr><td>'+esc(c.name)+'</td><td>'+(c.template_count ?? 0)+'</td></tr>').join('') + '</tbody></table>' : '<div class="empty">—</div>';
+    const t = tpls.templates || tpls || [];
+    if (!t.length) { w.innerHTML = '<div class="empty">لا قوالب.</div>'; return; }
+    w.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>العنوان</th><th>السعر</th><th>التنزيلات</th><th>إجراءات</th></tr></thead><tbody>' +
+      t.map(x => '<tr><td>'+esc(x.title)+'</td><td>'+((x.price_cents||0)/100).toFixed(2)+' درهم</td><td>'+(x.download_count ?? 0)+'</td><td><button class="btn small danger" onclick="mpDelete('+x.id+')">حذف</button></td></tr>').join('') +
+      '</tbody></table></div>';
+  } catch(e) { w.innerHTML = '<div class="empty">خطأ: '+esc(e.message)+'</div>'; }
+}
+async function mpDelete(id) { if (!confirm('حذف القالب؟')) return; try { await api('/admin/marketplace/templates/'+id,{method:'DELETE'}); toast('تم الحذف'); loadMarketplace(); } catch(e) { toast(e.message,true); } }
+
+// --- Tenants ---
+async function loadTenants() {
+  const w = $('tenantsTableWrap');
+  try { const d = await api('/admin/tenants'); const items = d.tenants || [];
+    if (!items.length) { w.innerHTML = '<div class="empty">لا مستأجرين.</div>'; return; }
+    w.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>#</th><th>Slug</th><th>الاسم</th><th>الحالة</th></tr></thead><tbody>' +
+      items.map(t => '<tr><td>'+t.id+'</td><td><code>'+esc(t.slug)+'</code></td><td>'+esc(t.name||'—')+'</td><td><span class="badge active">'+esc(t.status||'active')+'</span></td></tr>').join('') +
+      '</tbody></table></div>';
+  } catch(e) { w.innerHTML = '<div class="empty">خطأ: '+esc(e.message)+'</div>'; }
 }
 
-// ---------------------------------------------------------------------------
-// التبويبات والأحداث
-// ---------------------------------------------------------------------------
-function switchTab(name) {
-  const content = name === 'content';
-  $('viewContent').hidden = !content;
-  $('viewVerification').hidden = content;
-  $('tabContent').className = content ? 'active' : '';
-  $('tabVerification').className = content ? '' : 'active';
-  if (content) renderContent();
-  else renderVerification();
+// --- Comparative ---
+async function loadComparative() {
+  const jw = $('jurisdictionsTableWrap'), sw = $('studiesTableWrap');
+  try {
+    const [jur, studs] = await Promise.all([api('/comparative/jurisdictions'), api('/admin/comparative/studies')]);
+    const jl = jur.jurisdictions || jur || [];
+    jw.innerHTML = jl.length ? '<table><thead><tr><th>Slug</th><th>الاسم</th></tr></thead><tbody>' + jl.map(j => '<tr><td><code>'+esc(j.slug)+'</code></td><td>'+esc(j.name)+'</td></tr>').join('') + '</tbody></table>' : '<div class="empty">—</div>';
+    const sl = studs.studies || studs || [];
+    if (!sl.length) { sw.innerHTML = '<div class="empty">لا دراسات.</div>'; return; }
+    sw.innerHTML = '<div style="overflow-x:auto"><table><thead><tr><th>العنوان</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody>' +
+      sl.map(s => '<tr><td>'+esc(s.title)+'</td><td><span class="badge '+(s.status==='published'?'active':'pending')+'">'+esc(s.status)+'</span></td><td><div class="actions">'+(s.status!=='published'?`<button class="btn small primary" onclick="compStatus(${s.id},'published')">نشر</button>`:`<button class="btn small" onclick="compStatus(${s.id},'hidden')">إخفاء</button>`)+'</div></td></tr>').join('') +
+      '</tbody></table></div>';
+  } catch(e) { jw.innerHTML = '<div class="empty">خطأ: '+esc(e.message)+'</div>'; }
+}
+async function compStatus(id, status) { try { await api('/admin/comparative/studies/'+id+'/status',{method:'PUT',body:JSON.stringify({status})}); toast('تم'); loadComparative(); } catch(e) { toast(e.message,true); } }
+
+// --- Notifications ---
+async function loadNotifStats() {
+  const w = $('notifStatsWrap');
+  try { const d = await api('/admin/notifications/delivery-stats'); const s = d.stats || d;
+    w.innerHTML = '<div class="stat-row"><div class="stat-card"><div class="num">'+(s.pending ?? 0)+'</div><div class="label">معلّق</div></div><div class="stat-card"><div class="num">'+(s.delivered ?? 0)+'</div><div class="label">تم التسليم</div></div><div class="stat-card"><div class="num">'+(s.failed ?? 0)+'</div><div class="label">فشل</div></div></div>';
+  } catch(e) { w.innerHTML = '<div class="muted">خطأ: '+esc(e.message)+'</div>'; }
+}
+async function deliverNotifications() {
+  const w = $('notifDeliverWrap');
+  try { const d = await api('/admin/notifications/deliver',{method:'POST'}); w.textContent = 'تم التفريغ: ' + (d.delivered ?? 0) + ' تم تسليمه، ' + (d.failed ?? 0) + ' فشل.'; toast('تم التفريغ'); loadNotifStats(); } catch(e) { toast(e.message,true); }
 }
 
+// --- Init ---
 $('loginBtn').addEventListener('click', doLogin);
-$('loginPassword').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+$('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 $('logoutBtn').addEventListener('click', showLogin);
-
-$('tabContent').addEventListener('click', () => switchTab('content'));
-$('tabVerification').addEventListener('click', () => switchTab('verification'));
-
-$('newTextBtn').addEventListener('click', () => { editTextId = null; fillTextForm(null); });
-$('cancelTextBtn').addEventListener('click', cancelTextForm);
-$('saveTextBtn').addEventListener('click', saveText);
-$('refreshTextsBtn').addEventListener('click', renderTexts);
-$('backToTextsBtn').addEventListener('click', closeText);
-$('saveArticleBtn').addEventListener('click', saveArticle);
-$('cancelArticleBtn').addEventListener('click', resetArticleForm);
-$('refreshVerificationBtn').addEventListener('click', renderVerification);
-
-(function init() {
-  $('textType').innerHTML = TEXT_TYPES
-    .map((t) => '<option value="' + t + '">' + t + '</option>').join('');
-  if (accessToken) enterApp();
-})();
+if (accessToken) enterApp();
 </script>
 </body>
 </html>

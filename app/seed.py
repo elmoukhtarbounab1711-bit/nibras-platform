@@ -100,7 +100,7 @@ DEMO_USERS = [
 # (slug, عنوان، مؤلِّف البريد، ملخص، جسم، كلمات مفتاحية، تصنيف slug، cover_hint)
 BLOG_ARTICLES = [
     (
-        "explanations",
+        "madani",
         "شرح المادة 230 من قانون الالتزامات والعقود: العقد شريعة المتعاقدين",
         "lawyer@nibras.local",
         "كيف نفهم مبدأ قوة العقد الملزمة في القانون المغربي؟ شرح مبسط مع أمثلة عملية.",
@@ -124,7 +124,7 @@ BLOG_ARTICLES = [
         "#c9a227",
     ),
     (
-        "guides",
+        "ahwal-shakhsiya",
         "دليل خطوات طلب النفقة أمام قاضي الأسرة بالمغرب",
         "citizen@nibras.local",
         "خطوات عملية لرفع دعوى النفقة: الوثائق المطلوبة، الجهة المختصة، والمسطرة أمام قاضي الأسرة.",
@@ -145,7 +145,7 @@ BLOG_ARTICLES = [
         "#1f3a93",
     ),
     (
-        "opinions",
+        "madani",
         "قوة الملزمية التنفيذية للشهادة العدلية في الممارسة القضائية",
         "lawyer@nibras.local",
         "تحليل للممارسة القضائية حول القيمة التنفيذية للشهادات العدلية ودور العدول في توثيق الحقوق.",
@@ -166,6 +166,42 @@ BLOG_ARTICLES = [
         "#0f766e",
     ),
 ]
+
+# منشورات مجتمع تجريبية (user_email, category_slug, title, body)
+DEMO_POSTS = [
+    (
+        "citizen@nibras.local", "usra",
+        "كيف أحسب حصة الإرث لزوجة مع ثلاثة أبناء؟",
+        ("السلام عليكم، أريد معرفة الطريقة الصحيحة لحساب حصة الإرث لزوجة لديها ثلاثة أبناء. "
+         "ما هي الفروض القانونية المطبقة؟ أرجو التوضيح بالمادة القانونية."),
+    ),
+    (
+        "lawyer@nibras.local", "madani",
+        "المادة 230 والعقد المبرم: هل يجوز التراجع عن التزامات العقد؟",
+        ("أود توضيح مدى ملزمةية العقد المبرم بين الطرفين، وهل يمكن لأحد الأطراف التراجع عن "
+         "التزاماته بناءً على المادة 230 من قانون الالتزامات والعقود."),
+    ),
+    (
+        "citizen@nibras.local", "dostouri",
+        "ضمانات الحق في الحياة الخاصة: متى يُباح التفتيش؟",
+        ("وفقاً للفصل 24 من الدستور، ما هي الشروط والإجراءات القانونية التي تُخول "
+         "التفتيش أو التنصت على المكالمات؟ هل هناك ضمانات أمام القضاء؟"),
+    ),
+    (
+        "lawyer@nibras.local", "shughl",
+        "تعويض عن الفصل التعسفي: ما هي الحقوق القانونية للأجير؟",
+        ("تم فصلي من العمل بشكل مفاجئ دون إنذار. أريد معرفة حقوقي القانونية وفقاً لمدونة "
+         "الشغل، وخاصة التعويض عن الفصل التعسفي ومدة الإنذار المطلوبة."),
+    ),
+]
+
+# حملة إعلانية تجريبية
+DEMO_AD_CAMPAIGNS = [
+    (1, "general", "مكتب الإدريسي للمحاماة",
+     "https://placehold.co/300x250/1f3a93/ffffff?text=Nibras+Ad",
+     "https://nibras.local/professionals"),
+]
+
 
 # قوالب سوق تجريبية (ملف PDF مبسط يُولَّد محليًا للتجربة فقط)
 DEMO_TEMPLATES = [
@@ -317,6 +353,41 @@ def _seed_demo_users_and_content(conn, seed_tenant_id):
         "SELECT id, slug FROM marketplace_categories"
     ).fetchall()}
     _seed_marketplace_templates(conn, seed_tenant_id, cat_map)
+
+    # منشورات مجتمع تجريبية
+    comm_cat_map = {row["slug"]: row["id"] for row in conn.execute(
+        "SELECT id, slug FROM community_categories"
+    ).fetchall()}
+    for author_email, cat_slug, title, body in DEMO_POSTS:
+        if conn.execute("SELECT id FROM posts WHERE title = ?", (title,)).fetchone():
+            continue
+        author_id = user_ids.get(author_email)
+        if not author_id:
+            continue
+        conn.execute(
+            """INSERT INTO posts
+               (user_id, category_id, title, body, status, tenant_id, created_at, updated_at)
+               VALUES (?, ?, ?, ?, 'visible', ?,
+                       datetime('now'), datetime('now'))""",
+            (author_id, comm_cat_map[cat_slug], title, body, seed_tenant_id),
+        )
+
+    # حملات إعلانية تجريبية
+    for slot_id, ctype, adv_name, creative, target in DEMO_AD_CAMPAIGNS:
+        if conn.execute(
+            "SELECT id FROM ad_campaigns WHERE advertiser_name = ? AND slot_id = ?",
+            (adv_name, slot_id),
+        ).fetchone():
+            continue
+        conn.execute(
+            """INSERT INTO ad_campaigns
+               (slot_id, campaign_type, advertiser_name, creative_url, target_url,
+                starts_at, ends_at, status, tenant_id)
+               VALUES (?, ?, ?, ?, ?,
+                       datetime('now'), datetime('now', '+30 days'),
+                       'active', ?)""",
+            (slot_id, ctype, adv_name, creative, target, seed_tenant_id),
+        )
 
 
 def _seed_marketplace_templates(conn, seed_tenant_id, cat_map):

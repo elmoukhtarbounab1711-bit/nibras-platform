@@ -19,6 +19,7 @@ import { notificationsView, notificationsSettingsView } from "./views/notificati
 import { profileView } from "./views/profile.js";
 import { assistantView } from "./views/assistant.js";
 import { billingView, myOrdersView } from "./views/billing.js";
+import { comparativeView, jurisdictionView, comparativeDetailView, comparativeNewView } from "./views/comparative.js";
 
 // ---------- مسارات ثابتة ----------
 register("/home", homeView);
@@ -42,6 +43,13 @@ register("/professionals", professionalsView);
 register("/professionals/q/:q", professionalsView);
 register("/professionals/me", myProfessionalView, { auth: true });
 register("/professionals/:id", professionalDetailView);
+
+register("/comparative", comparativeView);
+register("/comparative/new", comparativeNewView);
+register("/comparative/study/:id", comparativeDetailView);
+register("/comparative/jurisdiction/:slug", jurisdictionView);
+register("/comparative/jurisdiction/:slug/:tab", jurisdictionView);
+register("/comparative/:id", comparativeDetailView);
 
 register("/documents", documentsView);
 register("/documents/:slug", documentDetailView);

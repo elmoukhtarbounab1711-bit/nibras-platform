@@ -194,6 +194,7 @@ export async function homeView() {
   const portals = [
     ["scale", "portalLibrary", "portalLibraryD", "/library"],
     ["shield", "portalJurisprudence", "portalJurisprudenceD", "/jurisprudence"],
+    ["globe", "portalComparative", "portalComparativeD", "/comparative"],
     ["pen", "portalBlog", "portalBlogD", "/blog"],
     ["map", "portalProcedures", "portalProceduresD", "/procedures"],
     ["users", "portalProfessionals", "portalProfessionalsD", "/professionals"],

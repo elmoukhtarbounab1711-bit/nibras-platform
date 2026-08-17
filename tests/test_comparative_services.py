@@ -56,8 +56,10 @@ def _add_entry(owner, study_id, jurisdiction_id, article_id):
 def test_jurisdictions_seeded(fresh_db):
     jurisdictions = services_comparative.list_jurisdictions()
     slugs = {j["slug"] for j in jurisdictions}
-    assert "morocco" in slugs and "france" in slugs
-    assert len(jurisdictions) >= 8
+    # المغرب مرجع مستقل (is_comparative=0) ومعزول عن ولايات المقارن
+    assert "france" in slugs and "egypt" in slugs
+    assert "morocco" not in slugs
+    assert len(jurisdictions) >= 7
 
 
 def test_create_study_starts_draft(fresh_db):

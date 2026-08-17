@@ -108,7 +108,11 @@ export async function professionalsView() {
           citySel.append(el("option", { value: c, text: c }));
       }
       count.textContent = `${list.length} ${tr("resultsCount")}`;
-      grid.replaceChildren(list.length ? list.map((p) => proCard(p, () => { location.hash = `#/professionals/${p.id}`; })) : emptyState(tr("noResults"), "users"));
+      if (list.length) {
+        grid.replaceChildren(...list.map((p) => proCard(p, () => { location.hash = `#/professionals/${p.id}`; })));
+      } else {
+        grid.replaceChildren(emptyState(tr("noResults"), "users"));
+      }
     } catch (e) { grid.replaceChildren(emptyState(e.message || tr("error"))); }
   };
 

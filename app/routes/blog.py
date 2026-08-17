@@ -37,6 +37,7 @@ def list_articles():
         result = services_blog.list_articles(
             category=request.args.get("category"),
             q=request.args.get("q"),
+            jurisdiction_id=request.args.get("jurisdiction_id"),
             limit=_clamp(request.args.get("limit"), 12, 1, 100),
             offset=_clamp(request.args.get("offset"), 0, 0, 10_000),
         )

@@ -14,6 +14,7 @@ import { commerceView } from "./views/commerce.js";
 import { systemView } from "./views/system.js";
 import { billingView } from "./views/billing.js";
 import { jurisprudenceAdminView } from "./views/jurisprudence.js";
+import { comparativeAdminView } from "./views/comparative.js";
 
 // ---------- أقسام الشريط الجانبي (12 قسمًا) ----------
 const NAV = [
@@ -25,6 +26,7 @@ const NAV = [
   { key: "ads", icon: "megaphone", label: "ads" },
   { key: "billing", icon: "wallet", label: "billing" },
   { key: "jurisprudence", icon: "scale", label: "jurisprudence" },
+  { key: "comparative", icon: "globe", label: "comparative" },
   { key: "tenants", icon: "building", label: "tenants" },
   { key: "ai", icon: "cpu", label: "ai" },
   { key: "notifications", icon: "bell", label: "notifications" },
@@ -41,6 +43,7 @@ SectionViews.templates = () => commerceView("templates");
 SectionViews.ads = () => commerceView("ads");
 SectionViews.billing = billingView;
 SectionViews.jurisprudence = jurisprudenceAdminView;
+SectionViews.comparative = comparativeAdminView;
 SectionViews.tenants = () => commerceView("tenants");
 SectionViews.ai = () => systemView("ai");
 SectionViews.notifications = () => systemView("notifications");

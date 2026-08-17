@@ -13,8 +13,12 @@ def row_to_dict(row):
 
 
 def list_categories():
+    # فئات المكتبة هي فات المغرب الخاص فقط (القانون المقارن معزول في صفحته).
     cond, vals = tenant_scope.tenant_eq()
-    sub_count = "SELECT COUNT(*) FROM legal_texts lt2 WHERE lt2.category_id = c.id"
+    sub_count = (
+        "SELECT COUNT(*) FROM legal_texts lt2 "
+        "WHERE lt2.category_id = c.id AND lt2.jurisdiction_id IS NULL"
+    )
     sub_cond, sub_vals = tenant_scope.tenant_eq("lt2")
     if sub_cond:
         sub_count += " AND " + sub_cond
@@ -30,7 +34,8 @@ def list_categories():
         return [row_to_dict(r) for r in rows]
 
 
-def list_texts(category_slug=None, text_type=None, limit=None, offset=0):
+def list_texts(category_slug=None, text_type=None, jurisdiction_id=None,
+               limit=None, offset=0):
     # عدد مواد النص يُعد ضمن مستأجر النص نفسه (لا يختلط عبر المستأجرين)
     sub_count = "SELECT COUNT(*) FROM articles a WHERE a.legal_text_id = lt.id"
     sub_cond, sub_vals = tenant_scope.tenant_eq("a")
@@ -56,6 +61,12 @@ def list_texts(category_slug=None, text_type=None, limit=None, offset=0):
     if text_type:
         query += " AND lt.type = ?"
         params.append(text_type)
+    if jurisdiction_id:
+        query += " AND lt.jurisdiction_id = ?"
+        params.append(int(jurisdiction_id))
+    else:
+        # المكتبة العامة حكر على المغرب (بلا ولاية = الخاص بالدولة الأم).
+        query += " AND lt.jurisdiction_id IS NULL"
 
     # العدد يُحسب على الصفوف نفسها لكن دون تشغيل COUNT الفرعي (يكفي نطاق
     # التصفية والانضمام) — يتجنب تنفيذ COUNT لكل نص عند عدِّ كل الصفحات.
@@ -78,6 +89,11 @@ def list_texts(category_slug=None, text_type=None, limit=None, offset=0):
     if text_type:
         count_q += " AND lt.type = ?"
         count_params.append(text_type)
+    if jurisdiction_id:
+        count_q += " AND lt.jurisdiction_id = ?"
+        count_params.append(int(jurisdiction_id))
+    else:
+        count_q += " AND lt.jurisdiction_id IS NULL"
 
     order_q = query + " ORDER BY lt.title"
     page_params = list(params)
@@ -184,6 +200,7 @@ def list_articles(limit=12, offset=0):
         if cond:
             query += " AND " + cond
             params.extend(vals)
+    query += " AND lt.jurisdiction_id IS NULL"
     query += " ORDER BY a.id DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
     with db_session() as conn:
@@ -191,9 +208,10 @@ def list_articles(limit=12, offset=0):
 
 
 def count_articles():
-    """عدد المواد الإجمالي (ضمن نطاق المستأجر الحالي)."""
+    """عدد المواد الإجمالي (ضمن نطاق المستأجر الحالي والمغرب فقط)."""
     query = """SELECT COUNT(*) AS c FROM articles a
-               JOIN legal_texts lt ON lt.id = a.legal_text_id"""
+               JOIN legal_texts lt ON lt.id = a.legal_text_id
+               WHERE lt.jurisdiction_id IS NULL"""
     params = []
     for alias in ("a", "lt"):
         cond, vals = tenant_scope.tenant_eq(alias)
@@ -350,6 +368,7 @@ def search_articles(query_text, limit=20, min_terms=None):
                 if cond:
                     base += " AND " + cond
                     params.extend(vals)
+            base += " AND lt.jurisdiction_id IS NULL"
             base += " ORDER BY rank LIMIT ?"
             params.append(limit)
             rows = conn.execute(base, params).fetchall()
@@ -406,6 +425,7 @@ def search_articles(query_text, limit=20, min_terms=None):
                 if cond:
                     base += " AND " + cond
                     params.extend(vals)
+            base += " AND lt.jurisdiction_id IS NULL"
             base += " LIMIT ?"
             params.append(limit)
             rows = conn.execute(base, params).fetchall()
@@ -424,21 +444,28 @@ def library_stats():
             q += " WHERE " + cat_cond
         stats["categories"] = conn.execute(q, cat_vals).fetchone()[0]
 
-        q = "SELECT COUNT(*) FROM legal_texts lt"
+        q = "SELECT COUNT(*) FROM legal_texts lt WHERE lt.jurisdiction_id IS NULL"
         if txt_cond:
-            q += " WHERE " + txt_cond
+            q += " AND " + txt_cond
         stats["texts"] = conn.execute(q, txt_vals).fetchone()[0]
 
-        q = "SELECT COUNT(*) FROM articles a"
+        q = """SELECT COUNT(*) FROM articles a
+               JOIN legal_texts lt ON lt.id = a.legal_text_id
+               WHERE lt.jurisdiction_id IS NULL"""
         if art_cond:
-            q += " WHERE " + art_cond
+            q += " AND " + art_cond
         stats["articles"] = conn.execute(q, art_vals).fetchone()[0]
 
-        q = "SELECT COUNT(*) FROM legal_texts lt WHERE lt.type IN ('decision', 'document')"
+        q = ("SELECT COUNT(*) FROM legal_texts lt "
+             "WHERE lt.type IN ('decision', 'document') "
+             "AND lt.jurisdiction_id IS NULL")
         if txt_cond:
             q += " AND " + txt_cond
         stats["decisions"] = conn.execute(q, txt_vals).fetchone()[0]
 
-        row = conn.execute("SELECT MAX(COALESCE(last_amended, enacted_date)) FROM legal_texts").fetchone()[0]
+        row = conn.execute(
+            "SELECT MAX(COALESCE(last_amended, enacted_date)) FROM legal_texts "
+            "WHERE jurisdiction_id IS NULL"
+        ).fetchone()[0]
         stats["last_update"] = row or None
     return stats

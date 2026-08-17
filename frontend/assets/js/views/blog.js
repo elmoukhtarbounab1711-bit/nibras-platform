@@ -241,7 +241,12 @@ export async function blogEditorView(params) {
   const isEdit = !!params.id;
   let article = null;
   if (isEdit) article = await api.get(`/api/blog/articles/${params.id}`);
-  const cats = await api.get("/api/blog/categories");
+  const [cats, jurData] = await Promise.all([
+    api.get("/api/blog/categories"),
+    api.get("/api/comparative/jurisdictions"),
+  ]);
+  const jurisdictions = jurData.jurisdictions || [];
+  const slugOf = (id) => (cats.find((c) => String(c.id) === String(id)) || {}).slug;
 
   const titleInput = el("input", { value: article?.title || "", placeholder: "عنوان المقال" });
   const summaryInput = el("textarea", { rows: 2, placeholder: "ملخص قصير" }, article?.summary || "");
@@ -249,11 +254,26 @@ export async function blogEditorView(params) {
   const keywordsInput = el("input", { value: article?.keywords || "", placeholder: "كلمات مفتاحية مفصولة بفاصلة" });
   const catSelect = el("select", {}, (cats || []).map((c) => el("option", { value: c.id, text: c.name })));
   if (article?.category_id) catSelect.value = article.category_id;
+  const jurSelect = el("select", {}, [
+    el("option", { value: "", text: "اختر الدولة" }),
+    ...jurisdictions.map((j) => el("option", { value: j.id, text: j.name })),
+  ]);
+  if (article?.jurisdiction_id) jurSelect.value = String(article.jurisdiction_id);
+  const jurField = el("div", { class: "field", style: "display:none" }, [
+    el("label", { text: "الدولة (فئة الدراسات المقارنة)" }),
+    jurSelect,
+  ]);
+  const syncJurField = () => {
+    jurField.style.display = (slugOf(catSelect.value) === "comparative") ? "" : "none";
+  };
+  syncJurField();
+  catSelect.onchange = syncJurField;
 
   const form = el("form", { class: "card article-view" }, [
     el("h2", { text: isEdit ? tr("edit") : tr("writeArticle") }),
     el("div", { class: "field" }, [el("label", { text: tr("title") }), titleInput]),
     el("div", { class: "field" }, [el("label", { text: tr("postCategory") }), catSelect]),
+    jurField,
     el("div", { class: "field" }, [el("label", { text: "الملخص" }), summaryInput]),
     el("div", { class: "field" }, [el("label", { text: tr("postBody") }), bodyInput]),
     el("div", { class: "field" }, [el("label", { text: "الكلمات المفتاحية" }), keywordsInput]),
@@ -271,6 +291,7 @@ export async function blogEditorView(params) {
       summary: summaryInput.value.trim(),
       keywords: keywordsInput.value.trim(),
       category_id: catSelect.value ? Number(catSelect.value) : undefined,
+      jurisdiction_id: jurSelect.value ? Number(jurSelect.value) : undefined,
     };
     try {
       if (isEdit) {

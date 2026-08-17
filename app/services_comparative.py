@@ -94,20 +94,99 @@ def _legal_reference_valid(conn, legal_text_id, article_id) -> bool:
     return conn.execute(query, params).fetchone() is not None
 
 
-def list_jurisdictions(limit: int = 100, offset: int = 0):
+def list_jurisdictions(limit: int = 100, offset: int = 0, include_all: bool = False):
+    """ولايات القانون المقارن؛ يستثني المغرب المستقل (is_comparative=0).
+
+    include_all=True يعيد الكل بما فيه المغرب (للوحة الإدارة فقط).
+    """
     limit = max(1, min(int(limit or 100), 200))
     offset = max(0, int(offset or 0))
-    query = "SELECT id, slug, name FROM law_jurisdictions"
-    params = []
+    # عدّادات لكل ولاية (عزل المستأجر D-036): نصوص، اجتهادات منشورة،
+    # دراسات فيها مقارنة واحدة على الأقل لهذه الولاية.
+    with db_session() as conn:
+        query = "SELECT id, slug, name, is_comparative FROM law_jurisdictions"
+        conditions = []
+        params = []
+        if not include_all:
+            conditions.append("is_comparative = 1")
+        cond, vals = tenant_scope.tenant_eq()
+        if cond:
+            conditions.append(cond)
+            params.extend(vals)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY id LIMIT ? OFFSET ?"
+        params += [limit, offset]
+        rows = conn.execute(query, params).fetchall()
+        jurisdictions = []
+        for r in rows:
+            item = dict(r)
+            jid = item["id"]
+            j_scope, j_vals = tenant_scope.tenant_eq("j")
+            tq = ("SELECT COUNT(*) FROM legal_texts j "
+                  "WHERE j.jurisdiction_id = ?")
+            if j_scope:
+                tq += " AND " + j_scope
+            item["text_count"] = conn.execute(
+                tq, [jid] + list(j_vals)).fetchone()[0]
+            dq = ("SELECT COUNT(*) FROM jurisprudence j "
+                  "WHERE j.jurisdiction_id = ? AND j.published = 1")
+            if j_scope:
+                dq += " AND " + j_scope
+            item["decision_count"] = conn.execute(
+                dq, [jid] + list(j_vals)).fetchone()[0]
+            sq = ("SELECT COUNT(DISTINCT e.study_id) "
+                  "FROM comparative_entries e WHERE e.jurisdiction_id = ?")
+            e_scope, e_vals = tenant_scope.tenant_eq("e")
+            if e_scope:
+                sq += " AND " + e_scope
+            item["study_count"] = conn.execute(
+                sq, [jid] + list(e_vals)).fetchone()[0]
+            jurisdictions.append(item)
+        return jurisdictions
+
+
+def get_jurisdiction_by_slug(slug: str, include_all: bool = False):
+    """ولاية قضائية واحدة بسلاugها (لصفحة الولاية في القانون المقارن)."""
+    query = ("SELECT id, slug, name, is_comparative FROM law_jurisdictions "
+             "WHERE slug = ?")
+    params = [slug]
+    if not include_all:
+        query += " AND is_comparative = 1"
     cond, vals = tenant_scope.tenant_eq()
     if cond:
-        query += " WHERE " + cond
+        query += " AND " + cond
         params.extend(vals)
-    query += " ORDER BY id LIMIT ? OFFSET ?"
-    params += [limit, offset]
     with db_session() as conn:
-        rows = conn.execute(query, params).fetchall()
-        return [dict(r) for r in rows]
+        row = conn.execute(query, params).fetchone()
+        if row is None:
+            return None
+        return dict(row)
+
+
+def list_jurisdiction_text_categories(jurisdiction_id: int):
+    """فئات نصوص الولاية (خاصة بصفحتها): مشتقة من نصوص ديولاية فقط.
+
+    تعيد كل فئة من فئات نصوص هذه الولاية مع عدد نصوصها، دون خلط مع
+    الفئات العامة (المغرب) — القواعد والاجتهادات تبقى معزولة (نبراس D-…).
+    """
+    try:
+        jurisdiction_id = int(jurisdiction_id)
+    except (TypeError, ValueError):
+        raise ComparativeError("jurisdiction_id يجب أن يكون رقمًا.", 400)
+    query = (
+        "SELECT c.id, c.slug, c.name, COUNT(*) AS count "
+        "FROM legal_texts lt JOIN categories c ON c.id = lt.category_id "
+        "WHERE lt.jurisdiction_id = ?"
+    )
+    params = [jurisdiction_id]
+    cond, vals = tenant_scope.tenant_eq("lt")
+    if cond:
+        query += " AND " + cond
+        params.extend(vals)
+    query += " GROUP BY c.id, c.slug, c.name ORDER BY c.name"
+    with db_session() as conn:
+        return [dict(r) for r in conn.execute(query, params).fetchall()]
 
 
 def create_jurisdiction(admin_id: int, data: dict) -> int:

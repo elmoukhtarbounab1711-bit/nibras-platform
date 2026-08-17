@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS legal_texts (
     last_amended    TEXT,
     source_note     TEXT,               -- ملاحظة حول المصدر (للشفافية)
     is_sample_data  INTEGER NOT NULL DEFAULT 1,  -- 1 = بيانات نموذجية للعرض، 0 = محتوى موثّق كليًا
+    jurisdiction_id INTEGER REFERENCES law_jurisdictions(id),  -- الولاية القضائية (القانون المقارن)
     tenant_id       INTEGER REFERENCES tenants(id)  -- المستأجر المالك (عزل D-036)
 );
 
@@ -448,6 +449,7 @@ CREATE TABLE IF NOT EXISTS blog_articles (
     status       TEXT NOT NULL DEFAULT 'pending',  -- pending|published|hidden
     views        INTEGER NOT NULL DEFAULT 0,
     published_at TEXT,
+    jurisdiction_id INTEGER REFERENCES law_jurisdictions(id),  -- الدولة لفئة الدراسات المقارنة
     tenant_id    INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
     created_at   TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
@@ -723,11 +725,13 @@ CREATE INDEX IF NOT EXISTS idx_ad_events_campaign_created
 -- افتراضية في bots kwargs ولا تُلزم النصوص بالتصنيف القديم.
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS jurisprudence_categories (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    slug        TEXT UNIQUE NOT NULL,
-    name        TEXT NOT NULL,
-    description TEXT,
-    tenant_id   INTEGER REFERENCES tenants(id)   -- عزل المستأجر (قرار D-036)
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug            TEXT NOT NULL,
+    name            TEXT NOT NULL,
+    description     TEXT,
+    jurisdiction_id INTEGER REFERENCES law_jurisdictions(id),
+                -- NULL = فئة عامة (تراث المغرب)؛ رقم = فئة خاصة بولاية (قرار D-042)
+    tenant_id       INTEGER REFERENCES tenants(id)   -- عزل المستأجر (قرار D-036)
 );
 
 CREATE TABLE IF NOT EXISTS jurisprudence (
@@ -743,6 +747,7 @@ CREATE TABLE IF NOT EXISTS jurisprudence (
     pdf_url         TEXT,                -- رابط التحميل الأصلي للقرار (PDF)
     published       INTEGER NOT NULL DEFAULT 1,
     views           INTEGER NOT NULL DEFAULT 0,
+    jurisdiction_id INTEGER REFERENCES law_jurisdictions(id),  -- الولاية القضائية (القانون المقارن)
     tenant_id       INTEGER REFERENCES tenants(id),  -- عزل عاجر (D-036)
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
@@ -764,11 +769,13 @@ CREATE INDEX IF NOT EXISTS idx_jurisprudence_tenant
 -- (law_jurisdictions) ونصٍّ ومادة في مكتبة النصوص.
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS law_jurisdictions (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    slug        TEXT UNIQUE NOT NULL COLLATE NOCASE,
-    name        TEXT NOT NULL,
-    tenant_id   INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
-    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug            TEXT UNIQUE NOT NULL COLLATE NOCASE,
+    name            TEXT NOT NULL,
+    is_comparative  INTEGER NOT NULL DEFAULT 1,
+                -- المغرب = 0: مستقل وغير وارد في القانون المقارن (قرار D-042)
+    tenant_id       INTEGER REFERENCES tenants(id),  -- المستأجر المالك (عزل D-036)
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS comparative_studies (
@@ -924,6 +931,220 @@ def _migrate_jurisprudence_fts(conn) -> None:
     )
 
 
+def _migrate_jurisdiction_scoped_categories() -> None:
+    """فئات اجتهاد مستقلة لكل ولاية + مغرب خارج القانون المقارن (قرار D-042).
+
+    تُنفَّذ على اتصال مستقل بعد اكتمال الصفقة الرئيسية لأنها تعيد بناء جدول
+    (إزالة قيد UNIQUE(slug)) ولا يمكن تغيير PRAGMA foreign_keys وسط صفقة.
+    ثلاث عمليات idempotent:
+      1. عمود jurisdiction_id في jurisprudence_categories (NULL = فئة عامة/
+         تراث المغرب؛ رقم = فئة خاصة بولاية).
+      2. إعادة بناء الجدول لإزالة UNIQUE(slug) واستبدالها بفهارس فريدة جزئية.
+      3. عزل المغرب: is_comparative=0 (لا يُمس أي من محتواه).
+    ثم إعادة ربط الاجتهادات القائمة (الولايات) بفئات خاصة بكل ولاية
+    (المغرب بلا jurisdiction_id يبقى على فئاته العامة دون تغيير).
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute("PRAGMA busy_timeout = 30000")
+    from . import arabic_text
+
+    conn.create_function(
+        "nbr_normalize", 1, arabic_text.normalize_arabic, deterministic=True
+    )
+    try:
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(jurisprudence_categories)")]
+        if "jurisdiction_id" not in cols:
+            conn.execute(
+                "ALTER TABLE jurisprudence_categories ADD COLUMN jurisdiction_id "
+                "INTEGER REFERENCES law_jurisdictions(id)"
+            )
+        auto = conn.execute("PRAGMA index_list('jurisprudence_categories')").fetchall()
+        needs_rebuild = any((r[1] or "").startswith("sqlite_autoindex")
+                            for r in auto)
+        if needs_rebuild:
+            conn.execute(
+                "ALTER TABLE jurisprudence_categories "
+                "RENAME TO jurisprudence_categories_old"
+            )
+            conn.execute(
+                """CREATE TABLE jurisprudence_categories (
+                       id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                       slug            TEXT NOT NULL,
+                       name            TEXT NOT NULL,
+                       description     TEXT,
+                       jurisdiction_id INTEGER REFERENCES law_jurisdictions(id),
+                       tenant_id       INTEGER REFERENCES tenants(id)
+                   )"""
+            )
+            conn.execute(
+                "INSERT INTO jurisprudence_categories "
+                "(id, slug, name, description, jurisdiction_id, tenant_id) "
+                "SELECT id, slug, name, description, jurisdiction_id, tenant_id "
+                "FROM jurisprudence_categories_old"
+            )
+            conn.execute(
+                "UPDATE sqlite_sequence SET seq = (SELECT MAX(id) FROM "
+                "jurisprudence_categories) WHERE name = 'jurisprudence_categories'"
+            )
+            conn.execute("DROP TABLE jurisprudence_categories_old")
+        # الفهارس الفريدة الجزئية (سواء أُعيد البناء أم لا — idempotent):
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_jc_slug_legacy "
+            "ON jurisprudence_categories(slug) WHERE jurisdiction_id IS NULL"
+        )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_jc_slug_jurisdiction "
+            "ON jurisprudence_categories(slug, jurisdiction_id) "
+            "WHERE jurisdiction_id IS NOT NULL"
+        )
+        # عزل المغرب خارج القانون المقارن (بدون لمس أي من بياناته)
+        jcols = [r[1] for r in conn.execute("PRAGMA table_info(law_jurisdictions)")]
+        if "is_comparative" not in jcols:
+            conn.execute(
+                "ALTER TABLE law_jurisdictions ADD COLUMN is_comparative "
+                "INTEGER NOT NULL DEFAULT 1"
+            )
+        conn.execute("UPDATE law_jurisdictions SET is_comparative = 0 "
+                     "WHERE slug = 'morocco'")
+        conn.execute("UPDATE law_jurisdictions SET is_comparative = 1 "
+                     "WHERE is_comparative IS NULL")
+        # إعادة ربط اجتهادات الولايات بالفئات الخاصة بكل ولاية (المغرب مستثنى)
+        pairs = conn.execute(
+            """SELECT DISTINCT j.jurisdiction_id AS jid, c.slug AS slug,
+                               c.name AS name
+               FROM jurisprudence j
+               JOIN jurisprudence_categories c ON c.id = j.category_id
+               WHERE j.jurisdiction_id IS NOT NULL"""
+        ).fetchall()
+        for pid in pairs:
+            src = conn.execute(
+                "SELECT id, tenant_id FROM jurisprudence_categories "
+                "WHERE slug = ? AND jurisdiction_id IS NULL",
+                (pid["slug"],),
+            ).fetchone()
+            row = conn.execute(
+                "SELECT id FROM jurisprudence_categories WHERE slug = ? "
+                "AND jurisdiction_id = ?",
+                (pid["slug"], pid["jid"]),
+            ).fetchone()
+            if row is not None:
+                new_id = row[0]
+            else:
+                cur = conn.execute(
+                    "INSERT INTO jurisprudence_categories "
+                    "(slug, name, description, jurisdiction_id, tenant_id) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (pid["slug"], pid["name"], "",
+                     pid["jid"], (None if src is None else src["tenant_id"])),
+                )
+                new_id = cur.lastrowid
+            conn.execute(
+                "UPDATE jurisprudence SET category_id = ? WHERE jurisdiction_id = ? "
+                "AND category_id IN (SELECT id FROM jurisprudence_categories "
+                "WHERE slug = ? AND jurisdiction_id IS NULL)",
+                (new_id, pid["jid"], pid["slug"]),
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _migrate_jurisprudence_category_fk() -> None:
+    """يُصلح قيد FK لجدول الاجتهادات (بعد قرار D-042).
+
+    عند إعادة بناء jurisprudence_categories (إزالة UNIQUE(slug)) بقيت
+    jurisprudence.category_id تُشير إلى الجدول القديم jurisprudence_categories_old
+    (فئات مرقمة 1..11 فقط). النتيجة: أي اجتهاد جديد لفئة ولاية (مصر وغيرها —
+    ids تبدأ من 12) يفشل بقيد FOREIGN KEY. هنا يُعاد بناء الجدول بحيث يشير
+    category_id إلى jurisprudence_categories ويعاد إنشاء الفهارس والمشغّلات ثم
+    يُحذف الجدول القديم. Idempotent: الكشف عبر PRAGMA foreign_key_list.
+    """
+    conn = sqlite3.connect(DB_PATH, timeout=60)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute("PRAGMA busy_timeout = 60000")
+    from . import arabic_text
+
+    conn.create_function(
+        "nbr_normalize", 1, arabic_text.normalize_arabic, deterministic=True
+    )
+    try:
+        fks = conn.execute("PRAGMA foreign_key_list('jurisprudence')").fetchall()
+        needs = any(
+            r["from"] == "category_id" and r["table"] == "jurisprudence_categories_old"
+            for r in fks
+        )
+        if not needs:
+            return
+        triggers = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT name, sql FROM sqlite_master "
+                "WHERE type='trigger' AND tbl_name='jurisprudence'"
+            )
+        ]
+        indexes = [
+            dict(r)
+            for r in conn.execute(
+                "SELECT name, sql FROM sqlite_master "
+                "WHERE type='index' AND tbl_name='jurisprudence' AND sql IS NOT NULL"
+            )
+        ]
+        for trig in triggers:
+            conn.execute(f"DROP TRIGGER IF EXISTS {trig['name']}")
+        conn.execute(
+            """CREATE TABLE jurisprudence_new (
+                   id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                   category_id     INTEGER NOT NULL
+                                   REFERENCES jurisprudence_categories(id),
+                   title           TEXT NOT NULL,
+                   principles      TEXT,
+                   content         TEXT NOT NULL,
+                   court           TEXT,
+                   decision_number TEXT,
+                   decision_date   TEXT,
+                   source_note     TEXT,
+                   published       INTEGER NOT NULL DEFAULT 1,
+                   views           INTEGER NOT NULL DEFAULT 0,
+                   tenant_id       INTEGER REFERENCES tenants(id),
+                   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+                   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+                   pdf_url         TEXT,
+                   jurisdiction_id INTEGER REFERENCES law_jurisdictions(id)
+               )"""
+        )
+        conn.execute(
+            """INSERT INTO jurisprudence_new
+               (id, category_id, title, principles, content, court,
+                decision_number, decision_date, source_note, published, views,
+                tenant_id, created_at, updated_at, pdf_url, jurisdiction_id)
+               SELECT id, category_id, title, principles, content, court,
+                      decision_number, decision_date, source_note, published, views,
+                      tenant_id, created_at, updated_at, pdf_url, jurisdiction_id
+               FROM jurisprudence"""
+        )
+        conn.execute("DROP TABLE jurisprudence")
+        conn.execute("ALTER TABLE jurisprudence_new RENAME TO jurisprudence")
+        for idx in indexes:
+            conn.execute(idx["sql"])
+        for trig in triggers:
+            conn.execute(trig["sql"])
+        conn.execute("DROP TABLE IF EXISTS jurisprudence_categories_old")
+        conn.commit()
+        print("[migrate] repaired jurisprudence.category_id FK -> "
+              "jurisprudence_categories (dropped stale *_old)")
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def init_db(reset: bool = False):
     if reset and DB_PATH.exists():
         DB_PATH.unlink()
@@ -1011,6 +1232,17 @@ def init_db(reset: bool = False):
         # الاستهداف الفئوي للحملات الإعلانية (المرحلة 19 — قرار D-037):
         _ensure_column(conn, "ad_campaigns", "target_category_type", "TEXT")
         _ensure_column(conn, "ad_campaigns", "target_category_id", "INTEGER")
+        # ربط النصوص والاجتهادات بالولايات القضائية (صفحات القانون المقارن — D-038):
+        _ensure_column(conn, "legal_texts", "jurisdiction_id", "INTEGER")
+        _ensure_column(conn, "jurisprudence", "jurisdiction_id", "INTEGER")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_legal_texts_jurisdiction "
+            "ON legal_texts(jurisdiction_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_jurisprudence_jurisdiction "
+            "ON jurisprudence(jurisdiction_id)"
+        )
         # رابط التحميل الأصلي للقرار القضائي (الاجتهاد يبقى PDF قابلاً للتحميل):
         _ensure_column(conn, "jurisprudence", "pdf_url", "TEXT")
     # بذر الأدوار الثابتة وبيانات الإسناد بعد إنشاء المخطط (استيراد مؤجَّل
@@ -1041,6 +1273,13 @@ def init_db(reset: bool = False):
     services_blog.ensure_defaults()
     services_jurisprudence.ensure_defaults()
     services_comparative.ensure_defaults()
+    # فئات اجتهاد مستقلة لكل ولاية + المغرب خارج القانون المقارن (D-042):
+    # تُنفَّذ بعد بذر الولايات (حتى تُعزل المغرب في القواعد الجديدة أيضًا)
+    # وبعد انتهاء الصفقة الرئيسية (إعادة البناء تتطلب PRAGMA خارج الصفقة).
+    _migrate_jurisdiction_scoped_categories()
+    # إصلاح FK الاجتهادات (بقايا قرار D-042): category_id إلى الجدول الفعلي
+    # (كان يُشير إلى *_old). idempotent — يعمل بلا قيدَ إن كان سليمًا.
+    _migrate_jurisprudence_category_fk()
     # المستأجر الافتراضي ثم إلحاق المستخدمين الموجودين به (idempotent)
     services_tenants.ensure_defaults()
     services_tenants.backfill_default_tenant()

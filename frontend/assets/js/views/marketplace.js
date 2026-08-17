@@ -34,8 +34,8 @@ export async function marketplaceView(params) {
 
   const grid = el("div", { class: "grid grid-3" });
   const render = (items) => {
-    grid.replaceChildren(items.length
-      ? items.map((t) => el("article", { class: "card card-hover mkt-card" }, [
+    if (items.length) {
+      grid.replaceChildren(...items.map((t) => el("article", { class: "card card-hover mkt-card" }, [
         cover(t),
         el("h3", { class: "card-title", style: "margin-bottom:4px" }, el("a", { href: `#/marketplace/${t.id}`, text: t.title })),
         el("p", { class: "small muted", style: "flex:1", text: esc(truncate(t.description, 110)) }),
@@ -44,8 +44,10 @@ export async function marketplaceView(params) {
           el("span", { class: "small muted" }, [icon("download", 14), ` ${t.download_count ?? 0} · `, icon("star", 14, { filled: true }), ` ${(t.rating ?? 0).toFixed(1)}`]),
         ]),
         el("button", { class: "btn btn-gold btn-block mt-8 btn-sm", text: tr("preview"), onclick: () => { location.hash = `#/marketplace/${t.id}`; } }),
-      ]))
-      : emptyState(tr("noResults"), "clipboard"));
+      ])));
+    } else {
+      grid.replaceChildren(emptyState(tr("noResults"), "clipboard"));
+    }
   };
 
   const setActive = (btn) => { catBar.querySelectorAll(".chip").forEach((c) => c.classList.remove("active")); btn.classList.add("active"); };
