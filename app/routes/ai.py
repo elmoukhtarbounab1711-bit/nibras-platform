@@ -41,6 +41,8 @@ def explain():
     question = (data.get("question") or "").strip()
     if not question:
         return jsonify({"error": "الرجاء إدخال سؤال (question)"}), 400
+    if len(question) > config.AI_QUESTION_MAX_LENGTH:
+        return jsonify({"error": "السؤال طويل جدًا. الحد الأقصى 2000 حرف."}), 400
     mode = data.get("mode", "grounded")
     if mode not in ("grounded", "general", "research"):
         return jsonify({"error": "mode يجب أن يكون grounded أو general أو research"}), 400

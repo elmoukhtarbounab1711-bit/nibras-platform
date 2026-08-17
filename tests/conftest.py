@@ -16,6 +16,15 @@ if str(REPO_ROOT) not in sys.path:
 
 from app import database
 from app.database import db_session
+from app.routes.auth import _attempts as _auth_attempts
+
+
+@pytest.fixture(autouse=True)
+def _clear_auth_rate_limits():
+    """ينظف حدود المعدل قبل كل اختبار لمنع التراكم بين الاختبارات."""
+    _auth_attempts.clear()
+    yield
+    _auth_attempts.clear()
 
 
 def _seed_test_data():

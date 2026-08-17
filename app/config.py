@@ -147,6 +147,9 @@ AI_JURISPRUDENCE_MAX_CHARS = _env_int("NIBRAS_AI_JURISPRUDENCE_MAX_CHARS", 800)
 AI_RATE_LIMIT_MAX_REQUESTS = _env_int("NIBRAS_AI_RATE_LIMIT_MAX_REQUESTS", 20)
 AI_RATE_LIMIT_WINDOW_SECONDS = _env_int("NIBRAS_AI_RATE_LIMIT_WINDOW_SECONDS", 3600)
 
+# أقصى طول (حرف) للسؤال المُدخَل من المستخدم (P1-4: حماية من إطالة السياق)
+AI_QUESTION_MAX_LENGTH = _env_int("NIBRAS_AI_QUESTION_MAX_LENGTH", 2000)
+
 # البحث الخارجي في وضع المقارنة (research): عدد النتائج المسترجعة من الويب
 # ومهلة كل طلب بالثواني. يُستخدم DuckDuckGo HTML بلا مفتاح — إخفاقه لا يُفشل
 # الإجابة (تُعاد الإجابة من نبراس فقط). صفر = تعطيل البحث الخارجي.
@@ -251,3 +254,8 @@ MULTI_TENANT = _env_bool("NIBRAS_MULTI_TENANT")
 
 # معرّف المستأجر الافتراضي (الرئيسي) المبذور تلقائيًا عند الإقلاع
 DEFAULT_TENANT_SLUG = os.environ.get("NIBRAS_DEFAULT_TENANT_SLUG", "nibras")
+
+# HSTS: يُفعَّل خلف HTTPS proxy (مثل Nginx/Cloudflare). عند التفعيل،
+# يُضاف Strict-Transport-Security على الاستجابات. لا يُفعَّل محليًا
+# لأن HTTP المحلي سيصبح غير صالح في المتصفح.
+HSTS_ENABLED = _env_bool("NIBRAS_HSTS_ENABLED")

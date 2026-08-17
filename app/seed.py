@@ -6,6 +6,8 @@
 المكتبة القانونية حصرًا من مصادر رسمية موثّقة (الجريدة الرسمية،
 الأمانة العامة للحكومة...)، مع تسجيل is_sample_data=0 بعد التحقق.
 """
+import os
+
 from . import config, tenant_scope
 from .database import db_session, init_db
 
@@ -90,9 +92,17 @@ RELATED = [
 # بيانات العرض التوضيحي لبوابة المقالات والنظام المهني (مرحلة الواجهة)
 # ---------------------------------------------------------------------------
 
-# (email, full_name, role, password) — تُنشأ أدوار مهنية بحالة pending ثم تُصدَّق
+# الحساب الإداري يُنشأ حصريًا عبر متغيرات البيئة (NIBRAS_ADMIN_EMAIL +
+# NIBRAS_ADMIN_PASSWORD) عبر سكربت create_admin.py — لا بيانات اعتماد
+# حقيقية في الكود المصدري أبدًا.
+_ADMIN_EMAIL = os.environ.get("NIBRAS_ADMIN_EMAIL", "").strip().lower()
+_ADMIN_PASSWORD = os.environ.get("NIBRAS_ADMIN_PASSWORD", "")
+_ADMIN_NAME = os.environ.get("NIBRAS_ADMIN_NAME", "").strip() or "مسؤول النظام"
+
+# (email, full_name, role, password) — بيانات تجريبية آمنة (لا بريد حقيقي).
 DEMO_USERS = [
-    ("elmoukhtar.bounab1711@gmail.com", "إدارة منصة نبراس", "admin", "@#Nibras@#$"),
+    # الحساب الإداري يُنشأ فقط عند توفر متغيرات البيئة
+    #律师 والمواطن حسابات تجريبية آمنة
     ("lawyer@nibras.local", "ذ. سلمى الإدريسي", "lawyer", "NibrasDemo!2026"),
     ("citizen@nibras.local", "يوسف بنعلي", "citizen", "NibrasDemo!2026"),
 ]
@@ -271,7 +281,7 @@ def seed(reset: bool = True):
 
 
 def _seed_demo_users_and_content(conn, seed_tenant_id):
-    """مستخدمون تجريبيون (مسؤول + محامٍ موثَّق + مواطن) ومقالات وقوالب عرض."""
+    """مستخدمون تجريبيون (مسؤول عبر env + محامٍ موثَّق + مواطن) ومقالات وقوالب عرض."""
     from .services_auth import hash_password
 
     role_ids = {
@@ -279,6 +289,29 @@ def _seed_demo_users_and_content(conn, seed_tenant_id):
         for row in conn.execute("SELECT id, code FROM roles").fetchall()
     }
     user_ids = {}
+
+    # إنشاء الحساب الإداري فقط عند توفر متغيرات البيئة (P0-1: لا بيانات
+    # اعتماد حقيقية في الكود المصدري — يُنشأ عبر create_admin.py أو env).
+    admin_email = os.environ.get("NIBRAS_ADMIN_EMAIL", "").strip().lower()
+    admin_password = os.environ.get("NIBRAS_ADMIN_PASSWORD", "")
+    if admin_email and admin_password and not conn.execute(
+        "SELECT id FROM users WHERE email = ?", (admin_email,)
+    ).fetchone():
+        from .services_auth import validate_password as _validate
+
+        _validate(admin_password)
+        cur = conn.execute(
+            "INSERT INTO users (email, full_name, password_hash, status, tenant_id)"
+            " VALUES (?,?,?,?,?)",
+            (admin_email, "مسؤول النظام", hash_password(admin_password),
+             "active", seed_tenant_id),
+        )
+        conn.execute(
+            "INSERT INTO user_roles (user_id, role_id, role_status) VALUES (?,?,?)",
+            (cur.lastrowid, role_ids["admin"], "active"),
+        )
+        user_ids[admin_email] = cur.lastrowid
+
     for email, full_name, role, password in DEMO_USERS:
         if conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone():
             continue

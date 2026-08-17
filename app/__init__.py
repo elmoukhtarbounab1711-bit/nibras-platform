@@ -43,6 +43,28 @@ def _add_security_headers(response):
     response.headers["Permissions-Policy"] = (
         "camera=(), microphone=(), geolocation=()"
     )
+    # HSTS (P1-2): يُفعَّل فقط عبر NIBRAS_HSTS_ENABLED=1 (خلف HTTPS proxy).
+    # لا يُضاف على HTTP المحلي لتجنب حظر المتصفح للموقع.
+    if config.HSTS_ENABLED:
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
+    return response
+
+
+# مسارات حساسة تتطلب Cache-Control: no-store (P1-3)
+_SENSITIVE_PATHS = (
+    "/api/auth/",
+    "/api/notifications",
+    "/api/admin/",
+)
+
+
+def _add_cache_control(response):
+    """يمنع التخزين المؤقت للمحتوى الحساس (حسابات، إشعارات، إدارة)."""
+    path = request.path
+    if any(path.startswith(p) for p in _SENSITIVE_PATHS):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     return response
 
 
@@ -70,6 +92,7 @@ def create_app():
     app.after_request(nibras_logging.log_request_end)
     app.after_request(_add_security_headers)
     app.after_request(_add_cors_headers)
+    app.after_request(_add_cache_control)
 
     @app.before_request
     def _tenant_enforcement():
