@@ -70,6 +70,55 @@ CREATE TRIGGER IF NOT EXISTS jurisprudence_au AFTER UPDATE ON jurisprudence BEGI
 END;
 """
 
+# ---------------------------------------------------------------------------
+# فهارس FTS5 للقانون المقارن — مطبَّع ومنظّم (الأuluت والاجتهادات)
+# ---------------------------------------------------------------------------
+COMP_LAW_ARTICLES_FTS_DDL = """
+CREATE VIRTUAL TABLE IF NOT EXISTS comp_law_articles_fts USING fts5(
+    label, content, keywords
+);
+
+CREATE TRIGGER IF NOT EXISTS comp_law_articles_ai AFTER INSERT ON comp_law_articles BEGIN
+    INSERT INTO comp_law_articles_fts(rowid, label, content, keywords)
+    VALUES (new.id, nbr_normalize(new.label), nbr_normalize(new.content),
+            COALESCE(nbr_normalize(new.keywords), ''));
+END;
+
+CREATE TRIGGER IF NOT EXISTS comp_law_articles_ad AFTER DELETE ON comp_law_articles BEGIN
+    DELETE FROM comp_law_articles_fts WHERE rowid = old.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS comp_law_articles_au AFTER UPDATE ON comp_law_articles BEGIN
+    DELETE FROM comp_law_articles_fts WHERE rowid = old.id;
+    INSERT INTO comp_law_articles_fts(rowid, label, content, keywords)
+    VALUES (new.id, nbr_normalize(new.label), nbr_normalize(new.content),
+            COALESCE(nbr_normalize(new.keywords), ''));
+END;
+"""
+
+COMP_JURISPRUDENCE_FTS_DDL = """
+CREATE VIRTUAL TABLE IF NOT EXISTS comp_jurisprudence_fts USING fts5(
+    title, content, keywords
+);
+
+CREATE TRIGGER IF NOT EXISTS comp_jurisprudence_ai AFTER INSERT ON comp_jurisprudence BEGIN
+    INSERT INTO comp_jurisprudence_fts(rowid, title, content, keywords)
+    VALUES (new.id, nbr_normalize(new.title), nbr_normalize(new.content),
+            COALESCE(nbr_normalize(new.keywords), ''));
+END;
+
+CREATE TRIGGER IF NOT EXISTS comp_jurisprudence_ad AFTER DELETE ON comp_jurisprudence BEGIN
+    DELETE FROM comp_jurisprudence_fts WHERE rowid = old.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS comp_jurisprudence_au AFTER UPDATE ON comp_jurisprudence BEGIN
+    DELETE FROM comp_jurisprudence_fts WHERE rowid = old.id;
+    INSERT INTO comp_jurisprudence_fts(rowid, title, content, keywords)
+    VALUES (new.id, nbr_normalize(new.title), nbr_normalize(new.content),
+            COALESCE(nbr_normalize(new.keywords), ''));
+END;
+"""
+
 SCHEMA = """
 -- الفروع القانونية (مدني، أسرة، جنائي، دستوري ...)
 CREATE TABLE IF NOT EXISTS categories (
@@ -815,6 +864,131 @@ CREATE INDEX IF NOT EXISTS idx_comparative_entries_tenant
 CREATE INDEX IF NOT EXISTS idx_comparative_entries_study
     ON comparative_entries(study_id);
 
+-- =========================================================================
+-- القانون المقارن — بنية دولية مستقلة عن المكتبة المغربية
+-- (دول + قوانين + مواد + محاكم + اجتهادات + سجلات الاستيراد)
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS comp_countries (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    code        TEXT UNIQUE NOT NULL COLLATE NOCASE,
+    name        TEXT NOT NULL,
+    name_ar     TEXT,
+    flag_emoji  TEXT,
+    language    TEXT NOT NULL DEFAULT 'fr',
+    tenant_id   INTEGER REFERENCES tenants(id),
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS comp_laws (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    country_id      INTEGER NOT NULL REFERENCES comp_countries(id),
+    category        TEXT NOT NULL DEFAULT 'general',
+    title           TEXT NOT NULL,
+    title_original  TEXT,
+    official_ref    TEXT,
+    language        TEXT NOT NULL DEFAULT 'fr',
+    enacted_date    TEXT,
+    published_date  TEXT,
+    source_name     TEXT,
+    source_url      TEXT,
+    official_source INTEGER NOT NULL DEFAULT 0,
+    content_hash    TEXT,
+    content         TEXT,
+    imported_at     TEXT,
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    tenant_id       INTEGER REFERENCES tenants(id)
+);
+
+CREATE TABLE IF NOT EXISTS comp_law_articles (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    law_id          INTEGER NOT NULL REFERENCES comp_laws(id) ON DELETE CASCADE,
+    number          TEXT NOT NULL,
+    label           TEXT NOT NULL,
+    content         TEXT NOT NULL,
+    keywords        TEXT,
+    tenant_id       INTEGER REFERENCES tenants(id)
+);
+
+CREATE TABLE IF NOT EXISTS comp_courts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    country_id  INTEGER NOT NULL REFERENCES comp_countries(id),
+    name        TEXT NOT NULL,
+    name_ar     TEXT,
+    slug        TEXT NOT NULL,
+    description TEXT,
+    tenant_id   INTEGER REFERENCES tenants(id),
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(country_id, slug)
+);
+
+CREATE TABLE IF NOT EXISTS comp_jurisprudence (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    country_id        INTEGER NOT NULL REFERENCES comp_countries(id),
+    court_id          INTEGER REFERENCES comp_courts(id),
+    title             TEXT NOT NULL,
+    content           TEXT NOT NULL,
+    decision_number   TEXT,
+    decision_date     TEXT,
+    decision_type     TEXT,
+    keywords          TEXT,
+    source_name       TEXT,
+    source_url        TEXT,
+    official_source   INTEGER NOT NULL DEFAULT 0,
+    content_hash      TEXT,
+    published         INTEGER NOT NULL DEFAULT 1,
+    imported_at       TEXT,
+    updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    tenant_id         INTEGER REFERENCES tenants(id)
+);
+
+CREATE TABLE IF NOT EXISTS comp_import_runs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id       INTEGER,
+    country_code    TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'running',
+    started_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    finished_at     TEXT,
+    docs_found      INTEGER NOT NULL DEFAULT 0,
+    docs_imported   INTEGER NOT NULL DEFAULT 0,
+    docs_skipped    INTEGER NOT NULL DEFAULT 0,
+    docs_failed     INTEGER NOT NULL DEFAULT 0,
+    error_message   TEXT,
+    tenant_id       INTEGER REFERENCES tenants(id)
+);
+
+CREATE TABLE IF NOT EXISTS comp_import_sources (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    country_code    TEXT NOT NULL,
+    source_type     TEXT NOT NULL,
+    url             TEXT,
+    access_method   TEXT NOT NULL DEFAULT 'manual',
+    official        INTEGER NOT NULL DEFAULT 0,
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    notes           TEXT,
+    tenant_id       INTEGER REFERENCES tenants(id),
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- فهارس القانون المقارن
+CREATE INDEX IF NOT EXISTS idx_comp_laws_country ON comp_laws(country_id);
+CREATE INDEX IF NOT EXISTS idx_comp_laws_category ON comp_laws(category);
+CREATE INDEX IF NOT EXISTS idx_comp_laws_content_hash ON comp_laws(content_hash);
+CREATE INDEX IF NOT EXISTS idx_comp_law_articles_law ON comp_law_articles(law_id);
+CREATE INDEX IF NOT EXISTS idx_comp_courts_country ON comp_courts(country_id);
+CREATE INDEX IF NOT EXISTS idx_comp_jurisprudence_country ON comp_jurisprudence(country_id);
+CREATE INDEX IF NOT EXISTS idx_comp_jurisprudence_court ON comp_jurisprudence(court_id);
+CREATE INDEX IF NOT EXISTS idx_comp_jurisprudence_date ON comp_jurisprudence(decision_date);
+CREATE INDEX IF NOT EXISTS idx_comp_jurisprudence_content_hash ON comp_jurisprudence(content_hash);
+CREATE INDEX IF NOT EXISTS idx_comp_import_runs_status ON comp_import_runs(status);
+-- فهارس عزل المستأجر للقانون المقارن
+CREATE INDEX IF NOT EXISTS idx_comp_countries_tenant ON comp_countries(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_comp_laws_tenant ON comp_laws(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_comp_law_articles_tenant ON comp_law_articles(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_comp_courts_tenant ON comp_courts(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_comp_jurisprudence_tenant ON comp_jurisprudence(tenant_id);
+
 -- فهارس عزل المستأجر (D-036): تسريع كل بحث مُقيَّد بـ tenant_id
 -- (تُنشأ بعد كل الجداول لأن marketplace/ads تُعرَّف لاحقًا في المخطط)
 CREATE INDEX IF NOT EXISTS idx_categories_tenant ON categories(tenant_id);
@@ -837,7 +1011,7 @@ CREATE INDEX IF NOT EXISTS idx_blog_articles_tenant ON blog_articles(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_blog_comments_tenant ON blog_comments(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_blog_likes_tenant ON blog_likes(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_blog_reports_tenant ON blog_reports(tenant_id);
-"""
+""" + COMP_LAW_ARTICLES_FTS_DDL + COMP_JURISPRUDENCE_FTS_DDL
 
 
 def _ensure_column(conn, table: str, column: str, definition: str) -> None:
@@ -1254,6 +1428,7 @@ def init_db(reset: bool = False):
         services_blog,
         services_calculators,
         services_community,
+        services_comp,
         services_comparative,
         services_documents,
         services_jurisprudence,
@@ -1273,6 +1448,7 @@ def init_db(reset: bool = False):
     services_blog.ensure_defaults()
     services_jurisprudence.ensure_defaults()
     services_comparative.ensure_defaults()
+    services_comp.ensure_defaults()
     # فئات اجتهاد مستقلة لكل ولاية + المغرب خارج القانون المقارن (D-042):
     # تُنفَّذ بعد بذر الولايات (حتى تُعزل المغرب في القواعد الجديدة أيضًا)
     # وبعد انتهاء الصفقة الرئيسية (إعادة البناء تتطلب PRAGMA خارج الصفقة).

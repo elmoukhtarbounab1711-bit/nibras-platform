@@ -20,6 +20,7 @@ import { profileView } from "./views/profile.js";
 import { assistantView } from "./views/assistant.js";
 import { billingView, myOrdersView } from "./views/billing.js";
 import { comparativeView, jurisdictionView, comparativeDetailView, comparativeNewView } from "./views/comparative.js";
+import { compCountriesView, compCountryView, compLawView, compSearchView, compStatsView } from "./views/comp.js";
 
 // ---------- مسارات ثابتة ----------
 register("/home", homeView);
@@ -50,6 +51,14 @@ register("/comparative/study/:id", comparativeDetailView);
 register("/comparative/jurisdiction/:slug", jurisdictionView);
 register("/comparative/jurisdiction/:slug/:tab", jurisdictionView);
 register("/comparative/:id", comparativeDetailView);
+
+// قانون مقارن مستقل
+register("/foreign-law", compCountriesView);
+register("/foreign-law/:code", compCountryView);
+register("/foreign-law/:code/:tab", compCountryView);
+register("/foreign-law/:code/law/:lawId", compLawView);
+register("/foreign-law/search/:q", compSearchView);
+register("/foreign-law/stats", compStatsView);
 
 register("/documents", documentsView);
 register("/documents/:slug", documentDetailView);
