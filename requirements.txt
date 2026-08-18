@@ -14,4 +14,4 @@ reportlab>=4.0,<5.0
 arabic-reshaper>=3.0,<4.0
 python-bidi>=0.4,<1.0
 # محرك رفع المستندات (المرحلة 10 — قرار D-028): استخراج نصوص PDF
-pdfminer.six>=2023,<2030
+pdfminer.six
