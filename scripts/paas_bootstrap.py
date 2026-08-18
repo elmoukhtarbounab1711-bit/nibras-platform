@@ -1,26 +1,29 @@
 """
 بوتستراب النشر (PaaS) — يهيِّئ القرص المُثبَّت عند أول إقلاع.
 
-لأن أنظمة PaaS (Render/Railway/Fly) لديها نظام ملفات عابر، يُطلب ربط قرص
+ لأن أنظمة PaaS (Render/Railway/Fly) لديها نظام ملفات عابر، يُطلب ربط قرص
 مُثبَّت يُشار إليه بـ NIBRAS_DB_PATH و NIBRAS_UPLOAD_DIR. على قرص فارغ
 ينشئ هذا السكربت قاعدة بيانات سليمة (المخطط كاملًا + فئات/أدوار/قوالب
 الافتراضية) و/أو يستنسخ قاعدة موجودة من مكان آخر.
 
 الاستخدام:
+    # تحميل قاعدة من URL (مضغوطة gzip) — الأعلى أولوية
+    NIBRAS_DB_URL=https://example.com/nibras_prod.db.gz python scripts/paas_bootstrap.py ensure
+
     # على قرص فارغ — بذر مخطط نظيف + بيانات افتراضية
     NIBRAS_DB_PATH=/data/nibras.db python scripts/paas_bootstrap.py seed
 
-    # استنساخ قاعدة قائمة (مثل ملف مرشَّح من النسخ الاحتياطي) إلى القرص
-    NIBRAS_DB_PATH=/data/nibras.db \
-      NIBRAS_BOOTSTRAP_SOURCE=/tmp/nibras-prod.sqlite \
-      python scripts/paas_bootstrap.py copy
+    # استنساخ قاعدة قائمة
+    NIBRAS_BOOTSTRAP_SOURCE=/tmp/nibras-prod.sqlite python scripts/paas_bootstrap.py copy
 
-    # المرور اللاحق يكون no-op آمن — تُنشأ القاعدة إن غابت فقط
+    # المرور اللاحق يكون no-op آمن
     python scripts/paas_bootstrap.py ensure
 """
+import gzip
 import os
 import shutil
 import sys
+import urllib.request
 from pathlib import Path
 
 # إضافة جذر المستودع إلى sys.path ليعمل السكربت كملف مباشر (python scripts/...)
@@ -97,9 +100,41 @@ def ensure():
     if db.exists() and db.stat().st_size > 0 and _check_db(db):
         print(f"[bootstrap] جاهز: {db}")
         return
+    url = os.environ.get("NIBRAS_DB_URL", "").strip()
+    if url:
+        download(url)
+        return
     seed()
+
+
+def download(url: str):
+    db = _path_from_env()
+    if db.exists() and db.stat().st_size > 0 and _check_db(db):
+        print(f"[bootstrap] قاعدة موجودة: {db} — تخطّي التحميل.")
+        return
+    if db.exists():
+        db.unlink()
+    print(f"[bootstrap] تحميل القاعدة من: {url}")
+    tmp_gz = Path(str(db) + ".gz.download")
+    tmp_gz.parent.mkdir(parents=True, exist_ok=True)
+    urllib.request.urlretrieve(url, tmp_gz)
+    size_mb = tmp_gz.stat().st_size / 1024 / 1024
+    print(f"[bootstrap] تم التحميل: {size_mb:.1f} MB — جاري فك الضغط...")
+    with gzip.open(tmp_gz, "rb") as f_in:
+        with open(db, "wb") as f_out:
+            shutil.copyfileobj(f_in, f_out)
+    tmp_gz.unlink()
+    final_mb = db.stat().st_size / 1024 / 1024
+    print(f"[bootstrap] فك الضغط: {final_mb:.1f} MB")
+    if _check_db(db):
+        print(f"[bootstrap] القاعدة سليمة: {db}")
+    else:
+        print("[bootstrap] تحذير: القاعدة قد تكون غير مكتملة.")
 
 
 if __name__ == "__main__":
     action = sys.argv[1] if len(sys.argv) > 1 else "ensure"
-    {"seed": seed, "copy": copy, "ensure": ensure}.get(action, ensure)()
+    if action == "download" and len(sys.argv) > 2:
+        download(sys.argv[2])
+    else:
+        {"seed": seed, "copy": copy, "download": download, "ensure": ensure}.get(action, ensure)()
