@@ -1,6 +1,6 @@
 // نبراس — الصفحة الرئيسية (v2)
 import { tr, currentLang } from "../i18n.js";
-import { api, session } from "../api.js";
+import { api } from "../api.js";
 import { el, esc, emptyState, fmtDate, typeLabel, avatarColor, initials } from "../ui.js";
 import { icon, iconHTML } from "../icons.js";
 import { navigate } from "../router.js";
@@ -24,10 +24,6 @@ async function fetchArticles() {
 async function fetchJuris() {
   const d = await api.get("/api/jurisprudence?limit=4");
   return { list: (d.decisions || []).slice(0, 4), total: d.count ?? 0 };
-}
-async function fetchPros() {
-  const d = await api.get("/api/professionals?limit=4");
-  return d.professionals || [];
 }
 
 /* ---------- بطاقة صغيرة موحدة ---------- */
@@ -184,8 +180,8 @@ function faqSection() {
 
 /* ---------- الصفحة ---------- */
 export async function homeView() {
-  const [textsData, articles, jurisData, pros] = await Promise.all([
-    fetchTexts(), fetchArticles(), fetchJuris(), fetchPros(),
+  const [textsData, articles, jurisData] = await Promise.all([
+    fetchTexts(), fetchArticles(), fetchJuris(),
   ]);
   const texts = textsData.list;
   const juris = jurisData.list;
@@ -197,7 +193,7 @@ export async function homeView() {
     ["globe", "portalComparative", "portalComparativeD", "/comparative"],
     ["pen", "portalBlog", "portalBlogD", "/blog"],
     ["map", "portalProcedures", "portalProceduresD", "/procedures"],
-    ["users", "portalProfessionals", "portalProfessionalsD", "/professionals"],
+    ["book", "portalLegalFrench", "portalLegalFrenchD", "/legal-french"],
     ["cpu", "portalAssistant", "portalAssistantD", "/assistant"],
     ["messageCircle", "portalCommunity", "portalCommunityD", "/community"],
     ["calculator", "portalCalculators", "portalCalculatorsD", "/calculators"],
@@ -212,7 +208,6 @@ export async function homeView() {
       el("p", { text: tr("heroText") }),
       searchBox(),
       el("div", { class: "hero-actions mt-16" }, [
-        el("button", { class: "btn btn-gold", text: tr("heroCta2"), onclick: () => navigate("/professionals") }),
         el("button", { class: "btn btn-ghost", style: "border-color:rgba(255,255,255,.4);color:#fff", text: tr("heroCta3"), onclick: () => navigate("/assistant") }),
       ]),
     ]),
@@ -225,7 +220,6 @@ export async function homeView() {
       el("div", { class: "stats-strip" }, [
         [textsData.total, "scale", "statLaws"],
         [jurisTotal, "shield", "statJuris"],
-        [pros.length, "users", "statPros"],
         [articles.length, "pen", "statArticles"],
       ].map(([n, ic, lbl]) => el("div", { class: "stat-tile" }, [
         el("div", { class: "st-icon" }, [icon(ic, 22)]),
@@ -280,17 +274,6 @@ export async function homeView() {
         : emptyState(tr("noResults"), "shield"),
     ]),
 
-    /* أحدث المهنيين */
-    el("section", { class: "home-section" }, [
-      el("div", { class: "section-head" }, [
-        el("div", {}, [el("div", { class: "eyebrow", text: tr("latestProsSub") }), el("h2", { text: tr("latestPros") })]),
-        el("button", { class: "btn btn-ghost btn-sm", text: tr("viewAll"), onclick: () => navigate("/professionals") }),
-      ]),
-      pros.length
-        ? el("div", { class: "tile-grid" }, pros.map((p) => tile(() => proTile(p)())))
-        : emptyState(tr("noResults"), "users"),
-    ]),
-
     /* الأسئلة الشائعة */
     faqSection(),
 
@@ -298,14 +281,14 @@ export async function homeView() {
     el("section", { class: "home-section" }, [
       el("div", { class: "hero", style: "display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap" }, [
         el("div", {}, [
-          el("h2", { style: "color:#fff", text: tr("portalProfessionals") }),
-          el("p", { text: tr("portalProfessionalsD") }),
+          el("h2", { style: "color:#fff", text: tr("portalLegalFrench") }),
+          el("p", { text: tr("portalLegalFrenchD") }),
         ]),
         el("div", { class: "hero-actions" }, [
           el("button", {
             class: "btn btn-gold",
-            text: session.token ? tr("myProfile") : tr("register"),
-            onclick: () => session.token ? navigate("/profile") : document.dispatchEvent(new CustomEvent("nibras:need-auth", { detail: "register" })),
+            text: tr("viewAll"),
+            onclick: () => navigate("/legal-french"),
           }),
         ]),
       ]),

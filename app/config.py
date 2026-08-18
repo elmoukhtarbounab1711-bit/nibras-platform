@@ -259,3 +259,14 @@ DEFAULT_TENANT_SLUG = os.environ.get("NIBRAS_DEFAULT_TENANT_SLUG", "nibras")
 # يُضاف Strict-Transport-Security على الاستجابات. لا يُفعَّل محليًا
 # لأن HTTP المحلي سيصبح غير صالح في المتصفح.
 HSTS_ENABLED = _env_bool("NIBRAS_HSTS_ENABLED")
+
+# ---------------------------------------------------------------------------
+# القانون 09-08 — حماية المعطيات الشخصية والتحقق بخطوتين للمشرفين
+# ---------------------------------------------------------------------------
+
+# عدد محاولات تسجيل الدخول الفاشلة قبل قفل الحساب (للمستخدمين العاديين)
+LOGIN_MAX_ATTEMPTS = _env_int("NIBRAS_LOGIN_MAX_ATTEMPTS", 5)
+LOGIN_LOCKOUT_SECONDS = _env_int("NIBRAS_LOGIN_LOCKOUT_SECONDS", 900)
+
+# قوة كلمة المرور للمشرفين: 12 حرفًا على الأقل + حرف كبير + صغير + رقم + رمز
+ADMIN_MIN_PASSWORD_LENGTH = _env_int("NIBRAS_ADMIN_MIN_PASSWORD_LENGTH", 12)

@@ -5,7 +5,7 @@ import { tr, currentLang, setLang } from "../i18n.js";
 import {
   t, go, content, fail, head, panel, body, kpi, kpiGrid, badge,
   tabs, listItem, lineChart, hBars, emptyState, skeleton, num, fmtDt,
-  icon, SectionViews,
+  icon, SectionViews, state,
 } from "./ui.js";
 import { libraryView } from "./views/library.js";
 import { blogView } from "./views/blog.js";
@@ -15,7 +15,8 @@ import { systemView } from "./views/system.js";
 import { billingView } from "./views/billing.js";
 import { jurisprudenceAdminView } from "./views/jurisprudence.js";
 import { comparativeAdminView } from "./views/comparative.js";
-import { compLibAdminView } from "./views/comp_lib.js";
+import { researchAdminView } from "./views/research.js";
+
 
 // ---------- أقسام الشريط الجانبي (12 قسمًا) ----------
 const NAV = [
@@ -28,7 +29,8 @@ const NAV = [
   { key: "billing", icon: "wallet", label: "billing" },
   { key: "jurisprudence", icon: "scale", label: "jurisprudence" },
   { key: "comparative", icon: "globe", label: "comparative" },
-  { key: "compLib", icon: "book", label: "compLib" },
+  { key: "research", icon: "book", label: "researchLibrary" },
+
   { key: "tenants", icon: "building", label: "tenants" },
   { key: "ai", icon: "cpu", label: "ai" },
   { key: "notifications", icon: "bell", label: "notifications" },
@@ -46,7 +48,8 @@ SectionViews.ads = () => commerceView("ads");
 SectionViews.billing = billingView;
 SectionViews.jurisprudence = jurisprudenceAdminView;
 SectionViews.comparative = comparativeAdminView;
-SectionViews.compLib = compLibAdminView;
+SectionViews.research = researchAdminView;
+
 SectionViews.tenants = () => commerceView("tenants");
 SectionViews.ai = () => systemView("ai");
 SectionViews.notifications = () => systemView("notifications");
@@ -150,7 +153,7 @@ function wireTopbar() {
 function router() {
   let section = location.hash.replace("#/admin/", "") || "dashboard";
   if (!SectionViews[section]) section = "dashboard";
-  state_section = section;
+  state.section = section;
 
   document.getElementById("adm-title").textContent = sectionTitle(section);
   document.getElementById("adm-crumb").textContent = t("section") + " / " + sectionTitle(section);
@@ -167,7 +170,6 @@ function router() {
   }
 }
 
-let state_section = "dashboard";
 
 // ---------- لوحة القيادة ----------
 async function dashboardView() {

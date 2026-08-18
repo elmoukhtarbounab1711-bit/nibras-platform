@@ -24,6 +24,7 @@ export function navigate(path) {
 export function matchHash(hash) {
   let path = decodeURIComponent((hash || "#/home").replace(/^#/, "") || "/home");
   if (!path || path === "/") path = "/home";
+  path = path.split("?")[0];
   const segments = path.split("/").filter(Boolean);
   for (const route of routes) {
     const params = {};

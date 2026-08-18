@@ -31,7 +31,7 @@ async function decisionsPanel() {
     const params = new URLSearchParams();
     if (searchIn.value.trim()) params.set("q", searchIn.value.trim());
     let list = [];
-    try { list = (await api.get(`/admin/jurisprudence?${params.toString()}`)) || []; }
+    try { list = (await api.get(`/api/admin/jurisprudence?${params.toString()}`)) || []; }
     catch (e) { list = []; }
     tbody.replaceChildren(list.length
       ? list.map((d) => el("tr", {}, [
@@ -157,7 +157,7 @@ async function categoriesPanel() {
   async function draw() {
     node.replaceChildren(skeleton(2, 80));
     let cats = [];
-    try { cats = (await api.get("/admin/jurisprudence/categories")) || []; }
+    try { cats = (await api.get("/api/admin/jurisprudence/categories")) || []; }
     catch (e) { cats = []; }
     node.replaceChildren(cats.length
       ? cats.map((c) => panel([
@@ -165,7 +165,7 @@ async function categoriesPanel() {
             el("button", { class: "btn btn-ghost btn-sm", text: t("edit"), onclick: () => catModal(c, draw) }),
             el("button", { class: "btn btn-danger btn-sm", text: t("delete"), onclick: async () => {
               if (!(await confirmDialog({ title: t("deleteConfirm"), text: c.name }))) return;
-              try { await api.del(`/admin/jurisprudence/categories/${c.id}`); toast(t("deleted"), "success"); draw(); }
+              try { await api.del(`/api/admin/jurisprudence/categories/${c.id}`); toast(t("deleted"), "success"); draw(); }
               catch (e) { toast(e.message, "error"); }
             } }),
           ]),
@@ -205,8 +205,8 @@ function catModal(c, onDone) {
         if (!nameI.value.trim() || !slugI.value.trim()) return toast(t("required"), "warn");
         const payload = { name: nameI.value.trim(), slug: slugI.value.trim(), description: descI.value.trim() || "" };
         try {
-          if (c) await api.put(`/admin/jurisprudence/categories/${c.id}`, payload);
-          else await api.post("/admin/jurisprudence/categories", payload);
+          if (c) await api.put(`/api/admin/jurisprudence/categories/${c.id}`, payload);
+          else await api.post("/api/admin/jurisprudence/categories", payload);
           closeModal(); toast(t("saved"), "success"); onDone && onDone();
         } catch (e) { toast(e.message, "error"); }
       } }),

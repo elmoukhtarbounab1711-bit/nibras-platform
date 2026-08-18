@@ -17,6 +17,8 @@ PASSWORD = "test-password-123"
 
 
 def _make_user(email="citizen@example.com", role="citizen", **kwargs):
+    kwargs.setdefault("consent_data_processing", True)
+    kwargs.setdefault("consent_terms", True)
     return services_auth.create_user(
         email=email, password=PASSWORD, full_name="مواطن اختبار", role_code=role, **kwargs
     )
@@ -64,7 +66,8 @@ def test_duplicate_email_rejected(fresh_db):
 def test_invalid_password_too_short(fresh_db):
     with pytest.raises(AuthError) as excinfo:
         services_auth.create_user(
-            email="short@example.com", password="short", full_name="م", role_code="citizen"
+            email="short@example.com", password="short", full_name="م", role_code="citizen",
+            consent_data_processing=True, consent_terms=True,
         )
     assert excinfo.value.status_code == 400
 

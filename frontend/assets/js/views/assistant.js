@@ -1,4 +1,4 @@
-// نبراس — المساعد القانوني (v2): محادثة موثقة بالمصادر + رفع PDF
+// نبراس — المساعد القانوني (v3): محادثة موثقة بالمصادر + رفع PDF + صور
 import { tr, currentLang } from "../i18n.js";
 import { api, session } from "../api.js";
 import { el, esc, toast } from "../ui.js";
@@ -22,7 +22,7 @@ function newSession() {
 }
 function currentChat() { return state.chats.find((c) => c.id === state.activeId) || null; }
 
-/* ---------- استخراج نص PDF (عبر pdf.js من داخل المتصفح) ---------- */
+/* ── استخراج نص PDF (محلياً عبر pdf.js كخطة احتياطية) ── */
 async function extractPdfText(file) {
   const lib = window.pdfjsLib;
   if (!lib) throw new Error("PDF engine not loaded");
@@ -40,32 +40,56 @@ async function extractPdfText(file) {
   } finally { URL.revokeObjectURL(url); }
 }
 
+/* ── إرسال مرفق (PDF/صورة) للخادم ── */
+async function sendAttachment(file, question, mode) {
+  const fd = new FormData();
+  fd.append("file", file);
+  if (question) fd.append("question", question);
+  return api.uploadFields("/api/ai/explain-attachment", fd);
+}
+
+/* ── إرسال رسالة نصية (كما كان) ── */
+function sendTextMessage(question, mode) {
+  return api.post("/api/ai/explain", { question, mode });
+}
+
 function sendMessage(input, modeBtn, attachWrap) {
   const q = input.value.trim();
-  if (!q && !state._pendingPdf) return;
+  const pendingFile = state._pendingFile;
+  const pendingPreview = state._pendingPreview;
+  if (!q && !pendingFile) return;
   const chat = currentChat();
   if (!chat) return;
 
-  let question = q;
-  if (state._pendingPdf) {
-    question = q
-      ? `${q}\n\n--- ${tr("extractedFromPdf")} ---\n${state._pendingPdf}`
-      : `حلّل المستند التالي واشرحه:\n${state._pendingPdf}`;
-    state._pendingPdf = null;
-    attachWrap.querySelector(".attach-name").textContent = "";
+  /* ── بناء رسالة المستخدم ── */
+  const userMsg = { role: "user", text: q || "" };
+  if (pendingPreview) {
+    userMsg.attachment = pendingPreview;
   }
 
-  chat.messages.push({ role: "user", text: question });
+  chat.messages.push(userMsg);
   renderMessages();
   input.value = "";
   input.disabled = true;
   modeBtn.disabled = true;
 
+  /* ── تنظيف الحالة المؤقتة ── */
+  state._pendingFile = null;
+  state._pendingPreview = null;
+  attachWrap.querySelector(".attach-name").textContent = "";
+  attachWrap.querySelector(".attach-preview")?.remove();
+
+  const mode = modeBtn.dataset.mode || "auto";
   const typing = renderTyping();
-  api.post("/api/ai/explain", {
-    question,
-    mode: modeBtn.dataset.mode || "grounded",
-  }).then((data) => {
+
+  let apiCall;
+  if (pendingFile) {
+    apiCall = sendAttachment(pendingFile, q, mode);
+  } else {
+    apiCall = sendTextMessage(q, mode);
+  }
+
+  apiCall.then((data) => {
     typing.remove();
     chat.messages.push({
       role: "ai",
@@ -73,9 +97,10 @@ function sendMessage(input, modeBtn, attachWrap) {
       cites: Array.isArray(data.cited_article_ids) ? data.cited_article_ids : [],
       decises: Array.isArray(data.cited_decision_ids) ? data.cited_decision_ids : [],
       external: Array.isArray(data.external_sources) ? data.external_sources : [],
+      source: data.source || null,
       status: data.status || "ok",
     });
-    if (chat.messages.length === 2) chat.title = q.slice(0, 40);
+    if (chat.messages.length === 2) chat.title = (q || "مرفق").slice(0, 40);
     saveChats(state.chats);
     renderMessages();
   }).catch((err) => {
@@ -131,6 +156,17 @@ function externalLinks(external) {
   ]);
 }
 
+function sourceBadge(source) {
+  const MAP = {
+    nibras: { label: tr("sourceNibras"), cls: "source-nibras" },
+    web: { label: tr("sourceWeb"), cls: "source-web" },
+    general: { label: tr("sourceGeneral"), cls: "source-general" },
+    attachment: { label: "مرفق", cls: "source-web" },
+  };
+  const m = MAP[source] || MAP.general;
+  return el("div", { class: `source-badge ${m.cls}`, text: m.label });
+}
+
 function renderMessages() {
   const wrap = document.getElementById("chat-messages");
   const chat = currentChat();
@@ -145,11 +181,41 @@ function renderMessages() {
     return;
   }
   for (const msg of chat.messages) {
-    const bubble = el("div", { class: "bubble", text: msg.text });
+    const bubble = el("div", { class: "bubble" });
+    if (msg.text) bubble.append(document.createTextNode(msg.text));
+
+    /* ── عرض صورة مرفقة ── */
+    if (msg.attachment && msg.attachment.type === "image") {
+      const imgWrap = el("div", { style: "margin-top:8px" }, [
+        el("img", {
+          src: msg.attachment.dataUrl,
+          style: "max-width:260px;max-height:200px;border-radius:8px;border:1px solid var(--line);object-fit:cover",
+          alt: msg.attachment.name || "مرفق",
+        }),
+      ]);
+      if (msg.attachment.name) {
+        imgWrap.append(el("div", { class: "small muted", style: "margin-top:2px", text: msg.attachment.name }));
+      }
+      bubble.append(imgWrap);
+    }
+
+    /* ── عرض اسم ملف PDF ── */
+    if (msg.attachment && msg.attachment.type === "pdf") {
+      const fileTag = el("div", {
+        style: "display:inline-flex;align-items:center;gap:6px;padding:6px 12px;"
+          + "background:var(--info-bg);border-radius:8px;margin-top:6px;font-size:0.82rem",
+      }, [
+        icon("file", 14),
+        document.createTextNode(msg.attachment.name || "PDF"),
+      ]);
+      bubble.append(fileTag);
+    }
+
     const row = el("div", { class: `chat-msg ${msg.role}` }, [bubble]);
     if (msg.role === "ai") {
       if (msg.error) bubble.style.background = "var(--danger-bg)";
       else {
+        if (msg.source) row.append(sourceBadge(msg.source));
         const decLinks = decisionCiteLinks(msg.decises || []);
         if (decLinks) row.append(decLinks);
         row.append(citeLinks(msg.cites));
@@ -190,7 +256,6 @@ function renderSuggestions(attachWrap, modeBtn) {
         chat.messages.push({ role: "user", text: p });
         saveChats(state.chats);
         renderMessages();
-        // أرسل مباشرة
         const fake = { value: p, disabled: false };
         sendMessage(fake, modeBtn, attachWrap);
       },
@@ -198,33 +263,76 @@ function renderSuggestions(attachWrap, modeBtn) {
   }
 }
 
+/* ── منطق رفع الملفات (PDF + صور JPEG/PNG) ── */
 function attachLogic(attachWrap, input) {
   const fileInput = attachWrap.querySelector("input[type=file]");
   const nameEl = attachWrap.querySelector(".attach-name");
-  fileInput.addEventListener("change", async () => {
+
+  fileInput.addEventListener("change", () => {
     const file = fileInput.files[0];
     if (!file) return;
-    try {
-      if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
-        toast(tr("loading"));
-        const text = await extractPdfText(file);
-        if (!text) { toast(tr("noResults"), "warn"); return; }
-        state._pendingPdf = text;
+
+    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    const isImage = /^image\/(jpeg|png|jpe?g)$/i.test(file.type)
+      || /\.(jpg|jpeg|png)$/i.test(file.name);
+
+    if (!isPdf && !isImage) {
+      toast(tr("docxNote") || "نوع الملف غير مدعوم. الرجاء إرفاق PDF أو صورة (JPEG/PNG)", "warn");
+      fileInput.value = "";
+      return;
+    }
+
+    state._pendingFile = file;
+
+    if (isImage) {
+      /* ── معاينة الصورة ── */
+      const reader = new FileReader();
+      reader.onload = () => {
+        state._pendingPreview = { type: "image", dataUrl: reader.result, name: file.name };
         nameEl.replaceChildren(icon("paperclip", 14), " " + file.name);
-        toast("PDF OK", "success");
-      } else {
-        nameEl.replaceChildren(icon("paperclip", 14), " " + file.name + " " + tr("docxNote"));
-        state._pendingPdf = null;
-        toast(tr("docxNote"), "warn");
-      }
-    } catch { toast(tr("error"), "error"); }
+        /* إضافة معاينة بصرية */
+        let preview = attachWrap.querySelector(".attach-preview");
+        if (!preview) {
+          preview = el("div", { class: "attach-preview", style: "margin-top:6px" });
+          attachWrap.append(preview);
+        }
+        preview.replaceChildren(
+          el("img", {
+            src: reader.result,
+            style: "max-width:120px;max-height:80px;border-radius:6px;border:1px solid var(--line);object-fit:cover",
+            alt: file.name,
+          }),
+          el("button", {
+            style: "margin-inline-start:8px;background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px",
+            text: "✕",
+            title: "إزالة المرفق",
+            onclick: () => {
+              state._pendingFile = null;
+              state._pendingPreview = null;
+              nameEl.textContent = "";
+              preview.replaceChildren();
+              fileInput.value = "";
+            },
+          })
+        );
+        toast("تم إرفاق الصورة", "success");
+      };
+      reader.readAsDataURL(file);
+    } else if (isPdf) {
+      /* ── PDF: رفع للخادم للاستخراج ── */
+      state._pendingPreview = { type: "pdf", name: file.name };
+      nameEl.replaceChildren(icon("paperclip", 14), " " + file.name);
+      toast("تم إرفاق ملف PDF", "success");
+    }
+
     fileInput.value = "";
   });
 }
 
 export function assistantView() {
-  const MODES = ["grounded", "research", "general"];
+  const MODES = ["auto", "grounded", "research", "general"];
   const MODE_META = {
+    auto: { icon: "zap", labelKey: "autoMode" },
     grounded: { icon: "target", labelKey: "groundedMode" },
     research: { icon: "globe", labelKey: "researchMode" },
     general: { icon: "messageCircle", labelKey: "generalMode" },
@@ -234,8 +342,8 @@ export function assistantView() {
     btn.replaceChildren(icon(meta.icon, 14), " " + tr(meta.labelKey));
     btn.title = tr(mode + "Hint");
   };
-  const modeBtn = el("button", { class: "chat-mode on", dataset: { mode: "grounded" } });
-  paintMode(modeBtn, "grounded");
+  const modeBtn = el("button", { class: "chat-mode on", dataset: { mode: "auto" } });
+  paintMode(modeBtn, "auto");
   modeBtn.addEventListener("click", () => {
     const next = MODES[(MODES.indexOf(modeBtn.dataset.mode) + 1) % MODES.length];
     modeBtn.dataset.mode = next;
@@ -245,10 +353,11 @@ export function assistantView() {
 
   const input = el("input", { placeholder: tr("chatPlaceholder"), "aria-label": tr("chatPlaceholder") });
   const attachWrap = el("div", { class: "chat-attach" }, [
-    el("button", { class: "btn btn-ghost btn-sm", type: "button" }, [icon("paperclip", 14)]),
-    el("input", { type: "file", accept: ".pdf,.docx", "aria-label": tr("uploadPdf") }),
+    el("button", { class: "btn btn-ghost btn-sm", type: "button", title: "إرفاق ملف (PDF أو صورة)" }, [icon("paperclip", 14)]),
+    el("input", { type: "file", accept: ".pdf,.jpg,.jpeg,.png", "aria-label": "إرفاق ملف" }),
+    el("span", { class: "attach-name small muted" }),
   ]);
-  const attachName = el("span", { class: "attach-name small muted" });
+  const attachName = attachWrap.querySelector(".attach-name");
   attachLogic(attachWrap, input);
 
   input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input, modeBtn, attachWrap); } });
@@ -281,12 +390,10 @@ export function assistantView() {
           modeBtn,
           el("button", { class: "btn btn-primary", text: tr("send"), onclick: () => sendMessage(input, modeBtn, attachWrap) }),
         ]),
-        el("div", { class: "small muted", style: "padding:0 18px 12px", text: attachName }),
       ]),
     ]),
   ]);
 
-  // بعد الإدراج في DOM
   requestAnimationFrame(() => { renderSessions(); renderMessages(); renderSuggestions(attachWrap, modeBtn); });
 
   return view;

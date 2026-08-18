@@ -6,6 +6,8 @@ D-021. يغطي: المصادقة، التحقق من المدخلات، حصر�
 فقط، غياب المصدر (لا رد صامت)، فشل المزوّد (503)، حد المعدل، وتسجيل
 ai_queries.
 """
+import io
+
 import pytest
 
 from app import config, services_ai, services_auth
@@ -30,7 +32,7 @@ class FakeProvider:
         self.answer = answer
         self.calls = []
 
-    def generate(self, question, context_articles, mode, system=None, user_prompt=None):
+    def generate(self, question, context_articles, mode, system=None, user_prompt=None, images=None):
         self.calls.append({"mode": mode, "system": system, "user_prompt": user_prompt,
                            "context_count": len(context_articles)})
         return self.answer
@@ -147,7 +149,7 @@ def test_provider_failure_returns_503(client, monkeypatch):
     class UnavailableProvider:
         name = "down"
 
-        def generate(self, question, context_articles, mode):
+        def generate(self, question, context_articles, mode, system=None, user_prompt=None, images=None):
             raise AIProviderError("تعذر الاتصال بمزوّد الذكاء الاصطناعي. حاول لاحقًا.", 503)
 
     _patch_providers(monkeypatch, UnavailableProvider())
@@ -235,7 +237,7 @@ def test_research_provider_failure_returns_503(client, monkeypatch):
     class Down:
         name = "down"
 
-        def generate(self, question, context_articles, mode, system=None, user_prompt=None):
+        def generate(self, question, context_articles, mode, system=None, user_prompt=None, images=None):
             raise AIProviderError("تعذر الاتصال", 503)
 
     _patch_providers(monkeypatch, Down())
@@ -250,7 +252,7 @@ def test_quota_error_falls_back_to_second_provider(client, monkeypatch):
     class QuotaProvider:
         name = "quota"
 
-        def generate(self, question, context_articles, mode, system=None, user_prompt=None):
+        def generate(self, question, context_articles, mode, system=None, user_prompt=None, images=None):
             raise AIProviderError("You exceeded your current quota", 429)
 
     second = FakeProvider("جواب من المزوّد الثاني")
@@ -269,7 +271,7 @@ def test_all_providers_quota_returns_friendly_429(client, monkeypatch):
     class QuotaProvider:
         name = "quota"
 
-        def generate(self, question, context_articles, mode, system=None, user_prompt=None):
+        def generate(self, question, context_articles, mode, system=None, user_prompt=None, images=None):
             raise AIProviderError("You exceeded your current quota", 429)
 
     _patch_providers(monkeypatch, QuotaProvider(), QuotaProvider())
@@ -286,7 +288,7 @@ def test_network_error_falls_back_to_next_provider(client, monkeypatch):
     class FlakyNetworkProvider:
         name = "flaky"
 
-        def generate(self, question, context_articles, mode, system=None, user_prompt=None):
+        def generate(self, question, context_articles, mode, system=None, user_prompt=None, images=None):
             raise AIProviderError(
                 "[Errno 11001] getaddrinfo failed", 503
             )
@@ -307,7 +309,7 @@ def test_all_providers_network_error_returns_503_with_reason(client, monkeypatch
     class NetworkErrorProvider:
         name = "flaky"
 
-        def generate(self, question, context_articles, mode, system=None, user_prompt=None):
+        def generate(self, question, context_articles, mode, system=None, user_prompt=None, images=None):
             raise AIProviderError("[Errno 11001] getaddrinfo failed", 503)
 
     _patch_providers(monkeypatch, NetworkErrorProvider(), NetworkErrorProvider())
@@ -317,3 +319,105 @@ def test_all_providers_network_error_returns_503_with_reason(client, monkeypatch
     err = resp.get_json()["error"]
     assert "تعذر الاتصال" in err
     assert "الشبكة" in err or "اتصال" in err
+
+
+# ---------------------------------------------------------------------------
+# اختبارات رفع المرفقات (PDF / صور)
+# ---------------------------------------------------------------------------
+
+def test_attachment_no_file_returns_400(client):
+    """بدون ملف → 400."""
+    resp = client.post("/api/ai/explain-attachment", data={"question": "تحليل"})
+    assert resp.status_code == 400
+    assert "ملف" in resp.get_json()["error"]
+
+
+def test_attachment_invalid_type_returns_400(client):
+    """ملف بامتداد غير مدعوم → 400."""
+    resp = client.post(
+        "/api/ai/explain-attachment",
+        data={"file": (io.BytesIO(b"test content"), "test.docx", "application/msword"),
+              "question": "تحليل"},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 400
+    assert "غير مدعوم" in resp.get_json()["error"]
+
+
+def test_attachment_pdf_no_text_returns_400(client, monkeypatch):
+    """PDF فارغ أو بدون نص → 400."""
+    def fake_extract(data):
+        return ""
+    monkeypatch.setattr(services_ai, "extract_pdf_text", fake_extract)
+    resp = client.post(
+        "/api/ai/explain-attachment",
+        data={"file": (io.BytesIO(b"empty pdf"), "empty.pdf", "application/pdf"),
+              "question": "حلّل"},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 400
+
+
+def test_attachment_pdf_success(client, monkeypatch):
+    """PDF بنص → 200 مع إجابة."""
+    _patch_providers(monkeypatch, FakeProvider("تحليل من الملف"))
+
+    def fake_extract(data):
+        return "نص المستند القانوني: المادة 1 تنص على..."
+    monkeypatch.setattr(services_ai, "extract_pdf_text", fake_extract)
+
+    resp = client.post(
+        "/api/ai/explain-attachment",
+        data={"file": (io.BytesIO(b"pdf content"), "law.pdf", "application/pdf"),
+              "question": "ما هذا النص؟"},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["status"] == "ok"
+    assert "تحليل من الملف" in data["answer"]
+    assert data["mode"] == "attachment"
+
+
+def test_attachment_image_success(client, monkeypatch):
+    """صورة JPEG → 200 مع إجابة."""
+    _patch_providers(monkeypatch, FakeProvider("تحليل الصورة"))
+
+    resp = client.post(
+        "/api/ai/explain-attachment",
+        data={"file": (io.BytesIO(b"\xff\xd8\xff"), "photo.jpg", "image/jpeg"),
+              "question": "ما في الصورة؟"},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["status"] == "ok"
+    assert "تحليل الصورة" in data["answer"]
+    assert data["mode"] == "attachment"
+
+
+def test_attachment_png_success(client, monkeypatch):
+    """صورة PNG → 200."""
+    _patch_providers(monkeypatch, FakeProvider("تم تحليل الصورة"))
+
+    resp = client.post(
+        "/api/ai/explain-attachment",
+        data={"file": (io.BytesIO(b"\x89PNG"), "scan.png", "image/png"),
+              "question": "حلل"},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["status"] == "ok"
+
+
+def test_attachment_image_no_question_uses_default(client, monkeypatch):
+    """صورة بدون سؤال → يُستخدم سؤال افتراضي."""
+    _patch_providers(monkeypatch, FakeProvider("تم التحليل"))
+
+    resp = client.post(
+        "/api/ai/explain-attachment",
+        data={"file": (io.BytesIO(b"\xff\xd8\xff"), "doc.jpg", "image/jpeg")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["status"] == "ok"

@@ -12,7 +12,7 @@ import { blogView, blogDetailView, myArticlesView, blogEditorView } from "./view
 import { proceduresView, procedureDetailView } from "./views/procedures.js";
 import { professionalsView, professionalDetailView, myProfessionalView } from "./views/professionals.js";
 import { documentsView, documentDetailView, myDocumentsView } from "./views/documents.js";
-import { marketplaceView } from "./views/marketplace.js";
+import { legalFrenchView, legalFrenchLevelView, legalFrenchLessonView, legalFrenchQuizView, legalFrenchTreatiesView, legalFrenchTreatyDetailView } from "./views/legal_french.js";
 import { communityView, communityDetailView, communityNewView } from "./views/community.js";
 import { calculatorsView, calculatorView } from "./views/calculators.js";
 import { notificationsView, notificationsSettingsView } from "./views/notifications.js";
@@ -20,7 +20,11 @@ import { profileView } from "./views/profile.js";
 import { assistantView } from "./views/assistant.js";
 import { billingView, myOrdersView } from "./views/billing.js";
 import { comparativeView, jurisdictionView, comparativeDetailView, comparativeNewView } from "./views/comparative.js";
-import { compCountriesView, compCountryView, compLawView, compSearchView, compStatsView } from "./views/comp.js";
+import { researchView, researchBookView } from "./views/research.js";
+import { privacyView, termsView, cookiePolicyView, disclaimerView, guideView } from "./views/legal.js";
+import { initCookieConsent, onCookieConsent, hasCookieConsent } from "./components/cookie-consent.js";
+import { initDownloadAppButton } from "./components/download-app.js";
+
 
 // ---------- مسارات ثابتة ----------
 register("/home", homeView);
@@ -52,20 +56,24 @@ register("/comparative/jurisdiction/:slug", jurisdictionView);
 register("/comparative/jurisdiction/:slug/:tab", jurisdictionView);
 register("/comparative/:id", comparativeDetailView);
 
-// قانون مقارن مستقل
-register("/foreign-law", compCountriesView);
-register("/foreign-law/stats", compStatsView);
-register("/foreign-law/search/:q", compSearchView);
-register("/foreign-law/:code", compCountryView);
-register("/foreign-law/:code/:tab", compCountryView);
-register("/foreign-law/:code/law/:lawId", compLawView);
+// مكتبة الباحث — كتب PDF مقسمة حسب التصنيف
+register("/research", researchView);
+register("/research/category/:category", researchView);
+register("/research/type/:type", researchView);
+register("/research/:id", researchBookView);
+
+
 
 register("/documents", documentsView);
 register("/documents/:slug", documentDetailView);
 register("/my-documents", myDocumentsView, { auth: true });
 
-register("/marketplace", marketplaceView);
-register("/marketplace/:id", marketplaceView);
+register("/legal-french", legalFrenchView);
+register("/legal-french/treaties", legalFrenchTreatiesView);
+register("/legal-french/treaty/:id", legalFrenchTreatyDetailView);
+register("/legal-french/lesson/:id", legalFrenchLessonView);
+register("/legal-french/quiz/:lessonId", legalFrenchQuizView, { auth: true });
+register("/legal-french/:id", legalFrenchLevelView);
 
 register("/assistant", assistantView, { auth: true });
 
@@ -92,6 +100,13 @@ register("/blog/:id", blogDetailView);
 
 // لوحة الإدارة صفحة مستقلة
 register("/admin", () => { location.href = "/admin"; }, { auth: true, admin: true });
+
+// صفحات قانونية
+register("/privacy", privacyView);
+register("/terms", termsView);
+register("/cookie-policy", cookiePolicyView);
+register("/disclaimer", disclaimerView);
+register("/guide", guideView);
 
 // ---------- مسارات مكتبة/مدونة متعددة الأجزاء ----------
 function regMulti(base, handler, opts = {}) {
@@ -212,7 +227,20 @@ window.addEventListener("nibras:route", refreshNotifBadge);
 initRouter();
 render();
 
+// شريط موافقة ملفات تعريف الارتباط (القانون 09-08)
+initCookieConsent();
+
+// زر تحميل التطبيق — يظهر بعد عرض شريط الكوكيز
+onCookieConsent(() => initDownloadAppButton());
+if (hasCookieConsent()) {
+  initDownloadAppButton();
+}
+
 setInterval(() => { if (session.token) refreshNotifBadge(); }, 60000);
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
 
 window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("year").textContent = new Date().getFullYear();

@@ -16,19 +16,28 @@ admin_ai_bp = Blueprint("admin_ai", __name__)
 @admin_ai_bp.route("/api/admin/ai/providers", methods=["GET"])
 @require_role("admin")
 def list_providers():
-    return jsonify({"providers": services_ai.list_providers()}), 200
+    try:
+        return jsonify({"providers": services_ai.list_providers()}), 200
+    except AIProviderError as exc:
+        return jsonify({"error": exc.message}), exc.status_code
 
 
 @admin_ai_bp.route("/api/admin/ai/providers/catalog", methods=["GET"])
 @require_role("admin")
 def catalog():
-    return jsonify({"catalog": services_ai.FREE_CATALOG}), 200
+    try:
+        return jsonify({"catalog": services_ai.FREE_CATALOG}), 200
+    except AIProviderError as exc:
+        return jsonify({"error": exc.message}), exc.status_code
 
 
 @admin_ai_bp.route("/api/admin/ai/providers", methods=["POST"])
 @require_role("admin")
 def create_provider():
-    res = services_ai.create_provider(request.get_json(silent=True) or {})
+    try:
+        res = services_ai.create_provider(request.get_json(silent=True) or {})
+    except AIProviderError as exc:
+        return jsonify({"error": exc.message}), exc.status_code
     return jsonify(res), 201
 
 

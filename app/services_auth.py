@@ -6,8 +6,7 @@ argon2id لكلمات المرور، JWT قصير العمر للوصول، تو
 مجزَّأةً بـ SHA-256، وتدويرها عند كل استخدام وإبطالها عند تسجيل الخروج،
 واستعادة كلمة المرور بتوكن زمني يُسلَّم عبر واجهة مرسل بريد قابلة للاستبدال.
 
-قائمة الأدوار ثابتة (§1) ولا يقبل التسجيل العام أي دور إداري — الدور الإداري
-يُمنح حصريًا عبر السكربت الداخلي app.create_admin.
+التحقق بخطوتين (TOTP) لحسابات المشرفين وفق القانون 09-08.
 """
 import secrets
 from dataclasses import dataclass, field
@@ -15,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 
 import jwt as pyjwt
+import pyotp
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 
@@ -167,6 +167,21 @@ def validate_password(password: str) -> None:
         raise AuthError("كلمة المرور يجب أن تتكون من 8 أحرف على الأقل", 400)
 
 
+def validate_password_strong(password: str) -> None:
+    """كلمة مرور قوية للمشرفين: 12+ حرف، حرف كبير/صغير/رقم/رمز (القانون 09-08)."""
+    if not password or len(password) < config.ADMIN_MIN_PASSWORD_LENGTH:
+        raise AuthError(
+            f"كلمة مرور المشرف يجب أن تتكون من {config.ADMIN_MIN_PASSWORD_LENGTH} أحرف على الأقل", 400)
+    if not any(c.isupper() for c in password):
+        raise AuthError("كلمة مرور المشرف يجب أن تحتوي على حرف كبير واحد على الأقل", 400)
+    if not any(c.islower() for c in password):
+        raise AuthError("كلمة مرور المشرف يجب أن تحتوي على حرف صغير واحد على الأقل", 400)
+    if not any(c.isdigit() for c in password):
+        raise AuthError("كلمة مرور المشرف يجب أن تحتوي على رقم واحد على الأقل", 400)
+    if not any(c in "!@#$%^&*()_+-=[]{}|;':\",./<>?`~" for c in password):
+        raise AuthError("كلمة مرور المشرف يجب أن تحتوي على رمز خاص واحد على الأقل", 400)
+
+
 def validate_role_code(code: str) -> str:
     code = (code or "").strip().lower()
     if code not in ROLE_CODES_SET:
@@ -177,17 +192,22 @@ def validate_role_code(code: str) -> str:
 
 
 def create_user(email: str, password: str, full_name: str, role_code: str,
-                tenant_id=None) -> UserProfile:
+                tenant_id=None, consent_data_processing=False,
+                consent_terms=False) -> UserProfile:
     """تسجيل عام وفق الشروط (§2.1) مع ربط المستأجر (الافتراضي إن لم يُحدَّد).
 
     يرفض الدور الإداري (يُمنح حصريًا عبر app.create_admin) ويطبق الحالة
     الافتراضية للتحقق (§2.1). يرمي AuthError عند تكرار البريد.
     """
     role_code = validate_role_code(role_code)
+    if not consent_data_processing or not consent_terms:
+        raise AuthError(
+            "يجب الموافقة على شروط معالجة المعطيات الشخصية وشروط الاستخدام", 400)
     return create_user_with_role(
         email=email, password=password, full_name=full_name, role_code=role_code,
         role_status=role_status_for_code(role_code), user_status="active",
-        tenant_id=tenant_id,
+        tenant_id=tenant_id, consent_data_processing=consent_data_processing,
+        consent_terms=consent_terms,
     )
 
 
@@ -201,7 +221,8 @@ def _default_tenant_id() -> int:
 
 
 def create_user_with_role(email, password, full_name, role_code, role_status="active",
-                          user_status="active", tenant_id=None):
+                          user_status="active", tenant_id=None,
+                          consent_data_processing=False, consent_terms=False):
     """إنشاء مستخدم بدور محدد وحالة صريحة (للاستخدام الداخلي/CLI فقط)."""
     email = validate_email(email)
     validate_password(password)
@@ -211,14 +232,18 @@ def create_user_with_role(email, password, full_name, role_code, role_status="ac
     password_hash = hash_password(password)
     if tenant_id is None:
         tenant_id = _default_tenant_id()
+    consent_date = datetime.now(timezone.utc).isoformat() if consent_data_processing else None
     with db_session() as conn:
         exists = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
         if exists:
             raise AuthError("البريد الإلكتروني مسجل مسبقًا", 409)
         cur = conn.execute(
-            "INSERT INTO users (email, full_name, password_hash, status, tenant_id)"
-            " VALUES (?,?,?,?,?)",
-            (email, full_name, password_hash, user_status, tenant_id),
+            "INSERT INTO users (email, full_name, password_hash, status, tenant_id,"
+            " consent_data_processing, consent_terms, consent_date)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            (email, full_name, password_hash, user_status, tenant_id,
+             1 if consent_data_processing else 0,
+             1 if consent_terms else 0, consent_date),
         )
         user_id = cur.lastrowid
         role_id = conn.execute("SELECT id FROM roles WHERE code = ?", (role_code,)).fetchone()["id"]
@@ -490,3 +515,202 @@ def has_active_role(user_id: int, roles: tuple) -> bool:
     return any(
         r["code"] in required and r["role_status"] == "active" for r in rows
     )
+
+
+# ---------------------------------------------------------------------------
+# سجل مصادقة المصادقة (القانون 09-08)
+# ---------------------------------------------------------------------------
+
+def log_auth_event(action: str, user_id: int | None = None,
+                   ip_address: str | None = None,
+                   user_agent: str | None = None,
+                   details: str | None = None) -> None:
+    """يسجّل حدث مصادقة في auth_audit_log (القانون 09-08 §الأمان)."""
+    with db_session() as conn:
+        conn.execute(
+            "INSERT INTO auth_audit_log (user_id, action, ip_address, user_agent, details)"
+            " VALUES (?,?,?,?,?)",
+            (user_id, action, ip_address, user_agent, details),
+        )
+
+
+# ---------------------------------------------------------------------------
+# حماية من التخمين (حماية حساب المشرف)
+# ---------------------------------------------------------------------------
+
+def _record_login_attempt(user_id: int, ip_address: str, success: bool) -> None:
+    """يسجّل محاولة دخول (ناجحة أو فاشلة) في login_attempts."""
+    with db_session() as conn:
+        conn.execute(
+            "INSERT INTO login_attempts (user_id, ip_address, success) VALUES (?,?,?)",
+            (user_id, ip_address, 1 if success else 0),
+        )
+        if not success:
+            cutoff = _now() - timedelta(seconds=config.LOGIN_LOCKOUT_SECONDS)
+            conn.execute(
+                "DELETE FROM login_attempts WHERE user_id = ? AND success = 0 AND created_at < ?",
+                (user_id, cutoff.isoformat()),
+            )
+
+
+def _is_locked_out(user_id: int, ip_address: str) -> bool:
+    """هل الحساب مقفل بسبب محاولات فاشلة كثيرة؟"""
+    cutoff = _now() - timedelta(seconds=config.LOGIN_LOCKOUT_SECONDS)
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM login_attempts"
+            " WHERE user_id = ? AND ip_address = ? AND success = 0 AND created_at >= ?",
+            (user_id, ip_address, cutoff.isoformat()),
+        ).fetchone()
+    return row["cnt"] >= config.LOGIN_MAX_ATTEMPTS
+
+
+def authenticate_user_safe(email: str, password: str,
+                           ip_address: str | None = None,
+                           user_agent: str | None = None) -> UserProfile | None:
+    """نسخة آمنة من authenticate_user مع حماية من التخمين وسجل المصادقة."""
+    email_norm = (email or "").strip().lower()
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT id, password_hash, status FROM users WHERE email = ?",
+            (email_norm,),
+        ).fetchone()
+    if row is None:
+        verify_password("nibras-timing-equalizer-placeholder", _TIMING_DUMMY_HASH)
+        log_auth_event("login.email_not_found", ip_address=ip_address, user_agent=user_agent)
+        return None
+    if row["status"] != "active":
+        log_auth_event("login.account_disabled", user_id=row["id"],
+                       ip_address=ip_address, user_agent=user_agent)
+        return None
+    if _is_locked_out(row["id"], ip_address or "unknown"):
+        log_auth_event("login.locked_out", user_id=row["id"],
+                       ip_address=ip_address, user_agent=user_agent)
+        raise AuthError("الحساب مقفل مؤقتًا بسبب محاولات دخول كثيرة. حاول لاحقًا.", 429)
+    if not verify_password(password, row["password_hash"]):
+        _record_login_attempt(row["id"], ip_address or "unknown", False)
+        log_auth_event("login.wrong_password", user_id=row["id"],
+                       ip_address=ip_address, user_agent=user_agent)
+        return None
+    _record_login_attempt(row["id"], ip_address or "unknown", True)
+    log_auth_event("login.success", user_id=row["id"],
+                   ip_address=ip_address, user_agent=user_agent)
+    return get_user_profile(row["id"])
+
+
+# ---------------------------------------------------------------------------
+# التحقق بخطوتين (TOTP) — حماية حساب المشرف (القانون 09-08)
+# ---------------------------------------------------------------------------
+
+def setup_2fa(user_id: int) -> str:
+    """يولّد سر TOTP للمشرف ويعيد URI لإضافته في تطبيق المصادقة."""
+    secret = pyotp.random_base32()
+    with db_session() as conn:
+        exists = conn.execute(
+            "SELECT user_id FROM user_2fa WHERE user_id = ?", (user_id,)
+        ).fetchone()
+        if exists:
+            conn.execute(
+                "UPDATE user_2fa SET secret = ?, enabled = 0 WHERE user_id = ?",
+                (secret, user_id),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO user_2fa (user_id, secret, enabled) VALUES (?,?,0)",
+                (user_id, secret),
+            )
+    totp = pyotp.TOTP(secret)
+    return totp.provisioning_uri(name=str(user_id), issuer_name="Nibras")
+
+
+def verify_and_enable_2fa(user_id: int, code: str) -> bool:
+    """يتحقق من رمز TOTP ويفعّل التحقق بخطوتين."""
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT secret FROM user_2fa WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    if not row:
+        raise AuthError("التحقق بخطوتين غير مُعدّ", 400)
+    totp = pyotp.TOTP(row["secret"])
+    if not totp.verify(code, valid_window=1):
+        return False
+    with db_session() as conn:
+        conn.execute(
+            "UPDATE user_2fa SET enabled = 1 WHERE user_id = ?", (user_id,)
+        )
+    return True
+
+
+def verify_2fa_code(user_id: int, code: str) -> bool:
+    """يتحقق من رمز TOTP أثناء تسجيل الدخول."""
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT secret, enabled FROM user_2fa WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    if not row or not row["enabled"]:
+        return True
+    totp = pyotp.TOTP(row["secret"])
+    return totp.verify(code, valid_window=1)
+
+
+def is_2fa_enabled(user_id: int) -> bool:
+    """هل التحقق بخطوتين مفعّل لهذا المستخدم؟"""
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT enabled FROM user_2fa WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    return bool(row and row["enabled"])
+
+
+# ---------------------------------------------------------------------------
+# قانون 09-08 — حق الوصول وحذف المعطيات الشخصية
+# ---------------------------------------------------------------------------
+
+def export_user_data(user_id: int) -> dict:
+    """يصدّر جميع معطيات المستخدم (حق الوصول — القانون 09-08)."""
+    with db_session() as conn:
+        user = conn.execute(
+            "SELECT id, email, full_name, status, created_at, updated_at,"
+            " consent_data_processing, consent_terms, consent_date"
+            " FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if not user:
+            raise AuthError("المستخدم غير موجود", 404)
+        roles = get_user_roles(user_id)
+        audits = conn.execute(
+            "SELECT action, details, created_at FROM auth_audit_log"
+            " WHERE user_id = ? ORDER BY created_at DESC LIMIT 100",
+            (user_id,),
+        ).fetchall()
+    return {
+        "profile": dict(user),
+        "roles": roles,
+        "auth_audit": [dict(a) for a in audits],
+        "export_date": _now().isoformat(),
+        "legal_basis": "القانون 09-08 المتعلق بالمعالجة الآلية للمعطيات الشخصية",
+    }
+
+
+def delete_user_data(user_id: int) -> None:
+    """يحذف حساب المستخدم وجميع معطياته (حق المحو — القانون 09-08).
+
+    يحذف: التوكنات، محاولات الدخول، سجل المصادقة، التحقق بخطوتين، الأدوار.
+    """
+    with db_session() as conn:
+        conn.execute("DELETE FROM refresh_tokens WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM password_reset_tokens WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM login_attempts WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM user_2fa WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM user_roles WHERE user_id = ?", (user_id,))
+        conn.execute(
+            "UPDATE auth_audit_log SET user_id = NULL, details = 'محو حسب الطلب'"
+            " WHERE user_id = ?",
+            (user_id,),
+        )
+        conn.execute(
+            "UPDATE users SET email = 'deleted_' || id || '@deleted.local',"
+            " full_name = 'محو', password_hash = 'deleted', status = 'deleted',"
+            " updated_at = datetime('now') WHERE id = ?",
+            (user_id,),
+        )

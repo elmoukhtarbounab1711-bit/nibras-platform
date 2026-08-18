@@ -900,6 +900,10 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 .chat-msg .ext-src { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
 .ext-link { font-size: 12px; font-weight: 600; color: var(--gold); text-decoration: none; overflow-wrap: anywhere; }
 .ext-link:hover { text-decoration: underline; }
+.source-badge { font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 999px; letter-spacing: 0.3px; text-transform: uppercase; }
+.source-nibras { background: var(--navy-50); color: var(--navy); border: 1px solid var(--navy-200); }
+.source-web { background: #eef6ff; color: #1a6fc4; border: 1px solid #b8daf7; }
+.source-general { background: var(--gold-100); color: var(--gold); border: 1px solid var(--gold-200); }
 .chat-typing { display: inline-flex; gap: 4px; padding: 14px 18px; }
 .chat-typing span { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); animation: blink 1.1s infinite; }
 .chat-typing span:nth-child(2) { animation-delay: 0.18s; }
@@ -1595,4 +1599,355 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
   .cat-grid { grid-template-columns: repeat(2, 1fr); }
   .stats-row { grid-template-columns: repeat(2, 1fr); }
   .lib-hero { min-height: 280px; padding: 34px 18px 42px; }
+}
+
+/* ── صفحات قانونية ── */
+.legal-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.legal-toc {
+  background: var(--surface-2, #f3f4f6);
+  border: 1px solid var(--line, #e5e7eb);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 2rem;
+}
+.legal-toc h3 { margin-bottom: 0.5rem; font-size: 0.95rem; }
+.legal-toc ol { margin: 0; padding-inline-start: 1.2rem; }
+.legal-toc li { margin-bottom: 0.35rem; }
+.legal-toc a {
+  color: var(--primary, #1f3a93);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.legal-toc a:hover { text-decoration: underline; }
+.legal-section { margin-bottom: 2rem; scroll-margin-top: 80px; }
+.legal-section h2 {
+  font-size: 1.2rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 2px solid var(--primary, #1f3a93);
+}
+.legal-section h4 { margin: 1rem 0 0.4rem; font-size: 1rem; }
+.legal-lead { font-weight: 600; margin-bottom: 0.5rem; }
+.legal-text { line-height: 1.8; margin-bottom: 0.5rem; }
+.legal-list {
+  padding-inline-start: 1.5rem;
+  margin-bottom: 0.75rem;
+  line-height: 1.9;
+}
+.legal-list li { margin-bottom: 0.4rem; }
+.legal-table-wrap { overflow-x: auto; margin: 0.75rem 0; }
+.legal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.legal-table th,
+.legal-table td {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line, #e5e7eb);
+  text-align: start;
+}
+.legal-table th {
+  background: var(--primary, #1f3a93);
+  color: #fff;
+  font-weight: 600;
+}
+.legal-table tr:nth-child(even) { background: var(--surface-2, #f9fafb); }
+
+/* ── شريط موافقة ملفات تعريف الارتباط ── */
+.cookie-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  background: var(--surface, #fff);
+  border-top: 2px solid var(--primary, #1f3a93);
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.12);
+  transform: translateY(100%);
+  transition: transform 0.35s ease;
+  padding: 1.25rem 1.5rem;
+}
+.cookie-banner.show { transform: translateY(0); }
+.cookie-banner-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+.cookie-banner-text {
+  flex: 1;
+  min-width: 280px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.cookie-banner-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.cookie-banner-text h3 { margin: 0 0 4px; font-size: 0.95rem; }
+.cookie-banner-text p { margin: 0; }
+.cookie-banner-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+@media (max-width: 640px) {
+  .cookie-banner-inner { flex-direction: column; align-items: stretch; }
+  .cookie-banner-actions { justify-content: flex-end; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   Legal French Learning — تعلم اللغة القانونية
+   Uses platform design system (lib-hero, tile-card, law-card, etc.)
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* language label color override */
+.lf-lang-label { font-size: 0.85rem; color: var(--ink-2); }
+
+/* hidden utility (used by JS tab switching) */
+.hidden { display: none !important; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   زر تحميل التطبيق (PWA) — يظهر بعد موافقة الكوكيز
+   ════════════════════════════════════════════════════════════════════════ */
+.download-app-btn {
+  position: fixed;
+  bottom: 90px;
+  inset-inline-end: 16px;
+  z-index: 9998;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #071a36 0%, #1f3a93 100%);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font);
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(31, 58, 147, 0.4), 0 2px 6px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  transform: translateY(20px) scale(0.9);
+  transition: opacity 0.35s ease, transform 0.35s ease, box-shadow 0.2s;
+  direction: rtl;
+}
+.download-app-btn:hover {
+  box-shadow: 0 6px 24px rgba(31, 58, 147, 0.55), 0 3px 10px rgba(0, 0, 0, 0.2);
+  transform: translateY(-2px) scale(1.02);
+}
+.download-app-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(200, 155, 60, 0.2);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.download-app-icon svg { color: var(--gold-light, #ddb86a); }
+.download-app-text { white-space: nowrap; }
+.download-app-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.download-app-close:hover { background: rgba(255, 255, 255, 0.3); color: #fff; }
+
+@media (max-width: 640px) {
+  .download-app-btn {
+    bottom: 100px;
+    inset-inline-end: 12px;
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+  .download-app-icon { width: 28px; height: 28px; }
+  .download-app-icon svg { width: 16px; height: 16px; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   Mobile Responsive — تحسينات الهاتف فقط (لا تؤثر على سطح المكتب)
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── الهيدر ── */
+@media (max-width: 860px) {
+  :root { --header-h: 60px; }
+  .site-header { padding: 0; }
+  .header-inner { padding: 0 12px; gap: 8px; }
+  .brand-text small { display: none; }
+  .brand-mark { width: 32px; height: 32px; }
+  .brand-mark svg { width: 20px; height: 20px; }
+  .icon-btn { width: 36px; height: 36px; }
+  .icon-btn svg { width: 18px; height: 18px; }
+}
+
+/* ── التنقل (Hamburger) ── */
+@media (max-width: 860px) {
+  .main-nav {
+    inset-block-start: 60px;
+    padding: 10px 12px;
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  .main-nav a {
+    padding: 11px 14px;
+    font-size: 14px;
+    border-radius: var(--radius-sm);
+  }
+  .main-nav a.active { background: rgba(255, 255, 255, 0.08); }
+}
+
+/* ── المحتوى الرئيسي ── */
+@media (max-width: 860px) {
+  .site-main { padding: 12px; min-height: calc(100vh - 60px); }
+  .container { padding: 0 12px; }
+  .section-head { padding: 16px 0 12px; }
+  .section-head h1 { font-size: 22px; }
+  .section-head h2 { font-size: 20px; }
+}
+
+/* ── البطاقات والشبكات ── */
+@media (max-width: 860px) {
+  .tile-grid { grid-template-columns: 1fr; gap: 10px; }
+  .tile-card { padding: 14px; border-radius: var(--radius-sm); }
+  .tile-card h3 { font-size: 14px; }
+  .tile-card p { font-size: 12.5px; }
+  .law-card { padding: 12px; }
+  .law-card h3 { font-size: 13px; }
+  .grid-3, .grid-2 { grid-template-columns: 1fr; gap: 10px; }
+  .grid-4 { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat-chip { padding: 10px 14px; }
+  .stat-chip .num { font-size: 18px; }
+}
+
+/* ── الصفحة الرئيسية ── */
+@media (max-width: 860px) {
+  .portal-grid { grid-template-columns: 1fr; gap: 10px; }
+  .portal-card { padding: 14px; }
+  .stats-strip { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stats-strip .stat-chip { padding: 8px 12px; }
+}
+
+/* ── الغلاف (Hero) ── */
+@media (max-width: 860px) {
+  .lib-hero {
+    min-height: 220px;
+    padding: 28px 16px 36px;
+    border-radius: var(--radius-sm);
+  }
+  .lib-hero h1 { font-size: 22px; }
+  .lib-hero .hero-sub { font-size: 14px; margin-bottom: 18px; }
+  .lib-hero .hero-eyebrow { font-size: 11px; padding: 4px 12px; margin-bottom: 10px; }
+}
+
+/* ── المكتبة ── */
+@media (max-width: 860px) {
+  .lib-layout { grid-template-columns: 1fr; }
+  .lib-side { grid-template-columns: 1fr; gap: 10px; }
+  .lib-search { flex-direction: column; gap: 8px; }
+  .lib-search .search-field { width: 100%; }
+  .cat-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .cat-card { padding: 10px; }
+}
+
+/* ── المحادثة (المساعد الذكي) ── */
+@media (max-width: 860px) {
+  .chat-shell { grid-template-columns: 1fr; }
+  .chat-side { display: none; }
+  .chat-main { min-height: 60vh; }
+  .chat-inputbar { padding: 8px; gap: 6px; }
+  .chat-inputbar input { flex: 1; min-width: 0; font-size: 14px; padding: 10px 12px; }
+  .chat-msg { max-width: 92%; }
+  .chat-msg .bubble { padding: 10px 14px; font-size: 13.5px; }
+}
+
+/* ── التبويبات ── */
+@media (max-width: 860px) {
+  .tabs, .tabs-row { overflow-x: auto; flex-wrap: nowrap; gap: 4px; padding-bottom: 4px; }
+  .tabs button, .tabs-row button { white-space: nowrap; font-size: 12.5px; padding: 6px 12px; flex-shrink: 0; }
+}
+
+/* ── الجداول ── */
+@media (max-width: 860px) {
+  .data-table { font-size: 12px; }
+  .data-table th, .data-table td { padding: 6px 8px; }
+}
+
+/* ── النماذج ── */
+@media (max-width: 860px) {
+  .form-row { grid-template-columns: 1fr; gap: 10px; }
+  .card { padding: 14px; border-radius: var(--radius-sm); }
+  .btn { font-size: 13px; padding: 8px 16px; }
+}
+
+/* ── الفوتر ── */
+@media (max-width: 860px) {
+  .site-footer { padding: 24px 12px; }
+  .footer-grid { grid-template-columns: 1fr; gap: 20px; }
+  .footer-brand-row { margin-bottom: 8px; }
+  .footer-news { flex-direction: column; gap: 6px; }
+  .footer-news input { width: 100%; }
+}
+
+/* ── شريط الكوكيز على الهاتف ── */
+@media (max-width: 640px) {
+  .cookie-banner { padding: 10px 12px; }
+  .cookie-banner-inner { gap: 10px; }
+  .cookie-banner-text { min-width: 0; gap: 8px; }
+  .cookie-banner-text h3 { font-size: 13px; }
+  .cookie-banner-text p { font-size: 11.5px; }
+  .cookie-banner-actions { gap: 6px; }
+  .cookie-banner-actions .btn { font-size: 12px; padding: 6px 12px; }
+}
+
+/* ── صفحات قانونية على الهاتف ── */
+@media (max-width: 860px) {
+  .legal-section h2 { font-size: 16px; }
+  .legal-toc { padding: 10px 12px; }
+  .legal-list { line-height: 1.7; }
+}
+
+/* ── صفحات البحث وال categoryId على الهاتف ── */
+@media (max-width: 860px) {
+  .book-card { flex-direction: column; }
+  .book-card .book-info { padding: 10px 0; }
+}
+
+/* ── صفحة المساطر ── */
+@media (max-width: 860px) {
+  .proc-card { padding: 12px; }
+}
+
+/* ── الملف الشخصي ── */
+@media (max-width: 860px) {
+  .profile-hero-card { padding: 16px; }
+}
+
+/* ── صفحات اللغة القانونية على الهاتف ── */
+@media (max-width: 860px) {
+  .lf-level-grid { grid-template-columns: 1fr; gap: 10px; }
+  .lesson-card { padding: 10px; }
+}
+
+/* ── إخفاء العناصر غير الضرورية على الهاتف ── */
+@media (max-width: 600px) {
+  .auth-buttons .btn { font-size: 12px; padding: 6px 10px; }
+  .notif-card { padding: 10px; }
 }

@@ -278,6 +278,7 @@
 .adm-badge.gold { background: var(--warn-bg); color: var(--warn); }
 .adm-badge.blue { background: var(--info-bg); color: var(--info); }
 .adm-badge.gray { background: var(--surface-2); color: var(--ink-2); }
+.adm-badge.navy { background: color-mix(in srgb, var(--navy) 14%, transparent); color: var(--navy); }
 .adm-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 
 /* ---------- الإشعارات التوضيحية ---------- */
@@ -348,6 +349,7 @@
 /* ---------- النماذج داخل النوافذ ---------- */
 .adm-modal-body .field { margin-bottom: 12px; }
 .adm-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.adm-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 .adm-modal-body textarea, .adm-modal-body input[type="text"],
 .adm-modal-body input[type="number"], .adm-modal-body input[type="date"],
 .adm-modal-body input[type="email"], .adm-modal-body input[type="url"],
@@ -406,6 +408,7 @@
   .adm-content { padding: 14px; }
   .adm-top { padding: 10px 14px; }
   .adm-grid-2 { grid-template-columns: 1fr; }
+  .adm-grid-3 { grid-template-columns: 1fr; }
 }
 
 /* ---------- تحسينات الوضع الليلي الخاصة باللوحة ---------- */

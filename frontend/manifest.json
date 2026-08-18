@@ -1,0 +1,24 @@
+{
+  "name": "نبراس — المنصة القانونية المغربية",
+  "short_name": "نبراس",
+  "description": "بوابة القانون المغربي: نصوص قانونية، اجتهادات، مساعد ذكي، تعلم اللغة القانونية.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f8fc",
+  "theme_color": "#1f3a93",
+  "orientation": "any",
+  "dir": "rtl",
+  "lang": "ar",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%231f3a93'/%3E%3Cg fill='none' stroke='%23c9a227' stroke-width='8' stroke-linecap='round'%3E%3Cpath d='M60 160 H132 M96 160 V64 M24 64 H168 M36 64 L28 96 M52 64 L60 96 M140 64 L132 96 M156 64 L168 96'/%3E%3C/g%3E%3Cpath d='M162 34 C170 46 170 52 162 56 C154 52 154 46 162 34 Z' fill='%23c9a227'/%3E%3Crect x='156' y='58' width='12' height='30' rx='3' fill='%23c9a227'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='100' fill='%231f3a93'/%3E%3Cg fill='none' stroke='%23c9a227' stroke-width='18' stroke-linecap='round'%3E%3Cpath d='M160 424 H352 M256 424 V168 M64 168 H448 M96 168 L76 256 M128 168 L140 256 M368 168 L352 256 M416 168 L448 256'/%3E%3C/g%3E%3Cpath d='M430 90 C452 124 452 136 430 148 C408 136 408 124 430 90 Z' fill='%23c9a227'/%3E%3Crect x='416' y='154' width='32' height='80' rx='8' fill='%23c9a227'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

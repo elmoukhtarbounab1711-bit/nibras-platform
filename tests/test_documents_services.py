@@ -49,6 +49,7 @@ def _user_id(index: int = 1) -> int:
         password="test-password-123",
         full_name=f"مستخدم {index}",
         role_code="citizen",
+        consent_data_processing=True, consent_terms=True,
     )
     return profile.id
 

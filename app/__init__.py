@@ -184,11 +184,14 @@ def create_app():
     from .routes.comparative import comparative_bp
     from .routes.documents import documents_bp
     from .routes.jurisprudence import jurisprudence_bp
+    from .routes.legal_french import legal_french_bp
     from .routes.library import library_bp
     from .routes.marketplace import marketplace_bp
     from .routes.notifications import notifications_bp
     from .routes.procedures import procedures_bp
     from .routes.professionals import professionals_bp
+    from .routes.research import research_bp
+    from .routes.treaties import treaties_bp
 
     app.register_blueprint(ads_bp)
     app.register_blueprint(library_bp)
@@ -200,14 +203,17 @@ def create_app():
     app.register_blueprint(documents_bp)
     app.register_blueprint(professionals_bp)
     app.register_blueprint(jurisprudence_bp)
+    app.register_blueprint(legal_french_bp)
     app.register_blueprint(community_bp)
     app.register_blueprint(comparative_bp)
     app.register_blueprint(comp_bp)
+    app.register_blueprint(research_bp)
     app.register_blueprint(marketplace_bp)
     app.register_blueprint(notifications_bp)
     app.register_blueprint(ai_bp)
     app.register_blueprint(billing_bp)
     app.register_blueprint(blog_bp)
+    app.register_blueprint(treaties_bp)
 
     # ------------------------------------------------------------------
     # خدمة ملفات الواجهة الأمامية على نفس الخادم (مرحلة الواجهة):

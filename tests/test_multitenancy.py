@@ -229,12 +229,12 @@ def test_single_tenant_ignores_tenant_header(client):
     assert r.status_code == 200
 
 
-def test_single_tenant_public_register_disabled(client):
+def test_single_tenant_public_register_requires_consent(client):
     r = client.post("/api/auth/register", json={
         "email": "new-single@nibras.test", "password": PASSWORD,
         "full_name": "جديد",
     })
-    assert r.status_code == 403
+    assert r.status_code == 400
 
 
 def test_ready_reports_tenants_up(client):
@@ -326,7 +326,7 @@ def test_public_register_binds_no_tenant(client, monkeypatch):
     r = client.post("/api/auth/register", headers={"X-Tenant-Id": "acme"}, json={
         "email": "acme-user@nibras.test", "password": PASSWORD, "full_name": "مستخدم",
     })
-    assert r.status_code == 403
+    assert r.status_code == 400
 
 
 def test_register_rejects_unknown_tenant_header(client, monkeypatch):

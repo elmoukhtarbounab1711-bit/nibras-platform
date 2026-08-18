@@ -224,11 +224,11 @@ def test_internal_token_lifecycle(client):
     assert client.get("/api/auth/me",
                       headers=_auth_headers(access)).status_code == 200
 
-    # لا تجديد عام للتوكنات (لا جلسات عمومية)
+    # لا تجديد للتوكنات بتوكن غير صالح
     assert client.post("/api/auth/refresh",
-                       json={"refresh_token": "x"}).status_code == 403
+                       json={"refresh_token": "x"}).status_code == 401
     assert client.post("/api/auth/refresh",
-                       json={"refresh_token": "x"}).status_code == 403
+                       json={"refresh_token": "x"}).status_code == 401
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,8 @@
 Flask>=3.0,<4.0
 PyJWT>=2.8,<3.0
 argon2-cffi>=23,<25
+# التحقق بخطوتين (TOTP) لحسابات المشرفين (القانون 09-08)
+pyotp>=2.9,<3.0
 # خادم WSGI الإنتاجي لـ PaaS (Render/Railway/Fly عبر Procfile) — يُطابق إنشاء
 # التطبيق app:create_app(). 2 عمّال × 4 خيوط كافية لـ SQLite+WAL.
 gunicorn>=22,<24

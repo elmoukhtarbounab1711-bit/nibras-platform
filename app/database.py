@@ -119,6 +119,29 @@ CREATE TRIGGER IF NOT EXISTS comp_jurisprudence_au AFTER UPDATE ON comp_jurispru
 END;
 """
 
+RESEARCH_BOOKS_FTS_DDL = """
+CREATE VIRTUAL TABLE IF NOT EXISTS research_books_fts USING fts5(
+    title, author, description, legal_category
+);
+
+CREATE TRIGGER IF NOT EXISTS research_books_ai AFTER INSERT ON research_books BEGIN
+    INSERT INTO research_books_fts(rowid, title, author, description, legal_category)
+    VALUES (new.id, nbr_normalize(new.title), COALESCE(nbr_normalize(new.author), ''),
+            COALESCE(nbr_normalize(new.description), ''), nbr_normalize(new.legal_category));
+END;
+
+CREATE TRIGGER IF NOT EXISTS research_books_ad AFTER DELETE ON research_books BEGIN
+    DELETE FROM research_books_fts WHERE rowid = old.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS research_books_au AFTER UPDATE ON research_books BEGIN
+    DELETE FROM research_books_fts WHERE rowid = old.id;
+    INSERT INTO research_books_fts(rowid, title, author, description, legal_category)
+    VALUES (new.id, nbr_normalize(new.title), COALESCE(nbr_normalize(new.author), ''),
+            COALESCE(nbr_normalize(new.description), ''), nbr_normalize(new.legal_category));
+END;
+"""
+
 SCHEMA = """
 -- الفروع القانونية (مدني، أسرة، جنائي، دستوري ...)
 CREATE TABLE IF NOT EXISTS categories (
@@ -989,6 +1012,39 @@ CREATE INDEX IF NOT EXISTS idx_comp_law_articles_tenant ON comp_law_articles(ten
 CREATE INDEX IF NOT EXISTS idx_comp_courts_tenant ON comp_courts(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_comp_jurisprudence_tenant ON comp_jurisprudence(tenant_id);
 
+-- =========================================================================
+-- مكتبة الباحث — كتب PDF مقسمة حسب نوع الكتاب والتصنيف القانوني
+-- =========================================================================
+
+CREATE TABLE IF NOT EXISTS research_books (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    title           TEXT NOT NULL,
+    title_ar        TEXT,
+    author          TEXT,
+    book_type       TEXT NOT NULL DEFAULT 'book',
+    legal_category  TEXT NOT NULL DEFAULT 'general',
+    description     TEXT,
+    cover_image     TEXT,
+    file_path       TEXT,
+    file_name       TEXT,
+    file_size       INTEGER,
+    pages           INTEGER,
+    year            INTEGER,
+    language        TEXT NOT NULL DEFAULT 'ar',
+    source_name     TEXT,
+    source_url      TEXT,
+    official_source INTEGER NOT NULL DEFAULT 0,
+    content_hash    TEXT,
+    downloads       INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    tenant_id       INTEGER REFERENCES tenants(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_research_books_type ON research_books(book_type);
+CREATE INDEX IF NOT EXISTS idx_research_books_category ON research_books(legal_category);
+CREATE INDEX IF NOT EXISTS idx_research_books_tenant ON research_books(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_research_books_content_hash ON research_books(content_hash);
+
 -- فهارس عزل المستأجر (D-036): تسريع كل بحث مُقيَّد بـ tenant_id
 -- (تُنشأ بعد كل الجداول لأن marketplace/ads تُعرَّف لاحقًا في المخطط)
 CREATE INDEX IF NOT EXISTS idx_categories_tenant ON categories(tenant_id);
@@ -1011,7 +1067,7 @@ CREATE INDEX IF NOT EXISTS idx_blog_articles_tenant ON blog_articles(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_blog_comments_tenant ON blog_comments(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_blog_likes_tenant ON blog_likes(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_blog_reports_tenant ON blog_reports(tenant_id);
-""" + COMP_LAW_ARTICLES_FTS_DDL + COMP_JURISPRUDENCE_FTS_DDL
+""" + COMP_LAW_ARTICLES_FTS_DDL + COMP_JURISPRUDENCE_FTS_DDL + RESEARCH_BOOKS_FTS_DDL
 
 
 def _ensure_column(conn, table: str, column: str, definition: str) -> None:
@@ -1419,6 +1475,54 @@ def init_db(reset: bool = False):
         )
         # رابط التحميل الأصلي للقرار القضائي (الاجتهاد يبقى PDF قابلاً للتحميل):
         _ensure_column(conn, "jurisprudence", "pdf_url", "TEXT")
+        _ensure_column(conn, "research_books", "cover_image", "TEXT")
+        # امتثال القانون 09-08 — الموافقة على معالجة المعطيات الشخصية:
+        _ensure_column(conn, "users", "consent_data_processing", "INTEGER DEFAULT 0")
+        _ensure_column(conn, "users", "consent_terms", "INTEGER DEFAULT 0")
+        _ensure_column(conn, "users", "consent_date", "TEXT")
+        # سجل مصادقة المصادقة (تسجيل الدخول/الخروج/فشل)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS auth_audit_log ("
+            "  id          INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "  user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,"
+            "  action      TEXT NOT NULL,"
+            "  ip_address  TEXT,"
+            "  user_agent  TEXT,"
+            "  details     TEXT,"
+            "  created_at  TEXT NOT NULL DEFAULT (datetime('now'))"
+            ")"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_auth_audit_log_user_id "
+            "ON auth_audit_log(user_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_auth_audit_log_created_at "
+            "ON auth_audit_log(created_at)"
+        )
+        # محاولات تسجيل الدخول (حماية من التخمين)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS login_attempts ("
+            "  id          INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "  user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,"
+            "  ip_address  TEXT NOT NULL,"
+            "  success     INTEGER NOT NULL DEFAULT 0,"
+            "  created_at  TEXT NOT NULL DEFAULT (datetime('now'))"
+            ")"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_login_attempts_user_ip "
+            "ON login_attempts(user_id, ip_address, created_at)"
+        )
+        # التحقق بخطوتين (TOTP) للمشرفين
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS user_2fa ("
+            "  user_id     INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,"
+            "  secret      TEXT NOT NULL,"
+            "  enabled     INTEGER NOT NULL DEFAULT 0,"
+            "  created_at  TEXT NOT NULL DEFAULT (datetime('now'))"
+            ")"
+        )
     # بذر الأدوار الثابتة وبيانات الإسناد بعد إنشاء المخطط (استيراد مؤجَّل
     # لكسر الدورة الظاهرية — نمط ensure_roles القائم في D-021)
     from . import (
@@ -1434,6 +1538,7 @@ def init_db(reset: bool = False):
         services_jurisprudence,
         services_marketplace,
         services_procedures,
+        services_research,
         services_tenants,
     )
 
@@ -1449,6 +1554,7 @@ def init_db(reset: bool = False):
     services_jurisprudence.ensure_defaults()
     services_comparative.ensure_defaults()
     services_comp.ensure_defaults()
+    services_research.ensure_dirs()
     # فئات اجتهاد مستقلة لكل ولاية + المغرب خارج القانون المقارن (D-042):
     # تُنفَّذ بعد بذر الولايات (حتى تُعزل المغرب في القواعد الجديدة أيضًا)
     # وبعد انتهاء الصفقة الرئيسية (إعادة البناء تتطلب PRAGMA خارج الصفقة).
