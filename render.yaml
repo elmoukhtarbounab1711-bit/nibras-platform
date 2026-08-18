@@ -28,9 +28,9 @@ services:
       - key: NIBRAS_CORS_ORIGINS
         value: "*"
       - key: NIBRAS_AI_PROVIDER
-        value: noop
-        # مزوّدات Gemini/Groq/OpenRouter تُضبط من لوحة التحكم (ai_providers) بعد
-        # الإقلاع الأول؛ بيئةً يدعم الاحتياطي Anthropic فقط (ANTHROPIC_API_KEY).
+        value: auto
+        # سلسلة مزوّدين تلقائية: Gemini → OpenRouter (Nemotron Ultra) → Noop
+        # مفتاح OPENROUTER_API_KEY يُضبط من لوحة تحكم Render (السرية)
       - key: NIBRAS_LOG_FORMAT
         value: json
       - key: PYTHONIOENCODING
