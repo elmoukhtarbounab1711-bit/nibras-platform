@@ -58,8 +58,9 @@ def seed():
         return
     if db.exists():
         db.unlink()
-    print(f"[bootstrap] إنشاء قاعدة جديدة: {db}")
-    database.init_db(reset=True)
+    print(f"[bootstrap] إنشاء قاعدة + بيانات تجريبية: {db}")
+    from app.seed import seed as seed_demo
+    seed_demo(reset=True)
     print("[bootstrap] البذر اكتمل — قاعدة السرد جاهزة.")
 
 
