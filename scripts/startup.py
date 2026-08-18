@@ -1,0 +1,85 @@
+"""
+نقطة بداية النشر على PaaS — تحميل القاعدة ثم تشغيل gunicorn.
+"""
+import gzip
+import os
+import shutil
+import sys
+import urllib.request
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
+
+from app import database
+
+
+def _check_db(db: Path) -> bool:
+    try:
+        conn = database.get_connection()
+        try:
+            conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
+            ).fetchone()
+            conn.execute("SELECT COUNT(*) FROM jurisprudence_categories").fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        return False
+    return True
+
+
+def ensure_db():
+    db = database.DB_PATH
+    db.parent.mkdir(parents=True, exist_ok=True)
+
+    if db.exists() and db.stat().st_size > 0 and _check_db(db):
+        print(f"[startup] DB OK: {db}")
+        return
+
+    url = os.environ.get("NIBRAS_DB_URL", "").strip()
+    if url:
+        print(f"[startup] Downloading DB from: {url}")
+        tmp = Path(str(db) + ".gz.tmp")
+        try:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "nibras-startup/1.0"}
+            )
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                with open(tmp, "wb") as f:
+                    shutil.copyfileobj(resp, f)
+            print(f"[startup] Downloaded: {tmp.stat().st_size / 1024 / 1024:.1f} MB")
+            with gzip.open(tmp, "rb") as f_in, open(db, "wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+            tmp.unlink()
+            print(f"[startup] DB ready: {db.stat().st_size / 1024 / 1024:.1f} MB")
+            if _check_db(db):
+                print("[startup] DB verified OK")
+            else:
+                print("[startup] WARNING: DB may be incomplete")
+            return
+        except Exception as e:
+            print(f"[startup] Download failed: {e}")
+            tmp.unlink(missing_ok=True)
+
+    print("[startup] No DB_URL or download failed — seeding demo data")
+    from app.seed import seed as seed_demo
+    seed_demo(reset=True)
+
+
+ensure_db()
+
+port = os.environ.get("PORT", "8000")
+workers = os.environ.get("WEB_CONCURRENCY", "2")
+
+print(f"[startup] Starting gunicorn on port {port}")
+import subprocess
+sys.exit(subprocess.call([
+    "gunicorn",
+    "app:create_app()",
+    "--bind", f"0.0.0.0:{port}",
+    "--workers", workers,
+    "--threads", "4",
+    "--timeout", "120",
+    "--access-logfile", "-",
+]))
