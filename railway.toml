@@ -2,5 +2,5 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "python scripts/startup.py"
+startCommand = "gunicorn \"app:create_app()\" --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 --access-logfile -"
 healthcheckPath = "/api/ready"

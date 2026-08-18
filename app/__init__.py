@@ -6,7 +6,9 @@
 يُعدَّل المحتوى لكل وحدة في routes/<module>.
 """
 import logging
+import os
 import sqlite3
+from pathlib import Path
 
 from flask import Flask, jsonify, request
 
@@ -68,12 +70,48 @@ def _add_cache_control(response):
     return response
 
 
+def _ensure_database():
+    """تحميل قاعدة البيانات من URL إن لم تكن موجودة (النشر المجاني)."""
+    import gzip
+    import shutil
+    import urllib.request as _urlreq
+    from .database import DB_PATH
+
+    if DB_PATH.exists() and DB_PATH.stat().st_size > 1000:
+        return
+
+    url = os.environ.get("NIBRAS_DB_URL", "").strip()
+    if not url:
+        return
+
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = Path(str(DB_PATH) + ".gz.tmp")
+    try:
+        logging.getLogger("nibras.startup").info("Downloading DB from %s", url)
+        req = _urlreq.Request(url, headers={"User-Agent": "nibras/1.0"})
+        with _urlreq.urlopen(req, timeout=300) as resp:
+            with open(tmp, "wb") as f:
+                shutil.copyfileobj(resp, f)
+        with gzip.open(tmp, "rb") as f_in, open(DB_PATH, "wb") as f_out:
+            shutil.copyfileobj(f_in, f_out)
+        tmp.unlink(missing_ok=True)
+        logging.getLogger("nibras.startup").info(
+            "DB ready: %.1f MB", DB_PATH.stat().st_size / 1024 / 1024
+        )
+    except Exception:
+        logging.getLogger("nibras.startup").exception("DB download failed")
+        tmp.unlink(missing_ok=True)
+
+
 def create_app():
     app = Flask(__name__)
     app.json.ensure_ascii = False  # لعرض النصوص العربية كما هي بدل ترميز \u
 
     # السجلات المهيكلة + سجل الطلبات (يُهيَّأ قبل أي معالجة طلب)
     nibras_logging.configure_logging(app)
+
+    # تحميل قاعدة البيانات إن كانت ناقصة (النشر المجاني بدون قرص)
+    _ensure_database()
 
     # ضمان وجود المخطط وجداول الهوية والأدوار عند الإقلاع (ترحيل خفيف)
     from .database import init_db
