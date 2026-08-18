@@ -117,7 +117,10 @@ def download(url: str):
     print(f"[bootstrap] تحميل القاعدة من: {url}")
     tmp_gz = Path(str(db) + ".gz.download")
     tmp_gz.parent.mkdir(parents=True, exist_ok=True)
-    urllib.request.urlretrieve(url, tmp_gz)
+    req = urllib.request.Request(url, headers={"User-Agent": "nibras-bootstrap/1.0"})
+    with urllib.request.urlopen(req, timeout=600) as resp:
+        with open(tmp_gz, "wb") as f_out:
+            shutil.copyfileobj(resp, f_out)
     size_mb = tmp_gz.stat().st_size / 1024 / 1024
     print(f"[bootstrap] تم التحميل: {size_mb:.1f} MB — جاري فك الضغط...")
     with gzip.open(tmp_gz, "rb") as f_in:
