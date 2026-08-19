@@ -1,7 +1,7 @@
 // نبراس — المكتبة القانونية: لوحة (Hero + إحصاءات + تصنيفات + Sidebar) + قائمة نصوص + تفصيل + PDF
 import { tr, currentLang } from "../i18n.js";
 import { api } from "../api.js";
-import { el, esc, emptyState, fmtDate, pagination, typeLabel } from "../ui.js";
+import { el, esc, emptyState, fmtDate, pagination, typeLabel, downloadFile } from "../ui.js";
 import { icon } from "../icons.js";
 import { navigate } from "../router.js";
 
@@ -117,7 +117,7 @@ export async function libraryView(params) {
         el("div", { class: "flex-between mt-8" }, [
           el("span", { class: "small muted", text: t.official_ref || fmtDate(t.enacted_date, currentLang()) }),
           el("div", { class: "flex", style: "gap:8px" }, [
-            el("a", { class: "btn btn-ghost btn-sm", href: `/api/texts/${t.id}/pdf?download=1`, download: true, title: tr("download") }, [icon("download", 14)]),
+            el("button", { class: "btn btn-ghost btn-sm", onclick: () => downloadFile(`/api/texts/${t.id}/pdf?download=1`, `${t.title || 'law'}.pdf`), title: tr("download") }, [icon("download", 14)]),
             el("button", { class: "btn btn-outline btn-sm", text: tr("view"), onclick: () => navigate(`/text/${t.id}`) }),
           ]),
         ]),
@@ -281,7 +281,7 @@ export async function textView(params) {
 
     el("div", { class: "pdf-toolbar mt-16" }, [
       el("button", { class: "btn btn-gold", onclick: () => navigate(`/pdf/${text.id}`) }, [icon("file", 16), " " + tr("viewPdf")]),
-      el("a", { class: "btn btn-outline", href: `/api/texts/${text.id}/pdf?download=1`, download: true }, [icon("download", 16), " " + tr("download")]),
+      el("button", { class: "btn btn-outline", onclick: () => downloadFile(`/api/texts/${text.id}/pdf?download=1`, `${text.title || 'law'}.pdf`) }, [icon("download", 16), " " + tr("download")]),
     ]),
 
     articles.length ? el("div", { class: "mt-24" }, [
@@ -330,7 +330,7 @@ export async function pdfView(params) {
     el("span", { style: "flex:1" }),
     el("input", { id: "pdf-find", type: "search", placeholder: tr("pdfSearchPh"), style: "width:180px;padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)" }),
     el("button", { class: "btn btn-gold btn-sm", id: "pdf-share" }, [icon("link", 16), " " + tr("share")]),
-    el("a", { class: "btn btn-outline btn-sm", href: `/api/texts/${textId}/pdf?download=1`, download: true }, [icon("download", 16), " " + tr("download")]),
+    el("button", { class: "btn btn-outline btn-sm", onclick: () => downloadFile(`/api/texts/${textId}/pdf?download=1`, `law-${textId}.pdf`) }, [icon("download", 16), " " + tr("download")]),
   ]);
   const holder = el("div", { class: "pdf-viewer", id: "pdf-canvas-holder" }, [
     el("div", { class: "pdf-empty", text: tr("loading") }),
@@ -417,8 +417,6 @@ export async function pdfView(params) {
         disableAutoFetch: true,
         stopAtErrors: false,
         isEvalSupported: false,
-        cMapUrl: "/vendor/pdfjs/cmaps/",
-        cMapPacked: true,
       });
       task.onProgress = (p) => {
         if (p.total) {

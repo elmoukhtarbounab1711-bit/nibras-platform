@@ -14,7 +14,7 @@ from io import BytesIO
 from flask import Blueprint, jsonify, request, send_file
 
 from .. import config, services_documents
-from ..middleware.auth_middleware import public_auth
+from ..middleware.auth_middleware import public_auth, require_auth
 from ..services_documents import DocumentError
 
 documents_bp = Blueprint("documents", __name__)
@@ -78,3 +78,43 @@ def generate():
             download_name=fname,
         )
     return jsonify(result), 201
+
+
+@documents_bp.route("/api/documents/my", methods=["GET"])
+@require_auth
+def my_documents():
+    docs = services_documents.get_user_documents(request.user.id)
+    return jsonify(docs)
+
+
+@documents_bp.route("/api/documents/<int:doc_id>/export", methods=["GET"])
+@require_auth
+def export_document(doc_id):
+    fmt = (request.args.get("format") or "pdf").lower()
+    try:
+        doc = services_documents.get_document(request.user.id, doc_id)
+    except DocumentError as exc:
+        return jsonify({"error": exc.message}), exc.status_code
+    if fmt == "docx":
+        data = services_documents.export_docx(doc)
+        mime = _DOCX_MIME
+        ext = "docx"
+    else:
+        data = services_documents.export_pdf(doc)
+        mime = "application/pdf"
+        ext = "pdf"
+    fname = f"{doc['template_slug']}-v{doc['version']}.{ext}"
+    return send_file(BytesIO(data), mimetype=mime, as_attachment=True, download_name=fname)
+
+
+@documents_bp.route("/api/documents/<int:doc_id>/regenerate", methods=["POST"])
+@require_auth
+def regenerate(doc_id):
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        doc = services_documents.regenerate_document(
+            request.user.id, doc_id, data.get("answers") or {}
+        )
+    except DocumentError as exc:
+        return jsonify({"error": exc.message}), exc.status_code
+    return jsonify(doc), 200
