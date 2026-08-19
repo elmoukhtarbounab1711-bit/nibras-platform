@@ -1,27 +1,9 @@
 {
-  "version": 2,
-  "outputDirectory": "frontend",
   "installCommand": "pip install -r requirements.txt",
-  "functions": {
-    "api/index.py": {
-      "maxDuration": 30
-    }
-  },
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/index.py"
-    },
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/admin(.*)",
-      "destination": "/admin.html"
-    },
-    {
-      "src": "/(.*)",
-      "destination": "/index.html"
-    }
+  "outputDirectory": "frontend",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index.py" },
+    { "source": "/admin", "destination": "/admin.html" },
+    { "source": "/admin/(.*)", "destination": "/admin.html" }
   ]
 }
