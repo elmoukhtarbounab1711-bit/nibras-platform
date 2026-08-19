@@ -188,6 +188,7 @@ export async function homeView() {
   const jurisTotal = jurisData.total;
 
   const portals = [
+    ["fileText", "portalDocuments", "portalDocumentsD", "/documents"],
     ["scale", "portalLibrary", "portalLibraryD", "/library"],
     ["shield", "portalJurisprudence", "portalJurisprudenceD", "/jurisprudence"],
     ["globe", "portalComparative", "portalComparativeD", "/comparative"],
@@ -250,6 +251,22 @@ export async function homeView() {
           el("div", { class: "p-desc", text: tr(d) }),
           el("span", { class: "p-link" }, [tr("viewAll"), icon("arrowLeft", 14)]),
         ]))),
+    ]),
+
+    /* مولد الوثائق — CTA */
+    el("section", { class: "home-section doc-cta-section" }, [
+      el("div", { class: "doc-cta-card" }, [
+        el("div", { class: "doc-cta-body" }, [
+          el("div", { class: "eyebrow", text: tr("docCtaSub") }),
+          el("h2", { text: tr("docCtaTitle") }),
+          el("p", { text: tr("docCtaDesc") }),
+          el("div", { class: "doc-cta-actions" }, [
+            el("button", { class: "btn btn-primary", text: tr("docCtaBtn"), onclick: () => navigate("/documents") }),
+            el("button", { class: "btn btn-ghost", style: "border-color:var(--line);color:var(--ink)", text: tr("docCtaBtn2"), onclick: () => navigate("/assistant") }),
+          ]),
+        ]),
+        el("div", { class: "doc-cta-icon" }, [icon("fileText", 64)]),
+      ]),
     ]),
 
     /* أحدث المقالات */
