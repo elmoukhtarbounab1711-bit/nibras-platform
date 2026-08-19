@@ -2,7 +2,6 @@
   "services": {
     "web": {
       "root": ".",
-      "entrypoint": "api/index:app",
       "installCommand": "pip install -r requirements.txt",
       "outputDirectory": "frontend",
       "functions": {
