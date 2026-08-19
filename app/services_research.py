@@ -146,6 +146,11 @@ def get_stats():
 
 def ensure_dirs():
     base = Path(__file__).resolve().parent.parent / "storage" / "research_books"
-    for cat in LEGAL_CATEGORIES:
-        (base / cat).mkdir(parents=True, exist_ok=True)
+    try:
+        for cat in LEGAL_CATEGORIES:
+            (base / cat).mkdir(parents=True, exist_ok=True)
+    except OSError:
+        base = Path("/tmp/storage/research_books")
+        for cat in LEGAL_CATEGORIES:
+            (base / cat).mkdir(parents=True, exist_ok=True)
     return base
