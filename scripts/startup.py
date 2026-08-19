@@ -68,7 +68,7 @@ def ensure_db():
 
 ensure_db()
 
-port = os.environ.get("PORT", "8000")
+port = os.environ.get("PORT", "5000")
 workers = os.environ.get("WEB_CONCURRENCY", "2")
 
 print(f"[startup] Starting gunicorn on port {port}")
