@@ -294,6 +294,9 @@ def create_app():
         _api_prefixes = ("api/", "assets/", "vendor/")
         if any(path.startswith(p) for p in _api_prefixes):
             abort(404)
+        _file = frontend_dir / path
+        if _file.is_file():
+            return send_from_directory(str(frontend_dir), path)
         return send_from_directory(str(frontend_dir), "index.html")
 
     @app.errorhandler(404)
