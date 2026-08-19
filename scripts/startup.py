@@ -4,6 +4,7 @@
 import gzip
 import os
 import shutil
+import subprocess
 import sys
 import urllib.request
 from pathlib import Path
@@ -14,14 +15,14 @@ sys.path.insert(0, str(REPO))
 from app import database
 
 
-def _check_db(db: Path) -> bool:
+def _check_db(db):
     try:
-        conn = database.get_connection()
+        from app.database import get_connection
+        conn = get_connection()
         try:
             conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
             ).fetchone()
-            conn.execute("SELECT COUNT(*) FROM jurisprudence_categories").fetchone()
         finally:
             conn.close()
     except Exception:
@@ -33,8 +34,8 @@ def ensure_db():
     db = database.DB_PATH
     db.parent.mkdir(parents=True, exist_ok=True)
 
-    if db.exists() and db.stat().st_size > 0 and _check_db(db):
-        print(f"[startup] DB OK: {db}")
+    if db.exists() and db.stat().st_size > 1000 and _check_db(db):
+        print(f"[startup] DB OK: {db} ({db.stat().st_size / 1024 / 1024:.1f} MB)")
         return
 
     url = os.environ.get("NIBRAS_DB_URL", "").strip()
@@ -42,16 +43,14 @@ def ensure_db():
         print(f"[startup] Downloading DB from: {url}")
         tmp = Path(str(db) + ".gz.tmp")
         try:
-            req = urllib.request.Request(
-                url, headers={"User-Agent": "nibras-startup/1.0"}
-            )
-            with urllib.request.urlopen(req, timeout=300) as resp:
+            req = urllib.request.Request(url, headers={"User-Agent": "nibras/1.0"})
+            with urllib.request.urlopen(req, timeout=600) as resp:
                 with open(tmp, "wb") as f:
                     shutil.copyfileobj(resp, f)
             print(f"[startup] Downloaded: {tmp.stat().st_size / 1024 / 1024:.1f} MB")
             with gzip.open(tmp, "rb") as f_in, open(db, "wb") as f_out:
                 shutil.copyfileobj(f_in, f_out)
-            tmp.unlink()
+            tmp.unlink(missing_ok=True)
             print(f"[startup] DB ready: {db.stat().st_size / 1024 / 1024:.1f} MB")
             if _check_db(db):
                 print("[startup] DB verified OK")
@@ -62,7 +61,7 @@ def ensure_db():
             print(f"[startup] Download failed: {e}")
             tmp.unlink(missing_ok=True)
 
-    print("[startup] No DB_URL or download failed — seeding demo data")
+    print("[startup] Seeding demo data")
     from app.seed import seed as seed_demo
     seed_demo(reset=True)
 
@@ -73,10 +72,8 @@ port = os.environ.get("PORT", "8000")
 workers = os.environ.get("WEB_CONCURRENCY", "2")
 
 print(f"[startup] Starting gunicorn on port {port}")
-import subprocess
 sys.exit(subprocess.call([
-    "gunicorn",
-    "app:create_app()",
+    "gunicorn", "app:create_app()",
     "--bind", f"0.0.0.0:{port}",
     "--workers", workers,
     "--threads", "4",
