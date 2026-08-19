@@ -2,6 +2,7 @@
   "services": {
     "web": {
       "root": ".",
+      "entrypoint": "wsgi.py",
       "installCommand": "pip install -r requirements.txt",
       "outputDirectory": "frontend",
       "functions": {
