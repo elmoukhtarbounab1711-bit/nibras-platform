@@ -5,9 +5,5 @@
     "wsgi.py": {
       "maxDuration": 30
     }
-  },
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/wsgi.py" },
-    { "source": "/((?!assets/|favicon.ico|manifest.json|sw.js|icons/).*)", "destination": "/wsgi.py" }
-  ]
+  }
 }
