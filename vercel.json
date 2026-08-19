@@ -1,18 +1,13 @@
 {
-  "services": {
-    "web": {
-      "root": ".",
-      "entrypoint": "wsgi.py",
-      "installCommand": "pip install -r requirements.txt",
-      "outputDirectory": "frontend",
-      "functions": {
-        "api/index.py": {
-          "maxDuration": 30
-        }
-      },
-      "rewrites": [
-        { "source": "/api/(.*)", "destination": "/api/index.py" }
-      ]
+  "framework": "other",
+  "installCommand": "pip install -r requirements.txt",
+  "functions": {
+    "wsgi.py": {
+      "maxDuration": 30
     }
-  }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/wsgi.py" },
+    { "source": "/((?!assets/|favicon.ico|manifest.json|sw.js|icons/).*)", "destination": "/wsgi.py" }
+  ]
 }
