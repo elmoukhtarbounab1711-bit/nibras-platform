@@ -36,13 +36,17 @@ _FOOTER = "منارة المعرفة القانونية المغربية"
 
 
 def _find_arabic_fonts():
-    fonts_dir = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts")
-    for name, bold_name in (
-        ("tahoma.ttf", "tahomabd.ttf"),
-        ("segoeui.ttf", "segoeuib.ttf"),
-        ("arial.ttf", "arialbd.ttf"),
-        ("simpo.ttf", "simpbdo.ttf"),
-    ):
+    candidates = [
+        (r"C:\Windows\Fonts", "tahoma.ttf", "tahomabd.ttf"),
+        (r"C:\Windows\Fonts", "segoeui.ttf", "segoeuib.ttf"),
+        (r"C:\Windows\Fonts", "arial.ttf", "arialbd.ttf"),
+        ("/usr/share/fonts/truetype/dejavu", "DejaVuSans.ttf", "DejaVuSans-Bold.ttf"),
+        ("/usr/share/fonts/truetype/dejavu", "DejaVuSans.ttf", "DejaVuSans.ttf"),
+        ("/usr/share/fonts/truetype/noto", "NotoSansArabic-Regular.ttf", "NotoSansArabic-Bold.ttf"),
+        ("/usr/share/fonts/truetype/liberation", "LiberationSans-Regular.ttf", "LiberationSans-Bold.ttf"),
+        ("/usr/share/fonts/truetype/ubuntu", "Ubuntu-R.ttf", "Ubuntu-B.ttf"),
+    ]
+    for fonts_dir, name, bold_name in candidates:
         regular = os.path.join(fonts_dir, name)
         if os.path.exists(regular):
             bold = os.path.join(fonts_dir, bold_name)
