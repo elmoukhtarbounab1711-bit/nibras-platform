@@ -7,6 +7,7 @@
 طبقة الخدمة (services.get_text / list_text_articles_full).
 """
 import os
+from pathlib import Path
 
 import arabic_reshaper
 from bidi.algorithm import get_display
@@ -35,13 +36,19 @@ _BRAND = "نبراس"
 _FOOTER = "منارة المعرفة القانونية المغربية"
 
 
+_BUNDLED_DIR = Path(__file__).resolve().parent.parent / "fonts"
+
+
 def _find_arabic_fonts():
+    bundled_regular = _BUNDLED_DIR / "DejaVuSans.ttf"
+    if bundled_regular.exists():
+        bold = _BUNDLED_DIR / "DejaVuSans-Bold.ttf"
+        return str(bundled_regular), (str(bold) if bold.exists() else str(bundled_regular))
     candidates = [
         (r"C:\Windows\Fonts", "tahoma.ttf", "tahomabd.ttf"),
         (r"C:\Windows\Fonts", "segoeui.ttf", "segoeuib.ttf"),
         (r"C:\Windows\Fonts", "arial.ttf", "arialbd.ttf"),
         ("/usr/share/fonts/truetype/dejavu", "DejaVuSans.ttf", "DejaVuSans-Bold.ttf"),
-        ("/usr/share/fonts/truetype/dejavu", "DejaVuSans.ttf", "DejaVuSans.ttf"),
         ("/usr/share/fonts/truetype/noto", "NotoSansArabic-Regular.ttf", "NotoSansArabic-Bold.ttf"),
         ("/usr/share/fonts/truetype/liberation", "LiberationSans-Regular.ttf", "LiberationSans-Bold.ttf"),
         ("/usr/share/fonts/truetype/ubuntu", "Ubuntu-R.ttf", "Ubuntu-B.ttf"),
