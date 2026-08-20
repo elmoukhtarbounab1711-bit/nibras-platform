@@ -230,6 +230,7 @@ def create_app():
     from .routes.professionals import professionals_bp
     from .routes.research import research_bp
     from .routes.treaties import treaties_bp
+    from .routes.official import bp as official_bp
 
     app.register_blueprint(ads_bp)
     app.register_blueprint(library_bp)
@@ -252,6 +253,7 @@ def create_app():
     app.register_blueprint(billing_bp)
     app.register_blueprint(blog_bp)
     app.register_blueprint(treaties_bp)
+    app.register_blueprint(official_bp)
 
     # ------------------------------------------------------------------
     # خدمة ملفات الواجهة الأمامية على نفس الخادم (مرحلة الواجهة):

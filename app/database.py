@@ -173,8 +173,8 @@ CREATE TABLE IF NOT EXISTS articles (
     legal_text_id   INTEGER NOT NULL REFERENCES legal_texts(id) ON DELETE CASCADE,
     number          TEXT NOT NULL,      -- "230" أو "24" ...
     label           TEXT NOT NULL,      -- "المادة 230" أو "الفصل 24"
-    content         TEXT NOT NULL,      -- النص القانوني الأصلي
-    plain_explanation TEXT,             -- شرح مبسّط (يُعبَّأ لاحقًا بمحرك الذكاء الاصطناعي)
+    content         TEXT NOT NULL,      -- النص القانوني الأصلي (يُمنع تعديله عبر AI)
+    plain_explanation TEXT,             -- شرح مبسّط (يُولَّد بالذكاء الاصطناعي فقط عند الطلب — لا يُغيّر content)
     keywords        TEXT,               -- كلمات مفتاحية مفصولة بفواصل
     tenant_id       INTEGER REFERENCES tenants(id)  -- المستأجر المالك (عزل D-036)
 );
@@ -1476,6 +1476,33 @@ def init_db(reset: bool = False):
         # رابط التحميل الأصلي للقرار القضائي (الاجتهاد يبقى PDF قابلاً للتحميل):
         _ensure_column(conn, "jurisprudence", "pdf_url", "TEXT")
         _ensure_column(conn, "research_books", "cover_image", "TEXT")
+        # ═══════════════════════════════════════════════════════════════════════
+        # تتبع مصدر النص القانوني — ZERO AI REWRITING
+        # ═══════════════════════════════════════════════════════════════════════
+        # حقول تتبع مصدر الوثيقة على legal_texts:
+        _ensure_column(conn, "legal_texts", "source_url", "TEXT")
+        _ensure_column(conn, "legal_texts", "source_document_url", "TEXT")
+        _ensure_column(conn, "legal_texts", "official_source", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "legal_texts", "content_hash", "TEXT")
+        _ensure_column(conn, "legal_texts", "version_type", "TEXT DEFAULT 'ORIGINAL_OFFICIAL'")
+        _ensure_column(conn, "legal_texts", "verification_status", "TEXT DEFAULT 'UNVERIFIED'")
+        _ensure_column(conn, "legal_texts", "imported_at", "TEXT")
+        _ensure_column(conn, "legal_texts", "updated_at", "TEXT")
+        _ensure_column(conn, "legal_texts", "published_date", "TEXT")
+        _ensure_column(conn, "legal_texts", "language", "TEXT DEFAULT 'ar'")
+        _ensure_column(conn, "legal_texts", "source_name", "TEXT")
+        # فهارس البحث بالแหล":
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_legal_texts_content_hash "
+            "ON legal_texts(content_hash)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_legal_texts_source_url "
+            "ON legal_texts(source_url)"
+        )
+        # حقول تتبع مصدر المادة على articles:
+        _ensure_column(conn, "articles", "content_hash", "TEXT")
+        _ensure_column(conn, "articles", "official_text_raw", "TEXT")
         # امتثال القانون 09-08 — الموافقة على معالجة المعطيات الشخصية:
         _ensure_column(conn, "users", "consent_data_processing", "INTEGER DEFAULT 0")
         _ensure_column(conn, "users", "consent_terms", "INTEGER DEFAULT 0")

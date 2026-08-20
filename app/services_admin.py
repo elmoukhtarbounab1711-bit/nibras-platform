@@ -34,6 +34,9 @@ _TEXT_FIELDS = (
 )
 _ARTICLE_FIELDS = ("number", "label", "content", "plain_explanation", "keywords")
 
+# الحقول المحمية — لا يُسمح بتعديلها عبر الواجهة أو AI
+_PROTECTED_ARTICLE_FIELDS = frozenset({"official_text_raw", "content_hash"})
+
 
 class AdminError(Exception):
     """خطأ تجاري في الإدارة يُترجم إلى استجابة HTTP مناسبة في routes."""
@@ -638,6 +641,12 @@ def create_article(admin_id, text_id, data):
 def update_article(admin_id, article_id, data):
     if not isinstance(data, dict) or not data:
         raise AdminError("لا توجد حقول للتحديث", 400)
+    # حماية الحقول المحمية — لا يُسمح بتعديلها
+    for protected in _PROTECTED_ARTICLE_FIELDS:
+        if protected in data:
+            raise AdminError(
+                f"الحقل {protected} محمي — لا يُسمح بتعديله عبر الواجهة", 403
+            )
     with db_session() as conn:
         sel_q = "SELECT id FROM articles WHERE id = ?"
         sel_params = [article_id]
@@ -653,6 +662,11 @@ def update_article(admin_id, article_id, data):
             raise AdminError("محتوى المادة مطلوب", 400)
         if not updates:
             raise AdminError("لا توجد حقول للتحديث", 400)
+        # تحديث content_hash عند تغيير المحتوى (حماية التتبع)
+        if "content" in updates:
+            import hashlib
+            new_hash = hashlib.sha256(updates["content"].encode("utf-8")).hexdigest()
+            updates["content_hash"] = new_hash
         sets = ", ".join(f"{k} = ?" for k in updates)
         upd_q = f"UPDATE articles SET {sets} WHERE id = ?"
         upd_params = list(updates.values()) + [article_id]

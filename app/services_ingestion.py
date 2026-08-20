@@ -344,14 +344,17 @@ def import_document(admin_id: int, data: dict, file, dry_run: bool = False) -> d
             ),
         )
         text_id = cur.lastrowid
+        import hashlib
         for article in articles:
+            art_content = article["content"]
+            art_hash = hashlib.sha256(art_content.encode("utf-8")).hexdigest()
             conn.execute(
                 "INSERT INTO articles "
                 "(legal_text_id, number, label, content, plain_explanation, "
-                "keywords, tenant_id)"
-                " VALUES (?,?,?,?,?,?,?)",
+                "keywords, content_hash, official_text_raw, tenant_id)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
                 (text_id, article["number"], article["label"],
-                 article["content"], None, None,
+                 art_content, None, None, art_hash, art_content,
                  tenant_scope.insert_tenant_id()),
             )
         _log_admin_action(

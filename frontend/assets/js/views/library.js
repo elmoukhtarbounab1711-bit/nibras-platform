@@ -278,6 +278,22 @@ export async function textView(params) {
     ]),
     text.description ? el("div", { class: "doc-desc", text: text.description }) : null,
     text.source_note ? el("p", { class: "small muted", text: text.source_note }) : null,
+    // ═══ معلومات المصدر الرسمي ═══
+    el("div", { class: "source-meta mt-8", style: "padding:10px 14px;background:#f8f9fa;border-radius:8px;border:1px solid #e2e8f0;font-size:13px;" }, [
+      el("div", { style: "font-weight:600;margin-bottom:6px;color:#1a365d;" }, [tr("officialSource") || "المصدر الرسمي"]),
+      el("div", { style: "display:flex;flex-wrap:wrap;gap:8px;align-items:center;" }, [
+        text.source_name ? el("span", { class: "badge-pill badge-blue", text: text.source_name }) : null,
+        text.official_source ? el("span", { class: "badge-pill badge-green", text: "✓ " + (tr("verified") || "مصدر رسمي") }) : null,
+        text.version_type ? el("span", { class: "badge-pill badge-gold", text: text.version_type === "ORIGINAL_OFFICIAL" ? (tr("originalOfficial") || "نص أصلي رسمي") : text.version_type }) : null,
+        text.verification_status ? el("span", { class: `badge-pill ${text.verification_status === "VERIFIED" ? "badge-green" : "badge-gray"}`, text: text.verification_status === "VERIFIED" ? (tr("verified") || "محقق") : text.verification_status }) : null,
+      ]),
+      text.source_url ? el("div", { style: "margin-top:4px;" }, [
+        el("a", { href: text.source_url, target: "_blank", rel: "noopener", style: "color:#2b6cb0;text-decoration:underline;" }, [tr("viewSource") || "عرض المصدر الأصلي ↗"]),
+      ]) : null,
+      text.imported_at ? el("div", { style: "margin-top:4px;color:#718096;font-size:12px;" }, [
+        (tr("importedAt") || "تاريخ الاستيراد") + ": " + (text.imported_at || "").slice(0, 10),
+      ]) : null,
+    ]),
 
     el("div", { class: "pdf-toolbar mt-16" }, [
       el("button", { class: "btn btn-gold", onclick: () => navigate(`/pdf/${text.id}`) }, [icon("file", 16), " " + tr("viewPdf")]),

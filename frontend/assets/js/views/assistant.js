@@ -158,13 +158,22 @@ function externalLinks(external) {
 
 function sourceBadge(source) {
   const MAP = {
-    nibras: { label: tr("sourceNibras"), cls: "source-nibras" },
-    web: { label: tr("sourceWeb"), cls: "source-web" },
-    general: { label: tr("sourceGeneral"), cls: "source-general" },
-    attachment: { label: "مرفق", cls: "source-web" },
+    nibras: { label: tr("sourceNibras"), cls: "source-nibras", official: true },
+    web: { label: tr("sourceWeb"), cls: "source-web", official: false },
+    general: { label: tr("sourceGeneral"), cls: "source-general", official: false },
+    attachment: { label: "مرفق", cls: "source-web", official: false },
   };
   const m = MAP[source] || MAP.general;
-  return el("div", { class: `source-badge ${m.cls}`, text: m.label });
+  const badge = el("div", { class: `source-badge ${m.cls}`, text: m.label });
+  if (m.official) {
+    const note = el("div", {
+      class: "small",
+      style: "margin-top:4px;color:#2d3748;font-size:11px;",
+      text: "المواد المرفقة مستخرجة من مصادرها الرسمية — لا تمر عبر AI لإعادة الصياغة",
+    });
+    return el("div", {}, [badge, note]);
+  }
+  return badge;
 }
 
 function renderMessages() {
