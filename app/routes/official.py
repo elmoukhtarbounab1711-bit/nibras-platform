@@ -5,8 +5,8 @@
 """
 from flask import Blueprint, jsonify, request
 
-from .database import db_session
-from .services_official import (
+from ..database import db_session
+from ..services_official import (
     get_text_source_info,
     verify_text,
     sync_status,
