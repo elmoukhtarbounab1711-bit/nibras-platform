@@ -426,10 +426,15 @@ export async function pdfView(params) {
       }
     }
 
-    const loadPdf = () => {
+    let pdfUrl = `/api/texts/${textId}/pdf`;
+    const loadPdf = async () => {
       holder.innerHTML = `<div class="pdf-empty">${esc(tr("loading"))}</div>`;
+      try {
+        const t = await api.get(`/api/texts/${textId}`);
+        if (t.source_url && t.source_url.endsWith(".pdf")) { pdfUrl = t.source_url; }
+      } catch {}
       const task = pdfjsLib.getDocument({
-        url: `/api/texts/${textId}/pdf`,
+        url: pdfUrl,
         disableAutoFetch: true,
         stopAtErrors: false,
         isEvalSupported: false,

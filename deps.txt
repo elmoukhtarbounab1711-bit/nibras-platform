@@ -16,3 +16,4 @@ python-bidi>=0.4,<1.0
 # محرك رفع المستندات (المرحلة 10 — قرار D-028): استخراج نصوص PDF
 pdfminer.six
 beautifulsoup4
+requests>=2.31,<3.0
