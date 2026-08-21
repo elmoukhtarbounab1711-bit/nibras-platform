@@ -57,25 +57,15 @@ export const avatarColor = (seed) => {
 };
 
 export function downloadFile(url, filename = "document") {
-  const headers = {};
-  if (session.token) headers.Authorization = `Bearer ${session.token}`;
-  fetch(url, { headers })
-    .then(async (resp) => {
-      if (!resp.ok) {
-        const d = await resp.json().catch(() => ({}));
-        throw new Error(d.error || resp.statusText);
-      }
-      return resp.blob();
-    })
-    .then((blob) => {
-      const objectUrl = URL.createObjectURL(blob);
-      const a = el("a", { href: objectUrl, download: filename });
-      document.body.append(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 4000);
-    })
-    .catch((e) => toast(e.message, "error"));
+  const separator = url.includes("?") ? "&" : "?";
+  const fullUrl = url + separator + "_t=" + Date.now();
+  const a = document.createElement("a");
+  a.href = fullUrl;
+  a.download = filename;
+  a.style.display = "none";
+  document.body.append(a);
+  a.click();
+  setTimeout(() => a.remove(), 1000);
 }
 
 export function toast(message, type = "info") {  const stack = document.getElementById("toast-stack");

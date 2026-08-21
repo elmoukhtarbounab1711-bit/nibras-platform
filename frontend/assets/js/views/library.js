@@ -1,7 +1,7 @@
 // نبراس — المكتبة القانونية: لوحة (Hero + إحصاءات + تصنيفات + Sidebar) + قائمة نصوص + تفصيل + PDF
 import { tr, currentLang } from "../i18n.js";
 import { api } from "../api.js";
-import { el, esc, emptyState, fmtDate, pagination, typeLabel, downloadFile } from "../ui.js";
+import { el, esc, emptyState, fmtDate, pagination, typeLabel, downloadFile, toast } from "../ui.js";
 import { icon } from "../icons.js";
 import { navigate } from "../router.js";
 
@@ -260,7 +260,17 @@ async function dashboardView() {
 }
 
 export async function textView(params) {
-  const text = await api.get(`/api/texts/${params.id}`);
+  let text;
+  try {
+    text = await api.get(`/api/texts/${params.id}`);
+  } catch (e) {
+    return el("div", { class: "card empty" }, [
+      el("div", { class: "empty-icon" }, [icon("alertTriangle", 40)]),
+      el("div", { text: tr("error") }),
+      el("div", { class: "small muted", text: String(e.message || e) }),
+      el("button", { class: "btn btn-primary mt-16", text: tr("back"), onclick: () => navigate("/library") }),
+    ]);
+  }
   const articles = text.articles || [];
   const related = text.related || [];
 
@@ -301,7 +311,7 @@ export async function textView(params) {
     ]),
 
     articles.length ? el("div", { class: "mt-24" }, [
-      el("h2", { class: "section-head" }, [el("h2", { text: tr("materials") })]),
+      el("h2", { class: "section-head", text: tr("materials") }),
       ...articles.map((a) => el("div", { class: "article-block" }, [
         el("div", { class: "flex-between" }, [
           el("span", { class: "art-no", text: a.label || `المادة ${a.number}` }),
@@ -367,7 +377,7 @@ export async function pdfView(params) {
     holder.appendChild(embed);
     toolbar.querySelector("#pdf-page").textContent = "";
     toolbar.querySelector("#pdf-zoom").textContent = "";
-    return;
+    return frame;
   }
 
   queueMicrotask(() => {
