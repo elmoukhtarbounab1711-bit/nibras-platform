@@ -82,7 +82,9 @@ def text_pdf(text_id):
 
     text = services.get_text(text_id)
     if text and text.get("source_url"):
-        return flask_redirect(text["source_url"])
+        src = text["source_url"]
+        if "r2.dev" in src or "r2.cloudflarestorage.com" in src:
+            return flask_redirect(src)
 
     from .. import services_pdf
 
