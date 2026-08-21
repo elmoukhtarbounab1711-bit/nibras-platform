@@ -63,15 +63,15 @@ def get_article(article_id):
 @library_bp.route("/api/texts/<int:text_id>/pdf", methods=["GET"])
 def text_pdf(text_id):
     """عرض/تحميل النص القانوني PDF — يفضَّل الملف المرفوع إداريًا (إن وُجد)
-    وإلا يُولَّد تلقائيًا (reportlab + تشكيل عربي)."""
-    from flask import send_file
+    ثم الرابط الخارجي (source_url)، وإلا يُولَّد تلقائيًا."""
+    from flask import send_file, redirect
+    import requests as _req
 
     from .. import services
 
     uploaded = services.get_uploaded_pdf(text_id)
     if uploaded is not None:
         path, _key, content_type = uploaded
-        disposition = "attachment" if request.args.get("download") else "inline"
         text = services.get_text(text_id)
         name = f"{text['title'] if text else f'law-{text_id}'}.pdf"
         return send_file(
@@ -80,6 +80,26 @@ def text_pdf(text_id):
             as_attachment=bool(request.args.get("download")),
             download_name=name,
         )
+
+    text = services.get_text(text_id)
+    if text and text.get("source_url"):
+        source_url = text["source_url"]
+        if source_url.endswith(".pdf") or "pdf" in source_url.lower():
+            try:
+                resp = _req.get(source_url, timeout=30, stream=True, headers={
+                    "User-Agent": "Mozilla/5.0 (Nibras Law Platform)"
+                })
+                if resp.status_code == 200:
+                    ct = resp.headers.get("Content-Type", "application/pdf")
+                    name = f"{text.get('title', f'law-{text_id}')}.pdf"
+                    flask_resp = Response(resp.iter_content(chunk_size=65536), mimetype=ct)
+                    flask_resp.headers["Content-Disposition"] = (
+                        f"{'attachment' if request.args.get('download') else 'inline'}; filename={name}"
+                    )
+                    flask_resp.headers["Cache-Control"] = "public, max-age=86400"
+                    return flask_resp
+            except Exception:
+                pass
 
     from .. import services_pdf
 
