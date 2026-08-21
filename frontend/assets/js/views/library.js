@@ -353,6 +353,23 @@ export async function pdfView(params) {
   ]);
   frame.append(toolbar, holder);
 
+  let textData = null;
+  try { textData = await api.get(`/api/texts/${textId}`); } catch {}
+  const externalUrl = textData?.source_url;
+
+  if (externalUrl && externalUrl.endsWith(".pdf")) {
+    toolbar.querySelectorAll("#pdf-prev,#pdf-next,#pdf-zoom-in,#pdf-zoom-out,#pdf-fit,#pdf-find").forEach((b) => { b.disabled = true; b.style.opacity = "0.4"; });
+    holder.innerHTML = "";
+    const embed = document.createElement("embed");
+    embed.src = externalUrl;
+    embed.type = "application/pdf";
+    embed.style.cssText = "width:100%;height:calc(100vh - 120px);min-height:600px;border:none;border-radius:8px;";
+    holder.appendChild(embed);
+    toolbar.querySelector("#pdf-page").textContent = "";
+    toolbar.querySelector("#pdf-zoom").textContent = "";
+    return;
+  }
+
   queueMicrotask(() => {
     const pageLabel = toolbar.querySelector("#pdf-page");
     const prevBtn = toolbar.querySelector("#pdf-prev");
@@ -382,11 +399,8 @@ export async function pdfView(params) {
       return;
     }
 
-    // استرجاع محتوى النص لحالة فشل العرض
-    let textTitle = "";
-    api.get(`/api/texts/${textId}`).then((t) => { textTitle = t.title || ""; }).catch(() => {});
+    let textTitle = textData?.title || "";
 
-    // محاولة تحميل العامل (worker) مع تراجع آمن عند فشله
     const workerAttempt = () => {
       try {
         pdfjsLib.GlobalWorkerOptions.workerSrc = "/vendor/pdfjs/pdf.worker.min.js";
@@ -426,15 +440,10 @@ export async function pdfView(params) {
       }
     }
 
-    let pdfUrl = `/api/texts/${textId}/pdf`;
-    const loadPdf = async () => {
+    const loadPdf = () => {
       holder.innerHTML = `<div class="pdf-empty">${esc(tr("loading"))}</div>`;
-      try {
-        const t = await api.get(`/api/texts/${textId}`);
-        if (t.source_url && t.source_url.endsWith(".pdf")) { pdfUrl = t.source_url; }
-      } catch {}
       const task = pdfjsLib.getDocument({
-        url: pdfUrl,
+        url: `/api/texts/${textId}/pdf`,
         disableAutoFetch: true,
         stopAtErrors: false,
         isEvalSupported: false,

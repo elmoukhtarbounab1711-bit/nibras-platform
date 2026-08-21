@@ -108,4 +108,6 @@ def search():
     if not q.strip():
         return jsonify({"error": "الرجاء إدخال نص للبحث عبر المعامل q"}), 400
     results = services.search_articles(q, limit=limit)
+    if not results:
+        results = services.search_texts_by_title(q, limit=limit)
     return jsonify({"query": q, "count": len(results), "results": results})

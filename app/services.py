@@ -432,6 +432,35 @@ def search_articles(query_text, limit=20, min_terms=None):
         return [row_to_dict(r) for r in rows]
 
 
+def search_texts_by_title(query_text, limit=20):
+    """بحث عنوان النصوص القانونية (FTS أو LIKE) — يُستخدم كفهرسة بديلة
+    عندما لا تكون هناك مواد في الفهرس."""
+    if not query_text or not query_text.strip():
+        return []
+    normalized = arabic_text.normalize_arabic(query_text.strip())
+    with db_session() as conn:
+        like_q = f"%{normalized}%"
+        where = "WHERE lt.title LIKE ?"
+        params = [like_q]
+        for alias in ("lt", "c"):
+            cond, vals = tenant_scope.tenant_eq(alias)
+            if cond:
+                where += " AND " + cond
+                params.extend(vals)
+        where += " AND lt.jurisdiction_id IS NULL"
+        q = f"""SELECT lt.id AS legal_text_id, lt.title AS legal_text_title,
+                       lt.type AS text_type, lt.official_ref,
+                       c.name AS category_name, 0 AS rank
+                FROM legal_texts lt
+                JOIN categories c ON c.id = lt.category_id
+                {where}
+                ORDER BY lt.title
+                LIMIT ?"""
+        params.append(limit)
+        rows = conn.execute(q, params).fetchall()
+        return [row_to_dict(r) for r in rows]
+
+
 def library_stats():
     """إحصائيات عامة للمكتبة: الفئات، النصوص، المواد، القرارات/الوثائق، آخر تحديث."""
     cat_cond, cat_vals = tenant_scope.tenant_eq("c")
