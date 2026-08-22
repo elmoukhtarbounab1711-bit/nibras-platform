@@ -8,9 +8,16 @@
   },
   "headers": [
     {
+      "source": "/api/auth/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" },
+        { "key": "Pragma", "value": "no-cache" }
+      ]
+    },
+    {
       "source": "/api/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=0, s-maxage=3600" }
+        { "key": "Cache-Control", "value": "public, max-age=0, s-maxage=60" }
       ]
     }
   ]

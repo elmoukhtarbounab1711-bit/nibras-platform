@@ -42,7 +42,9 @@ async function request(method, url, body, isForm) {
     headers["Content-Type"] = "application/json";
     payload = JSON.stringify(body);
   }
-  const resp = await fetch(url, { method, headers, body: payload });
+  const opts = { method, headers, body: payload };
+  if (url.includes("/api/auth/")) opts.cache = "no-store";
+  const resp = await fetch(url, opts);
   let data = null;
   const ct = resp.headers.get("content-type") || "";
   if (ct.includes("application/json")) {
