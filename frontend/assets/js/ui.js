@@ -57,15 +57,7 @@ export const avatarColor = (seed) => {
 };
 
 export function downloadFile(url, filename = "document") {
-  const separator = url.includes("?") ? "&" : "?";
-  const fullUrl = url + separator + "_t=" + Date.now();
-  const a = document.createElement("a");
-  a.href = fullUrl;
-  a.download = filename;
-  a.style.display = "none";
-  document.body.append(a);
-  a.click();
-  setTimeout(() => a.remove(), 1000);
+  window.open(url, "_blank");
 }
 
 export function toast(message, type = "info") {  const stack = document.getElementById("toast-stack");

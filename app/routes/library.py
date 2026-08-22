@@ -64,7 +64,7 @@ def get_article(article_id):
 def text_pdf(text_id):
     """عرض/تحميل النص القانوني PDF — يفضَّل الملف المرفوع إداريًا (إن وُجد)
     ثم الرابط الخارجي (source_url)، وإلا يُولَّد تلقائيًا."""
-    from flask import send_file, redirect as flask_redirect
+    from flask import send_file
 
     from .. import services
 
@@ -84,6 +84,7 @@ def text_pdf(text_id):
     if text and text.get("source_url"):
         src = text["source_url"]
         if "r2.dev" in src or "r2.cloudflarestorage.com" in src:
+            from flask import redirect as flask_redirect
             return flask_redirect(src)
 
     from .. import services_pdf
