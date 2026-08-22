@@ -406,8 +406,22 @@ export async function pdfView(params) {
     };
 
     if (typeof pdfjsLib === "undefined") {
-      showError("PDF.js غير محمّل.");
-      return;
+      try {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement("script");
+          s.src = "/vendor/pdfjs/pdf.min.js";
+          s.onload = resolve;
+          s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      } catch {
+        showError("PDF.js غير محمّل.");
+        return frame;
+      }
+      if (typeof pdfjsLib === "undefined") {
+        showError("PDF.js غير محمّل.");
+        return frame;
+      }
     }
 
     let textTitle = textData?.title || "";

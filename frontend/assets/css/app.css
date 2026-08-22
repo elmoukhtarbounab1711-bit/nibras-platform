@@ -35,8 +35,8 @@
   --radius: 18px;
   --radius-sm: 10px;
   --radius-lg: 22px;
-  --font: "Tajawal", "Cairo", "Segoe UI", system-ui, sans-serif;
-  --font-head: "Cairo", "IBM Plex Sans Arabic", "Tajawal", sans-serif;
+  --font: "Cairo", "Segoe UI", system-ui, sans-serif;
+  --font-head: "Cairo", sans-serif;
   --header-h: 80px;
 }
 
@@ -68,8 +68,8 @@ html[data-theme="dark"] {
 }
 
 html[dir="ltr"] {
-  --font: "IBM Plex Sans Arabic", "Tajawal", "Segoe UI", system-ui, sans-serif;
-  --font-head: "Cairo", "IBM Plex Sans Arabic", sans-serif;
+  --font: "Cairo", "Segoe UI", system-ui, sans-serif;
+  --font-head: "Cairo", sans-serif;
 }
 
 * { box-sizing: border-box; }
