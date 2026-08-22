@@ -365,13 +365,14 @@ export async function pdfView(params) {
 
   let textData = null;
   try { textData = await api.get(`/api/texts/${textId}`); } catch {}
-  const externalUrl = textData?.source_url;
 
-  if (externalUrl && externalUrl.endsWith(".pdf")) {
+  const hasPdf = textData && textData.source_url && (textData.source_url.includes("r2.dev") || textData.source_url.includes("r2.cloudflarestorage.com") || textData.source_url.endsWith(".pdf"));
+
+  if (hasPdf) {
     toolbar.querySelectorAll("#pdf-prev,#pdf-next,#pdf-zoom-in,#pdf-zoom-out,#pdf-fit,#pdf-find").forEach((b) => { b.disabled = true; b.style.opacity = "0.4"; });
     holder.innerHTML = "";
     const embed = document.createElement("embed");
-    embed.src = externalUrl;
+    embed.src = `/api/texts/${textId}/pdf`;
     embed.type = "application/pdf";
     embed.style.cssText = "width:100%;height:calc(100vh - 120px);min-height:600px;border:none;border-radius:8px;";
     holder.appendChild(embed);

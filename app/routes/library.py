@@ -84,8 +84,18 @@ def text_pdf(text_id):
     if text and text.get("source_url"):
         src = text["source_url"]
         if "r2.dev" in src or "r2.cloudflarestorage.com" in src:
-            from flask import redirect as flask_redirect
-            return flask_redirect(src)
+            try:
+                import requests as _req
+                r = _req.get(src, timeout=15)
+                if r.status_code == 200 and "pdf" in r.headers.get("Content-Type", ""):
+                    disposition = "attachment" if request.args.get("download") else "inline"
+                    safe_name = f"law-{text_id}.pdf"
+                    out = Response(r.content, content_type="application/pdf")
+                    out.headers["Content-Disposition"] = f'{disposition}; filename="{safe_name}"'
+                    out.headers["Cache-Control"] = "public, max-age=86400"
+                    return out
+            except Exception:
+                pass
 
     from .. import services_pdf
 
