@@ -14,7 +14,7 @@ const lazy = (mod, fn) => (params) => import(mod).then((m) => m[fn](params));
 
 register("/home", homeView);
 register("/", homeView);
-register("/login", () => { openAuth("login"); navigate("/home"); return el("div"); });
+register("/login", () => { openAuth("login"); return el("div"); });
 
 register("/library", lazy("./views/library.js", "libraryView"));
 register("/text/:id", lazy("./views/library.js", "textView"));
@@ -91,7 +91,7 @@ register("/guide", lazy("./views/legal.js", "guideView"));
 // ---------- مسارات مكتبة/مدونة متعددة الأجزاء ----------
 function regMulti(base, mod, fn, opts = {}) {
   const combos = [
-    "", "/cat/:category", "/q/:q", "/cat/:category/q/:q",
+    "/cat/:category", "/q/:q", "/cat/:category/q/:q",
     "/page/:page", "/cat/:category/page/:page", "/q/:q/page/:page",
     "/cat/:category/q/:q/page/:page",
   ];
