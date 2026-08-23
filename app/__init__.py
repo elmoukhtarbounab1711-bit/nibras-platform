@@ -62,11 +62,17 @@ _SENSITIVE_PATHS = (
 )
 
 
+_STATIC_ASSET_PATHS = ("/assets/", "/vendor/", ".css", ".js", ".woff2", ".png", ".svg")
+
 def _add_cache_control(response):
-    """يمنع التخزين المؤقت للمحتوى الحساس (حسابات، إشعارات، إدارة)."""
+    """يمنع التخزين المؤقت للمحتوى الحساس ويُحسّن تخزين الثوابت."""
     path = request.path
     if any(path.startswith(p) for p in _SENSITIVE_PATHS):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    elif any(path.endswith(ext) for ext in (".css", ".js", ".woff2", ".png", ".svg", ".ico")):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif any(path.startswith(p) for p in ("/assets/", "/vendor/")):
+        response.headers["Cache-Control"] = "public, max-age=86400"
     return response
 
 

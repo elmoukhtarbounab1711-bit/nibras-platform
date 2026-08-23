@@ -4,121 +4,100 @@ import { api, session, setUnauthorizedHandler } from "./api.js";
 import { el, toast } from "./ui.js";
 import { icon } from "./icons.js";
 import { register, setNotFound, initRouter, render, navigate } from "./router.js";
-import { openAuth, authForm, logout } from "./views/auth.js";
+import { openAuth, logout } from "./views/auth.js";
+
+// حمولة أولى فقط: الرئيسية + المكونات الأساسية (~35KB بدل ~450KB)
 import { homeView } from "./views/home.js";
-import { libraryView, textView, pdfView } from "./views/library.js";
-import { jurisprudenceView, jurisprudenceDetailView } from "./views/jurisprudence.js";
-import { blogView, blogDetailView, myArticlesView, blogEditorView } from "./views/blog.js";
-import { proceduresView, procedureDetailView } from "./views/procedures.js";
-import { professionalsView, professionalDetailView, myProfessionalView } from "./views/professionals.js";
-import { documentsView, documentDetailView, myDocumentsView } from "./views/documents.js";
-import { legalFrenchView, legalFrenchLevelView, legalFrenchLessonView, legalFrenchQuizView, legalFrenchTreatiesView, legalFrenchTreatyDetailView } from "./views/legal_french.js";
-import { communityView, communityDetailView, communityNewView } from "./views/community.js";
-import { calculatorsView, calculatorView } from "./views/calculators.js";
-import { notificationsView, notificationsSettingsView } from "./views/notifications.js";
-import { profileView } from "./views/profile.js";
-import { assistantView } from "./views/assistant.js";
-import { billingView, myOrdersView } from "./views/billing.js";
-import { comparativeView, jurisdictionView, comparativeDetailView, comparativeNewView } from "./views/comparative.js";
-import { researchView, researchBookView } from "./views/research.js";
-import { privacyView, termsView, cookiePolicyView, disclaimerView, guideView } from "./views/legal.js";
-import { initCookieConsent, onCookieConsent, hasCookieConsent } from "./components/cookie-consent.js";
-import { initDownloadAppButton } from "./components/download-app.js";
 
+// ---------- حمولات كسولة: تُحمَّل عند أول طلب ----------
+const lazy = (mod, fn) => (params) => import(mod).then((m) => m[fn](params));
 
-// ---------- مسارات ثابتة ----------
 register("/home", homeView);
 register("/", homeView);
 
-register("/library", libraryView);
-register("/text/:id", textView);
-register("/pdf/:id", pdfView);
+register("/library", lazy("./views/library.js", "libraryView"));
+register("/text/:id", lazy("./views/library.js", "textView"));
+register("/pdf/:id", lazy("./views/library.js", "pdfView"));
 
-register("/jurisprudence", jurisprudenceView);
-register("/jurisprudence/cat/:category", jurisprudenceView);
-register("/jurisprudence/cat/:category/page/:page", jurisprudenceView);
-register("/jurisprudence/q/:q", jurisprudenceView);
-register("/jurisprudence/q/:q/page/:page", jurisprudenceView);
-register("/jurisprudence/page/:page", jurisprudenceView);
-register("/jurisprudence/:id", jurisprudenceDetailView);
+register("/jurisprudence", lazy("./views/jurisprudence.js", "jurisprudenceView"));
+register("/jurisprudence/cat/:category", lazy("./views/jurisprudence.js", "jurisprudenceView"));
+register("/jurisprudence/cat/:category/page/:page", lazy("./views/jurisprudence.js", "jurisprudenceView"));
+register("/jurisprudence/q/:q", lazy("./views/jurisprudence.js", "jurisprudenceView"));
+register("/jurisprudence/q/:q/page/:page", lazy("./views/jurisprudence.js", "jurisprudenceView"));
+register("/jurisprudence/page/:page", lazy("./views/jurisprudence.js", "jurisprudenceView"));
+register("/jurisprudence/:id", lazy("./views/jurisprudence.js", "jurisprudenceDetailView"));
 
-register("/procedures", proceduresView);
-register("/procedures/:slug", procedureDetailView);
-register("/professionals", professionalsView);
-register("/professionals/q/:q", professionalsView);
-register("/professionals/me", myProfessionalView, { auth: true });
-register("/professionals/:id", professionalDetailView);
+register("/procedures", lazy("./views/procedures.js", "proceduresView"));
+register("/procedures/:slug", lazy("./views/procedures.js", "procedureDetailView"));
+register("/professionals", lazy("./views/professionals.js", "professionalsView"));
+register("/professionals/q/:q", lazy("./views/professionals.js", "professionalsView"));
+register("/professionals/me", lazy("./views/professionals.js", "myProfessionalView"), { auth: true });
+register("/professionals/:id", lazy("./views/professionals.js", "professionalDetailView"));
 
-register("/comparative", comparativeView);
-register("/comparative/new", comparativeNewView);
-register("/comparative/study/:id", comparativeDetailView);
-register("/comparative/jurisdiction/:slug", jurisdictionView);
-register("/comparative/jurisdiction/:slug/:tab", jurisdictionView);
-register("/comparative/:id", comparativeDetailView);
+register("/comparative", lazy("./views/comparative.js", "comparativeView"));
+register("/comparative/new", lazy("./views/comparative.js", "comparativeNewView"));
+register("/comparative/study/:id", lazy("./views/comparative.js", "comparativeDetailView"));
+register("/comparative/jurisdiction/:slug", lazy("./views/comparative.js", "jurisdictionView"));
+register("/comparative/jurisdiction/:slug/:tab", lazy("./views/comparative.js", "jurisdictionView"));
+register("/comparative/:id", lazy("./views/comparative.js", "comparativeDetailView"));
 
-// مكتبة الباحث — كتب PDF مقسمة حسب التصنيف
-register("/research", researchView);
-register("/research/category/:category", researchView);
-register("/research/type/:type", researchView);
-register("/research/:id", researchBookView);
+register("/research", lazy("./views/research.js", "researchView"));
+register("/research/category/:category", lazy("./views/research.js", "researchView"));
+register("/research/type/:type", lazy("./views/research.js", "researchView"));
+register("/research/:id", lazy("./views/research.js", "researchBookView"));
 
+register("/documents", lazy("./views/documents.js", "documentsView"));
+register("/documents/:slug", lazy("./views/documents.js", "documentDetailView"));
+register("/my-documents", lazy("./views/documents.js", "myDocumentsView"), { auth: true });
 
+register("/legal-french", lazy("./views/legal_french.js", "legalFrenchView"));
+register("/legal-french/treaties", lazy("./views/legal_french.js", "legalFrenchTreatiesView"));
+register("/legal-french/treaty/:id", lazy("./views/legal_french.js", "legalFrenchTreatyDetailView"));
+register("/legal-french/lesson/:id", lazy("./views/legal_french.js", "legalFrenchLessonView"));
+register("/legal-french/quiz/:lessonId", lazy("./views/legal_french.js", "legalFrenchQuizView"), { auth: true });
+register("/legal-french/:id", lazy("./views/legal_french.js", "legalFrenchLevelView"));
 
-register("/documents", documentsView);
-register("/documents/:slug", documentDetailView);
-register("/my-documents", myDocumentsView, { auth: true });
+register("/assistant", lazy("./views/assistant.js", "assistantView"), { auth: true });
 
-register("/legal-french", legalFrenchView);
-register("/legal-french/treaties", legalFrenchTreatiesView);
-register("/legal-french/treaty/:id", legalFrenchTreatyDetailView);
-register("/legal-french/lesson/:id", legalFrenchLessonView);
-register("/legal-french/quiz/:lessonId", legalFrenchQuizView, { auth: true });
-register("/legal-french/:id", legalFrenchLevelView);
+register("/community", lazy("./views/community.js", "communityView"));
+register("/community/new", lazy("./views/community.js", "communityNewView"), { auth: true });
+register("/community/:id", lazy("./views/community.js", "communityDetailView"));
 
-register("/assistant", assistantView, { auth: true });
+register("/calculators", lazy("./views/calculators.js", "calculatorsView"));
+register("/calculators/:slug", lazy("./views/calculators.js", "calculatorView"));
 
-register("/community", communityView);
-register("/community/new", communityNewView, { auth: true });
-register("/community/:id", communityDetailView);
+register("/notifications", lazy("./views/notifications.js", "notificationsView"), { auth: true });
+register("/notifications/settings", lazy("./views/notifications.js", "notificationsSettingsView"), { auth: true });
+register("/profile", lazy("./views/profile.js", "profileView"), { auth: true });
 
-register("/calculators", calculatorsView);
-register("/calculators/:slug", calculatorView);
+register("/billing", lazy("./views/billing.js", "billingView"), { auth: true });
+register("/billing/orders", lazy("./views/billing.js", "myOrdersView"), { auth: true });
 
-register("/notifications", notificationsView, { auth: true });
-register("/notifications/settings", notificationsSettingsView, { auth: true });
-register("/profile", profileView, { auth: true });
+register("/blog", lazy("./views/blog.js", "blogView"));
+register("/blog/my", lazy("./views/blog.js", "myArticlesView"), { auth: true });
+register("/blog/new", lazy("./views/blog.js", "blogEditorView"), { auth: true });
+register("/blog/edit/:id", lazy("./views/blog.js", "blogEditorView"), { auth: true });
+register("/blog/:id", lazy("./views/blog.js", "blogDetailView"));
 
-register("/billing", billingView, { auth: true });
-register("/billing/orders", myOrdersView, { auth: true });
-
-// مسارات مقالات (قبل /blog/:id)
-register("/blog", blogView);
-register("/blog/my", myArticlesView, { auth: true });
-register("/blog/new", blogEditorView, { auth: true });
-register("/blog/edit/:id", blogEditorView, { auth: true });
-register("/blog/:id", blogDetailView);
-
-// لوحة الإدارة صفحة مستقلة
 register("/admin", () => { location.href = "/admin"; }, { auth: true, admin: true });
 
-// صفحات قانونية
-register("/privacy", privacyView);
-register("/terms", termsView);
-register("/cookie-policy", cookiePolicyView);
-register("/disclaimer", disclaimerView);
-register("/guide", guideView);
+register("/privacy", lazy("./views/legal.js", "privacyView"));
+register("/terms", lazy("./views/legal.js", "termsView"));
+register("/cookie-policy", lazy("./views/legal.js", "cookiePolicyView"));
+register("/disclaimer", lazy("./views/legal.js", "disclaimerView"));
+register("/guide", lazy("./views/legal.js", "guideView"));
 
 // ---------- مسارات مكتبة/مدونة متعددة الأجزاء ----------
-function regMulti(base, handler, opts = {}) {
+function regMulti(base, mod, fn, opts = {}) {
   const combos = [
     "", "/cat/:category", "/q/:q", "/cat/:category/q/:q",
     "/page/:page", "/cat/:category/page/:page", "/q/:q/page/:page",
     "/cat/:category/q/:q/page/:page",
   ];
-  for (const c of combos) register(base + c, handler, opts);
+  for (const c of combos) register(base + c, lazy(mod, fn), opts);
 }
-regMulti("/library", libraryView);
-regMulti("/blog", blogView);
+regMulti("/library", "./views/library.js", "libraryView");
+regMulti("/blog", "./views/blog.js", "blogView");
 
 setNotFound(() => el("div", { class: "card empty" }, [
   el("div", { class: "empty-icon" }, [icon("compass", 40)]),
@@ -227,14 +206,16 @@ window.addEventListener("nibras:route", refreshNotifBadge);
 initRouter();
 render();
 
-// شريط موافقة ملفات تعريف الارتباط (القانون 09-08)
-initCookieConsent();
-
-// زر تحميل التطبيق — يظهر بعد عرض شريط الكوكيز
-onCookieConsent(() => initDownloadAppButton());
-if (hasCookieConsent()) {
-  initDownloadAppButton();
-}
+// شريط موافقة ملفات تعريف الارتباط (القانون 09-08) — متأخر عن الإقلاع
+requestAnimationFrame(() => {
+  import("./components/cookie-consent.js").then(({ initCookieConsent, onCookieConsent, hasCookieConsent }) => {
+    initCookieConsent();
+    import("./components/download-app.js").then(({ initDownloadAppButton }) => {
+      onCookieConsent(() => initDownloadAppButton());
+      if (hasCookieConsent()) initDownloadAppButton();
+    });
+  });
+});
 
 setInterval(() => { if (session.token) refreshNotifBadge(); }, 60000);
 

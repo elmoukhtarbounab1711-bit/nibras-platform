@@ -598,6 +598,16 @@ CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read);
 
+-- فهارس أداء المكتبة والبحث (الأكثر استخدامًا)
+CREATE INDEX IF NOT EXISTS idx_legal_texts_category ON legal_texts(category_id);
+CREATE INDEX IF NOT EXISTS idx_legal_texts_type ON legal_texts(type);
+CREATE INDEX IF NOT EXISTS idx_articles_text_id ON articles(legal_text_id);
+CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_jurisprudence_category_published ON jurisprudence(category_id, published);
+CREATE INDEX IF NOT EXISTS idx_comp_laws_country ON comp_laws(country_id);
+CREATE INDEX IF NOT EXISTS idx_comp_law_articles_law ON comp_law_articles(law_id);
+CREATE INDEX IF NOT EXISTS idx_comp_jurisprudence_country ON comp_jurisprudence(country_id);
+
 -- =====================================================================
 -- تسليم الإشعارات الخارجية (المرحلة 16 — قرار D-034): بريد + دفع.
 -- ---------------------------------------------------------------------
