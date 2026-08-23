@@ -381,7 +381,7 @@ export async function pdfView(params) {
     return frame;
   }
 
-  queueMicrotask(() => {
+  queueMicrotask(async () => {
     const pageLabel = toolbar.querySelector("#pdf-page");
     const prevBtn = toolbar.querySelector("#pdf-prev");
     const nextBtn = toolbar.querySelector("#pdf-next");
