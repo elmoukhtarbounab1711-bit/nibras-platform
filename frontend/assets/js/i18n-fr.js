@@ -215,7 +215,7 @@ export const FR = {
   cookieAcceptAll: "Tout accepter", cookieReject: "Refuser", cookieManage: "Gérer",
   textDetail: "Dossier du texte juridique", backToLibrary: "Retour à la bibliothèque",
   pdfSearchPh: "Rechercher dans le document...", pageOf: "page", zoomIn: "Zoom avant", zoomOut: "Zoom arrière",
-  fitWidth: "Ajuster à la largeur", share: "Partager", copied: "Lien copié",
+  fitWidth: "Ajuster à la largeur", share: "Partager", copied: "Lien copié", fullscreen: "Plein écran",
   shareTitle: "Partager ce contenu",
   latestLaws: "Derniers textes juridiques",
   latestLawsSub: "Dernières publications de la bibliothèque",

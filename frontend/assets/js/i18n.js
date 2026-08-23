@@ -218,7 +218,7 @@ const AR = {
   cookieAcceptAll: "قبول الكل", cookieReject: "رفض", cookieManage: "إدارة",
   textDetail: "ملف النص القانوني", backToLibrary: "العودة إلى المكتبة",
   pdfSearchPh: "بحث داخل الوثيقة...", pageOf: "صفحة", zoomIn: "تكبير", zoomOut: "تصغير",
-  fitWidth: "ملاءمة العرض", share: "مشاركة", copied: "تم نسخ الرابط",
+  fitWidth: "ملاءمة العرض", share: "مشاركة", copied: "تم نسخ الرابط", fullscreen: "ملء الشاشة",
   shareTitle: "شارك هذا المحتوى",
   latestLaws: "أحدث النصوص القانونية",
   latestLawsSub: "أحدث ما نُشر في المكتبة",
