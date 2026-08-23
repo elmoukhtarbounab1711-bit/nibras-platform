@@ -65,12 +65,17 @@ _SENSITIVE_PATHS = (
 _STATIC_ASSET_PATHS = ("/assets/", "/vendor/", ".css", ".js", ".woff2", ".png", ".svg")
 
 def _add_cache_control(response):
-    """يمنع التخزين المؤقت للمحتوى الحساس ويُحسّن تخزين الثوابت."""
+    """يمنع التخزين المؤقت للمحتوى الحساس ويُحسّن تخزين الثوابت.
+
+    ملاحظة: لا نستخدم immutable لملفات JS/CSS لأن أسماء الملفات بدون hash
+    وتتغير مع كل نشر. المتصفح يتحقق من SW أولاً ثم HTTP cache.
+    """
     path = request.path
     if any(path.startswith(p) for p in _SENSITIVE_PATHS):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     elif any(path.endswith(ext) for ext in (".css", ".js", ".woff2", ".png", ".svg", ".ico")):
-        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        # max-age=0 للمتصفح (دع SW يتحكم)، s-maxage للـ CDN edge
+        response.headers["Cache-Control"] = "public, max-age=0, s-maxage=3600"
     elif any(path.startswith(p) for p in ("/assets/", "/vendor/")):
         response.headers["Cache-Control"] = "public, max-age=86400"
     return response
