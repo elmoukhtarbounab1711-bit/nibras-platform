@@ -1,5 +1,5 @@
 // نبراس — نقطة دخول SPA: تسجيل المسارات وربط واجهة الرأس
-import { applyLang, setLang, tr } from "./i18n.js";
+import { applyLang, setLang, tr, preloadFr } from "./i18n.js";
 import { api, session, setUnauthorizedHandler } from "./api.js";
 import { el, toast } from "./ui.js";
 import { icon } from "./icons.js";
@@ -14,6 +14,7 @@ const lazy = (mod, fn) => (params) => import(mod).then((m) => m[fn](params));
 
 register("/home", homeView);
 register("/", homeView);
+register("/login", () => { openAuth("login"); navigate("/home"); return el("div"); });
 
 register("/library", lazy("./views/library.js", "libraryView"));
 register("/text/:id", lazy("./views/library.js", "textView"));
@@ -192,6 +193,7 @@ function syncThemeUI(theme) {
 
 // ---------- إقلاع ----------
 applyLang();
+preloadFr().catch(() => {});  // خلفية — чтобы переводы FR были готовы мгновенно при переключении
 syncLangUI();
 syncThemeUI(document.documentElement.dataset.theme || "light");
 wireHeader();

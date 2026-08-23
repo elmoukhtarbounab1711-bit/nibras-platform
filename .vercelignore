@@ -22,7 +22,7 @@ railway.toml
 render.yaml
 Procfile
 storage/
-admin.html
+/admin.html
 nibras.html
 README.md
 .env*
