@@ -16,30 +16,42 @@ import { billingView } from "./views/billing.js";
 import { jurisprudenceAdminView } from "./views/jurisprudence.js";
 import { comparativeAdminView } from "./views/comparative.js";
 import { researchAdminView } from "./views/research.js";
+import { visitorsView } from "./views/visitors.js";
 
 
-// ---------- أقسام الشريط الجانبي (12 قسمًا) ----------
+// ---------- أقسام الشريط الجانبي (مع تصنيفات) ----------
 const NAV = [
-  { key: "dashboard", icon: "barChart", label: "dashboard" },
-  { key: "library", icon: "book", label: "library" },
-  { key: "blog", icon: "pen", label: "blog" },
-  { key: "professionals", icon: "scale", label: "professionals" },
-  { key: "templates", icon: "clipboard", label: "templates" },
-  { key: "ads", icon: "megaphone", label: "ads" },
-  { key: "billing", icon: "wallet", label: "billing" },
-  { key: "jurisprudence", icon: "scale", label: "jurisprudence" },
-  { key: "comparative", icon: "globe", label: "comparative" },
-  { key: "research", icon: "book", label: "researchLibrary" },
+  { key: "dashboard", icon: "barChart", label: "dashboard", group: "overview" },
+  { key: "visitors", icon: "eye", label: "visitors", group: "overview" },
 
-  { key: "tenants", icon: "building", label: "tenants" },
-  { key: "ai", icon: "cpu", label: "ai" },
-  { key: "notifications", icon: "bell", label: "notifications" },
-  { key: "users", icon: "users", label: "users" },
-  { key: "audit", icon: "eye", label: "audit" },
-  { key: "settings", icon: "settings", label: "settings" },
+  { key: "library", icon: "book", label: "library", group: "content" },
+  { key: "blog", icon: "pen", label: "blog", group: "content" },
+  { key: "professionals", icon: "scale", label: "professionals", group: "content" },
+  { key: "templates", icon: "clipboard", label: "templates", group: "content" },
+  { key: "ads", icon: "megaphone", label: "ads", group: "content" },
+
+  { key: "billing", icon: "wallet", label: "billing", group: "legal" },
+  { key: "jurisprudence", icon: "scale", label: "jurisprudence", group: "legal" },
+  { key: "comparative", icon: "globe", label: "comparative", group: "legal" },
+  { key: "research", icon: "book", label: "researchLibrary", group: "legal" },
+
+  { key: "tenants", icon: "building", label: "tenants", group: "system" },
+  { key: "ai", icon: "cpu", label: "ai", group: "system" },
+  { key: "notifications", icon: "bell", label: "notifications", group: "system" },
+  { key: "users", icon: "users", label: "users", group: "system" },
+  { key: "audit", icon: "eye", label: "audit", group: "system" },
+  { key: "settings", icon: "settings", label: "settings", group: "system" },
 ];
 
+const NAV_GROUPS = {
+  overview: "نظرة عامة",
+  content: "المحتوى",
+  legal: "قانوني",
+  system: "النظام",
+};
+
 SectionViews.dashboard = dashboardView;
+SectionViews.visitors = visitorsView;
 SectionViews.library = () => libraryView("texts");
 SectionViews.blog = blogView;
 SectionViews.professionals = () => peopleView("verification");
@@ -102,14 +114,23 @@ async function boot() {
 function wireSidebar() {
   const navEl = document.getElementById("adm-nav");
   const render = (current) => {
-    navEl.replaceChildren(...NAV.map((n) =>
-      el("a", {
+    const nodes = [];
+    let lastGroup = null;
+    for (const n of NAV) {
+      if (n.group !== lastGroup) {
+        lastGroup = n.group;
+        const groupLabel = NAV_GROUPS[n.group] || n.group;
+        nodes.push(el("div", { class: "adm-nav-group", text: groupLabel }));
+      }
+      nodes.push(el("a", {
         class: "adm-item" + (n.key === current ? " active" : ""),
         href: `#/admin/${n.key}`, onclick: () => closeSidebar(),
       }, [
         el("span", { class: "ic" }, [icon(n.icon, 18)]),
         el("span", { text: t(n.label) }),
-      ])));
+      ]));
+    }
+    navEl.replaceChildren(...nodes);
   };
   navEl._render = render;
   navEl.dataset.current = "";
@@ -172,83 +193,145 @@ function router() {
 
 
 // ---------- لوحة القيادة ----------
+let _dashTimer = null;
+
 async function dashboardView() {
-  const [s, textsData, blogData, tplData] = await Promise.all([
-    api.get("/api/admin/analytics/summary"),
-    api.get("/api/texts?limit=5").catch(() => ({})),
-    api.get("/api/admin/blog/articles?limit=5").catch(() => ({})),
-    api.get("/api/admin/marketplace/templates").catch(() => ({})),
+  if (_dashTimer) { clearInterval(_dashTimer); _dashTimer = null; }
+
+  const root = el("div", { class: "flex-col", style: "gap:20px" });
+
+  // زر التحديث التلقائي
+  let autoRefresh = false;
+  const refreshBtn = el("button", { class: "adm-auto-refresh", type: "button" }, [
+    el("span", { class: "pulse-dot" }),
+    el("span", { text: "تحديث تلقائي" }),
   ]);
-  const users = s.users || {};
-  const ai = s.ai || {};
-  const calcs = s.calculators || {};
-  const docs = s.documents || {};
-  const comm = s.community || {};
-  const prof = s.professionals || {};
-  const mkt = s.marketplace || {};
-  const verif = s.verification || {};
-  const mod = s.moderation || {};
+  refreshBtn.onclick = () => {
+    autoRefresh = !autoRefresh;
+    refreshBtn.classList.toggle("active", autoRefresh);
+    if (autoRefresh) {
+      _dashTimer = setInterval(() => loadDashboard(root), 30000);
+    } else if (_dashTimer) {
+      clearInterval(_dashTimer);
+      _dashTimer = null;
+    }
+  };
 
-  const texts = textsData.texts || textsData || [];
-  const articles = blogData.articles || blogData || [];
-  const templates = tplData.templates || tplData || [];
+  root.append(
+    el("div", { class: "flex-between", style: "align-items:center" }, [
+      el("div", {}, [
+        el("h2", { style: "margin:0;font-family:var(--font-head);font-size:22px", text: t("dashboard") }),
+        el("p", { style: "margin:4px 0 0;color:var(--ink-3);font-size:13px", text: "نظرة عامة على المنصة" }),
+      ]),
+      refreshBtn,
+    ]),
+  );
 
-  const trends = (s.trends || []).slice(-7).map((tr) => ({
-    label: String(tr.date || "").slice(5),
-    users: tr.new_users || 0, docs: tr.documents || 0, ai: tr.ai_queries || 0,
-  }));
+  root.append(el("div", { id: "dash-content", class: "flex-col", style: "gap:20px" }, [skeleton(3, 90)]));
+  await loadDashboard(root);
+  return root;
+}
 
-  const byMode = Object.entries(ai.by_mode || {});
+async function loadDashboard(root) {
+  const container = root.querySelector("#dash-content");
+  if (!container) return;
 
-  const latestList = (title, items, icon, viewKey) =>
-    panel([
-      head(title, [el("button", { class: "btn btn-ghost btn-sm", text: t("viewAll"), onclick: () => go(viewKey) })]),
-      body(items.length
-        ? el("div", { class: "adm-list" }, items.slice(0, 5).map((it) =>
-          listItem({ icon, title: it.title || it.name || "—", sub: it.sub || "", val: it.val })))
-        : emptyState(t("noData"), icon)),
+  try {
+    const [s, textsData, blogData, tplData, visitorData] = await Promise.all([
+      api.get("/api/admin/analytics/summary"),
+      api.get("/api/texts?limit=5").catch(() => ({})),
+      api.get("/api/admin/blog/articles?limit=5").catch(() => ({})),
+      api.get("/api/admin/marketplace/templates").catch(() => ({})),
+      api.get("/api/admin/visitors/summary?days=7").catch(() => ({})),
     ]);
 
-  const actions = [
-    ["library", "book", t("library")], ["blog", "pen", t("blog")],
-    ["templates", "clipboard", t("templates")], ["ads", "megaphone", t("ads")],
-    ["professionals", "scale", t("professionals")], ["ai", "cpu", t("ai")],
-  ];
+    const users = s.users || {};
+    const ai = s.ai || {};
+    const calcs = s.calculators || {};
+    const docs = s.documents || {};
+    const comm = s.community || {};
+    const prof = s.professionals || {};
+    const mkt = s.marketplace || {};
+    const verif = s.verification || {};
+    const mod = s.moderation || {};
 
-  return el("div", { class: "flex-col", style: "gap:16px" }, [
-    kpiGrid([
-      kpi({ icon: "users", label: t("kpiUsers"), value: num(users.total), sub: `${t("newToday")}: ${num(users.new_today)}`, tone: "info" }),
-      kpi({ icon: "cpu", label: t("kpiAi"), value: num(ai.total), sub: `${t("today")}: ${num(ai.today)}`, tone: "green" }),
-      kpi({ icon: "file", label: t("kpiDocs"), value: num(docs.generated_total), sub: `${t("today")}: ${num(docs.generated_today)}`, tone: "gold" }),
-      kpi({ icon: "messageSquare", label: t("kpiCommunity"), value: num(comm.posts), sub: `${t("comments")}: ${num(comm.comments)}`, tone: "navy" }),
-      kpi({ icon: "calculator", label: t("kpiCalculators"), value: num(calcs.total_runs), sub: `${t("today")}: ${num(calcs.today)}`, tone: "info" }),
-      kpi({ icon: "scale", label: t("kpiProfessionals"), value: num(prof.by_status?.verified ?? prof.total), sub: `${t("professionalsPending")}: ${num(verif.pending_requests)}`, tone: "gold" }),
-      kpi({ icon: "clipboard", label: t("kpiTemplates"), value: num(mkt.templates), sub: `${t("downloads")}: ${num(mkt.purchases)}`, tone: "green" }),
-      kpi({ icon: "creditCard", label: t("kpiRevenue"), value: money_cents(mkt.catalog_value_cents), sub: `${t("openReports")}: ${num(mod.open_reports)}`, tone: "red" }),
-    ]),
+    const texts = textsData.texts || textsData || [];
+    const articles = blogData.articles || blogData || [];
+    const templates = tplData.templates || tplData || [];
 
-    el("div", { class: "adm-grid-2" }, [
-      panel([head(t("trendsTitle"), [badge(fmtDt(s.generated_at), "gray")]),
-        body(trends.length
-          ? lineChart(trends.map((x) => x.label), trends.map((x) => x.ai), { width: 620, height: 210 })
-          : emptyState(t("noData"), "trendingUp"))]),
-      panel([head(t("ai") + " — " + t("byMode"), [badge(num(ai.total), "blue")]),
-        body(byMode.length
-          ? hBars(byMode.map(([m, c]) => ({ label: modeLabel(m), value: c })))
-          : emptyState(t("noData"), "cpu"))]),
-    ]),
+    const trends = (s.trends || []).slice(-7).map((tr) => ({
+      label: String(tr.date || "").slice(5),
+      users: tr.new_users || 0, docs: tr.documents || 0, ai: tr.ai_queries || 0,
+    }));
 
-    latestList(t("recentTexts"), texts.map((x) => ({ title: x.title, sub: x.category_name || "", val: "" })), "book", "library"),
-    el("div", { class: "adm-grid-3" }, [
-      latestList(t("recentArticles"), articles.map((a) => ({ title: a.title, sub: fmtDt(a.updated_at || a.created_at), val: num(a.views) })), "pen", "blog"),
-      latestList(t("recentProfessionals"), [], "scale", "professionals"),
-      latestList(t("recentTemplates"), templates.map((x) => ({ title: x.title, sub: `${x.category_name || ""} · ${x.download_count ?? 0} ${t("downloads")}`, val: "" })), "clipboard", "templates"),
-    ]),
+    const byMode = Object.entries(ai.by_mode || {});
 
-    panel([head(t("quickActions")),
-      body(el("div", { class: "adm-grid-3" }, actions.map(([key, icn, label]) =>
-        el("button", { class: "btn btn-outline btn-sm", onclick: () => go(key) }, [icon(icn, 16), " " + label]))))]),
-  ]);
+    const latestList = (title, items, iconName, viewKey) =>
+      panel([
+        head(title, [el("button", { class: "btn btn-ghost btn-sm", text: t("viewAll"), onclick: () => go(viewKey) })]),
+        body(items.length
+          ? el("div", { class: "adm-list" }, items.slice(0, 5).map((it) =>
+            listItem({ icon: iconName, title: it.title || it.name || "—", sub: it.sub || "", val: it.val })))
+          : emptyState(t("noData"), iconName)),
+      ]);
+
+    container.replaceChildren(
+      // ── KPIs الرئيسية ──
+      kpiGrid([
+        kpi({ icon: "users", label: t("kpiUsers"), value: num(users.total), sub: `${t("newToday")}: ${num(users.new_today)}`, tone: "info" }),
+        kpi({ icon: "cpu", label: t("kpiAi"), value: num(ai.total), sub: `${t("today")}: ${num(ai.today)}`, tone: "green" }),
+        kpi({ icon: "file", label: t("kpiDocs"), value: num(docs.generated_total), sub: `${t("today")}: ${num(docs.generated_today)}`, tone: "gold" }),
+        kpi({ icon: "messageSquare", label: t("kpiCommunity"), value: num(comm.posts), sub: `${t("comments")}: ${num(comm.comments)}`, tone: "navy" }),
+        kpi({ icon: "calculator", label: t("kpiCalculators"), value: num(calcs.total_runs), sub: `${t("today")}: ${num(calcs.today)}`, tone: "info" }),
+        kpi({ icon: "scale", label: t("kpiProfessionals"), value: num(prof.by_status?.verified ?? prof.total), sub: `${t("professionalsPending")}: ${num(verif.pending_requests)}`, tone: "gold" }),
+        kpi({ icon: "clipboard", label: t("kpiTemplates"), value: num(mkt.templates), sub: `${t("downloads")}: ${num(mkt.purchases)}`, tone: "green" }),
+        kpi({ icon: "creditCard", label: t("kpiRevenue"), value: money_cents(mkt.catalog_value_cents), sub: `${t("openReports")}: ${num(mod.open_reports)}`, tone: "red" }),
+      ]),
+
+      // ── صف الزوار السريع ──
+      kpiGrid([
+        kpi({ icon: "eye", label: "زيارات آخر أسبوع", value: num(visitorData.week_visits || 0), sub: `اليوم: ${num(visitorData.today_visits || 0)}`, tone: "info" }),
+        kpi({ icon: "users", label: "زوار فريدون", value: num(visitorData.unique_visitors || 0), sub: `مسجلون: ${num(visitorData.unique_users || 0)}`, tone: "green" }),
+        kpi({ icon: "activity", label: "الزوار النشطون", value: num(visitorData.active_now || 0), sub: "آخر 5 دقائق", tone: "red" }),
+      ]),
+
+      // ── الرسم البياني + استخدام الذكاء ──
+      el("div", { class: "adm-grid-2" }, [
+        panel([head(t("trendsTitle"), [badge(fmtDt(s.generated_at), "gray")]),
+          body(trends.length
+            ? lineChart(trends.map((x) => x.label), trends.map((x) => x.ai), { width: 620, height: 210 })
+            : emptyState(t("noData"), "trendingUp"))]),
+        panel([head(t("ai") + " — " + t("byMode"), [badge(num(ai.total), "blue")]),
+          body(byMode.length
+            ? hBars(byMode.map(([m, c]) => ({ label: modeLabel(m), value: c })))
+            : emptyState(t("noData"), "cpu"))]),
+      ]),
+
+      // ── أحدث المحتوى ──
+      latestList(t("recentTexts"), texts.map((x) => ({ title: x.title, sub: x.category_name || "", val: "" })), "book", "library"),
+      el("div", { class: "adm-grid-3" }, [
+        latestList(t("recentArticles"), articles.map((a) => ({ title: a.title, sub: fmtDt(a.updated_at || a.created_at), val: num(a.views) })), "pen", "blog"),
+        latestList(t("recentProfessionals"), [], "scale", "professionals"),
+        latestList(t("recentTemplates"), templates.map((x) => ({ title: x.title, sub: `${x.category_name || ""} · ${x.download_count ?? 0} ${t("downloads")}`, val: "" })), "clipboard", "templates"),
+      ]),
+
+      // ── إجراءات سريعة ──
+      panel([head(t("quickActions")),
+        body(el("div", { class: "adm-grid-3" }, [
+          ...[["library", "book", t("library")], ["blog", "pen", t("blog")],
+            ["templates", "clipboard", t("templates")], ["ads", "megaphone", t("ads")],
+            ["professionals", "scale", t("professionals")], ["ai", "cpu", t("ai")]].map(([key, icn, label]) =>
+            el("button", { class: "btn btn-outline btn-sm", onclick: () => go(key) }, [icon(icn, 16), " " + label])),
+        ]))]),
+    );
+  } catch (e) {
+    container.replaceChildren(
+      el("div", { class: "adm-404" }, [
+        el("div", { class: "ic" }, [icon("alertTriangle", 42)]),
+        el("p", { text: `خطأ في تحميل البيانات: ${e.message}` }),
+      ])
+    );
+  }
 }
 
 function modeLabel(m) {

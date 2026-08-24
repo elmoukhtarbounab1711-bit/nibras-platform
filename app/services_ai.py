@@ -81,7 +81,7 @@ def _build_prompt_with_attachment(question: str, extracted_text: str = "",
         if len(extracted_text) >= AI_PDF_TEXT_MAX_CHARS - 10:
             truncated_notice = (
                 "\n\n⚠ تنبيه: تم اقتطاع بعض من النص بسبب حجم الملف الكبير. "
-                " Grove قد لا يحتوي النص على كامل المستند."
+                "قد لا يحتوي النص على كامل المستند."
             )
         system = (
             "قواعد صارمة يجب اتباعها:\n"
@@ -204,7 +204,7 @@ def _build_prompt(question: str, context_articles: list, mode: str,
             "- تلخيص المواد القانونية الرسمية وعرضها كنص رسمي\n"
             "- إضافة أو حذف كلمات أو عبارات من النص الأصلي\n"
             "- عرض نص مولَّد بدل النص المستورد من المصدر الرسمي\n"
-            "alcsted Material Official Text في الإجابة كما هو — لا تغيّر عليه.\n\n"
+            "النص الأصلي كما هو — لا تغيّر عليه.\n\n"
             "استشهد برقم المادة بين قوسين (مثل «المادة 344»). "
             "عند الاستناد إلى اجتهاد قضائي استشهد بمحكمته ورقم القرار.\n\n"
             "إذا لم تغطِّ المواد المرفقة السؤال فعلًا، فأجِب إجابة تعليمية عامة "
@@ -621,27 +621,31 @@ def list_providers() -> list:
 
 
 def get_provider() -> AIProvider:
-    """يعيد المزوّd النشيط (الافتراضي إن وُجد) أو احتياطيًا: anthropic إن ضُبط
-    عبر البيئة، وإلا noop."""
+    """يعيد المزوّd النشيط — env-based أوّلًا ثم DB."""
+    if config.AI_PROVIDER in ("openai_compatible", "openrouter", "groq") and config.AI_API_KEY:
+        base = config.AI_BASE_URL or "https://openrouter.ai/api/v1"
+        return OpenAICompatProvider(config.AI_API_KEY, config.AI_MODEL, base)
+    if config.AI_PROVIDER == "anthropic" and config.ANTHROPIC_API_KEY:
+        return AnthropicProvider(config.ANTHROPIC_API_KEY, config.AI_MODEL)
     row = None
     try:
         with db_session() as conn:
             row = _active_row(conn)
-    except Exception:  # noqa: BLE001 — أي فشل في قراءة القاعدة يُسقط للاحتياطي
+    except Exception:  # noqa: BLE001
         row = None
     if row is not None:
         return provider_instance(_row_to_dict(row))
-    if config.AI_PROVIDER == "anthropic" and config.ANTHROPIC_API_KEY:
-        return AnthropicProvider(config.ANTHROPIC_API_KEY, config.AI_MODEL)
     return NoopProvider()
 
 
 def _enabled_providers() -> list:
-    """قائمة المزوّدين المفعّلين بالترتيب (الافتراضي أولًا).
-
-    آخر احتياطي: NoopProvider (استجابة حتمية بلا شبكة) إن لم يُفعَّل أي
-    مزوّد — يحافظ على سلوك «يعمل دائمًا» الأصلي (قرار D-021).
-    """
+    """قائمة المزوّدين المفعّلين — env-based أوّلًا ثم DB ثم noop."""
+    providers = []
+    if config.AI_PROVIDER in ("openai_compatible", "openrouter", "groq") and config.AI_API_KEY:
+        base = config.AI_BASE_URL or "https://openrouter.ai/api/v1"
+        providers.append(OpenAICompatProvider(config.AI_API_KEY, config.AI_MODEL, base))
+    elif config.AI_PROVIDER == "anthropic" and config.ANTHROPIC_API_KEY:
+        providers.append(AnthropicProvider(config.ANTHROPIC_API_KEY, config.AI_MODEL))
     try:
         with db_session() as conn:
             rows = conn.execute(
@@ -649,13 +653,13 @@ def _enabled_providers() -> list:
                 "FROM ai_providers WHERE enabled = 1 "
                 "ORDER BY is_default DESC, id ASC"
             ).fetchall()
-    except Exception:  # noqa: BLE001 — قاعدة غير جاهزة: قائمة فارغة تُسقط للاحتياطي
+    except Exception:  # noqa: BLE001
         rows = []
     if rows:
-        return [provider_instance(_row_to_dict(r)) for r in rows]
-    if config.AI_PROVIDER == "anthropic" and config.ANTHROPIC_API_KEY:
-        return [AnthropicProvider(config.ANTHROPIC_API_KEY, config.AI_MODEL)]
-    return [NoopProvider()]
+        providers.extend([provider_instance(_row_to_dict(r)) for r in rows])
+    if not providers:
+        providers.append(NoopProvider())
+    return providers
 
 
 QUOTA_HINTS = (

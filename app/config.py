@@ -128,6 +128,10 @@ AI_MODEL = os.environ.get("NIBRAS_AI_MODEL", "claude-sonnet-4-5")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 AI_MAX_TOKENS = _env_int("NIBRAS_AI_MAX_TOKENS", 2048)
 
+# مفاتيح المزوّدين عبر البيئة (بديل عملي عن جدول ai_providers على Vercel)
+AI_API_KEY = os.environ.get("NIBRAS_AI_API_KEY", "")
+AI_BASE_URL = os.environ.get("NIBRAS_AI_BASE_URL", "")
+
 # عدد المواد المسترجعة كسياق موجَّه لكل سؤال (وثيقة 13 §2) — رُفع ليلائم
 # مكتبة نبراس الواسعة (أكثر من 1600 نص قانوني / 24 ألف مادة) فيُتاح للمزوّد
 # سياق أوسع للإجابة انطلاقًا من المكتبة.

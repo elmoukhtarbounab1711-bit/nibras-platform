@@ -340,7 +340,7 @@ const AR = {
   comparativePrimaryJurisdiction: "الولاية القضائية الأساسية",
   jurisdiction: "الولاية القضائية",
   admin: {
-    title: "لوحة الإدارة", dashboard: "لوحة القياس", texts: "النصوص",
+    title: "لوحة الإدارة", dashboard: "لوحة القياس", visitors: "الزوار", texts: "النصوص",
     blog: "المقالات", blogReports: "بلاغات المقالات", procedures: "المساطر",
     verification: "التحقق المهني", analytics: "الإحصائيات", notifications: "الإشعارات",
     tenants: "المستأجرون", ads: "الإعلانات",

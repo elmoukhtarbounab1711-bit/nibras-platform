@@ -3,7 +3,7 @@
   "installCommand": "pip install -r deps.txt",
   "functions": {
     "wsgi.py": {
-      "maxDuration": 30
+      "maxDuration": 60
     }
   },
   "headers": [

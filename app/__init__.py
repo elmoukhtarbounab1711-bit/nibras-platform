@@ -67,11 +67,12 @@ _STATIC_ASSET_PATHS = ("/assets/", "/vendor/", ".css", ".js", ".woff2", ".png", 
 def _add_cache_control(response):
     """يمنع التخزين المؤقت للمحتوى الحساس ويُحسّن تخزين الثوابت.
 
-    ملاحظة: لا نستخدم immutable لملفات JS/CSS لأن أسماء الملفات بدون hash
-    وتتغير مع كل نشر. المتصفح يتحقق من SW أولاً ثم HTTP cache.
+    sw.js لا يجب تخزينه أبدًا — المتصفح يتحقق منه_PERIODICALLY للكشف عن التحديثات.
     """
     path = request.path
-    if any(path.startswith(p) for p in _SENSITIVE_PATHS):
+    if path == "/sw.js" or path.endswith("/sw.js"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    elif any(path.startswith(p) for p in _SENSITIVE_PATHS):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     elif any(path.endswith(ext) for ext in (".css", ".js", ".woff2", ".png", ".svg", ".ico")):
         # max-age=0 للمتصفح (دع SW يتحكم)، s-maxage للـ CDN edge
@@ -138,7 +139,38 @@ def create_app():
     services.list_texts(limit=8)
 
     app.before_request(nibras_logging.log_request_start)
+
+    @app.before_request
+    def _capture_start_time():
+        import time as _time
+        request._start_time = _time.monotonic()
     app.after_request(nibras_logging.log_request_end)
+
+    # تتبع الزوار (Visitor Analytics) — يسجل كل طلب API
+    from . import services_visitors as _visitors
+    _visitors.ensure_tracking_table()
+
+    @app.after_request
+    def _track_visitor(response):
+        try:
+            user_id = None
+            if hasattr(request, "user") and request.user:
+                user_id = getattr(request.user, "id", None)
+            _visitors.track_request(
+                path=request.path,
+                ip=request.remote_addr or "unknown",
+                user_agent=request.headers.get("User-Agent", ""),
+                referrer=request.headers.get("Referer", ""),
+                user_id=user_id,
+                method=request.method,
+                status_code=response.status_code,
+                duration_ms=int(getattr(request, "_start_time", 0) * 1000)
+                    if hasattr(request, "_start_time") else 0,
+            )
+        except Exception:
+            pass  # لا نُعطل الاستجابة بسبب التتبع
+        return response
+
     app.after_request(_add_security_headers)
     app.after_request(_add_cors_headers)
     app.after_request(_add_cache_control)
@@ -242,6 +274,7 @@ def create_app():
     from .routes.research import research_bp
     from .routes.treaties import treaties_bp
     from .routes.official import bp as official_bp
+    from .routes.visitors import visitors_bp
 
     app.register_blueprint(ads_bp)
     app.register_blueprint(library_bp)
@@ -265,6 +298,7 @@ def create_app():
     app.register_blueprint(blog_bp)
     app.register_blueprint(treaties_bp)
     app.register_blueprint(official_bp)
+    app.register_blueprint(visitors_bp)
 
     # ------------------------------------------------------------------
     # خدمة ملفات الواجهة الأمامية على نفس الخادم (مرحلة الواجهة):

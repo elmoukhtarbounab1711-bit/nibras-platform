@@ -1385,6 +1385,38 @@ def _migrate_jurisprudence_category_fk() -> None:
         conn.close()
 
 
+def _ensure_default_ai_provider() -> None:
+    """يُنشئ مزوّد ذكاء اصطناعي افتراضي إذا لم يوجد أي مزوّد مفعّل.
+
+    يقرأ المفاتيح من متغيرات البيئة (NIBRAS_AI_PROVIDER / NIBRAS_AI_API_KEY /
+    NIBRAS_AI_MODEL / NIBRAS_AI_BASE_URL). إذا لم تُضبط المفاتيح لا يفعل شيئًا.
+    """
+    from . import config
+    with db_session() as conn:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM ai_providers"
+        ).fetchone()[0]
+        if count > 0:
+            return
+        api_key = config.AI_API_KEY
+        if not api_key:
+            return
+        prov_type = config.AI_PROVIDER
+        if prov_type in ("openai_compatible", "openrouter", "groq"):
+            base = config.AI_BASE_URL or "https://openrouter.ai/api/v1"
+            model = config.AI_MODEL or "meta-llama/llama-3.3-70b-instruct:free"
+        elif prov_type == "gemini":
+            base = config.AI_BASE_URL or "https://generativelanguage.googleapis.com"
+            model = config.AI_MODEL or "gemini-flash-latest"
+        else:
+            return
+        conn.execute(
+            "INSERT INTO ai_providers (name, type, base_url, api_key, model, enabled, is_default) "
+            "VALUES (?, ?, ?, ?, ?, 1, 1)",
+            (f"{prov_type} (auto)", prov_type, base, api_key, model),
+        )
+
+
 def init_db(reset: bool = False):
     if reset and DB_PATH.exists():
         DB_PATH.unlink()
@@ -1604,3 +1636,5 @@ def init_db(reset: bool = False):
     services_tenants.backfill_default_tenant()
     # إلحاق صفوف العزل القائمة (بلا مستأجر) بالمستأجر الافتراضي (idempotent)
     services_tenants.backfill_isolated_tables()
+    # مزوّد الذكاء الاصطناعي الافتراضي (OpenRouter المجاني)
+    _ensure_default_ai_provider()
