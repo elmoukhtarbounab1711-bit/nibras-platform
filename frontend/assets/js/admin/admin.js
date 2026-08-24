@@ -44,10 +44,10 @@ const NAV = [
 ];
 
 const NAV_GROUPS = {
-  overview: "نظرة عامة",
-  content: "المحتوى",
-  legal: "قانوني",
-  system: "النظام",
+  overview: () => t("navOverview"),
+  content: () => t("navContent"),
+  legal: () => t("navLegal"),
+  system: () => t("navSystem"),
 };
 
 SectionViews.dashboard = dashboardView;
@@ -119,7 +119,7 @@ function wireSidebar() {
     for (const n of NAV) {
       if (n.group !== lastGroup) {
         lastGroup = n.group;
-        const groupLabel = NAV_GROUPS[n.group] || n.group;
+        const groupLabel = (NAV_GROUPS[n.group] || (() => n.group))();
         nodes.push(el("div", { class: "adm-nav-group", text: groupLabel }));
       }
       nodes.push(el("a", {
@@ -204,7 +204,7 @@ async function dashboardView() {
   let autoRefresh = false;
   const refreshBtn = el("button", { class: "adm-auto-refresh", type: "button" }, [
     el("span", { class: "pulse-dot" }),
-    el("span", { text: "تحديث تلقائي" }),
+    el("span", { text: t("autoRefresh") }),
   ]);
   refreshBtn.onclick = () => {
     autoRefresh = !autoRefresh;
@@ -218,10 +218,10 @@ async function dashboardView() {
   };
 
   root.append(
-    el("div", { class: "flex-between", style: "align-items:center" }, [
+    el("div", { class: "adm-page-header" }, [
       el("div", {}, [
-        el("h2", { style: "margin:0;font-family:var(--font-head);font-size:22px", text: t("dashboard") }),
-        el("p", { style: "margin:4px 0 0;color:var(--ink-3);font-size:13px", text: "نظرة عامة على المنصة" }),
+        el("h2", { text: t("dashboard") }),
+        el("p", { class: "subtitle", text: t("platformOverview") }),
       ]),
       refreshBtn,
     ]),
@@ -290,9 +290,9 @@ async function loadDashboard(root) {
 
       // ── صف الزوار السريع ──
       kpiGrid([
-        kpi({ icon: "eye", label: "زيارات آخر أسبوع", value: num(visitorData.week_visits || 0), sub: `اليوم: ${num(visitorData.today_visits || 0)}`, tone: "info" }),
-        kpi({ icon: "users", label: "زوار فريدون", value: num(visitorData.unique_visitors || 0), sub: `مسجلون: ${num(visitorData.unique_users || 0)}`, tone: "green" }),
-        kpi({ icon: "activity", label: "الزوار النشطون", value: num(visitorData.active_now || 0), sub: "آخر 5 دقائق", tone: "red" }),
+        kpi({ icon: "eye", label: t("visitorsLastWeek"), value: num(visitorData.week_visits || 0), sub: t("visitorsToday") + num(visitorData.today_visits || 0), tone: "info" }),
+        kpi({ icon: "users", label: t("visitorsUnique"), value: num(visitorData.unique_visitors || 0), sub: t("visitorsRegistered") + num(visitorData.unique_users || 0), tone: "green" }),
+        kpi({ icon: "activity", label: t("visitorsActiveNow"), value: num(visitorData.active_now || 0), sub: t("visitorsLast5min"), tone: "red" }),
       ]),
 
       // ── الرسم البياني + استخدام الذكاء ──
@@ -328,7 +328,7 @@ async function loadDashboard(root) {
     container.replaceChildren(
       el("div", { class: "adm-404" }, [
         el("div", { class: "ic" }, [icon("alertTriangle", 42)]),
-        el("p", { text: `خطأ في تحميل البيانات: ${e.message}` }),
+        el("p", { text: `${t("errorLoading")}: ${e.message}` }),
       ])
     );
   }

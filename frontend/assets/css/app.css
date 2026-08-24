@@ -38,6 +38,23 @@
   --font: "Cairo", "Segoe UI", system-ui, sans-serif;
   --font-head: "Cairo", sans-serif;
   --header-h: 80px;
+  /* --- v2 tokens (مُنقَل من الكتلة الثانية) --- */
+  --navy-50: #eef1f8;
+  --navy-100: #dde4f2;
+  --gold-100: #f6e7c2;
+  --gold-soft: #faf6ea;
+  --navy-grad: linear-gradient(135deg, #0b2a52 0%, #071a36 55%, #04101f 100%);
+  --gold-grad: linear-gradient(135deg, #c89b3c, #ddb86a);
+  --ring: 0 0 0 3px rgba(200, 155, 60, 0.28);
+  --radius-xl: 24px;
+  --radius-full: 999px;
+  --shadow-soft: 0 10px 30px rgba(7, 26, 54, 0.08);
+  --shadow-hover: 0 18px 44px rgba(7, 26, 54, 0.18);
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* --- Admin tokens --- */
+  --adm-side-w: 268px;
+  --transition-fast: 150ms var(--ease);
+  --transition-base: 200ms var(--ease);
 }
 
 /* يجب أن تسبق أي قاعدة display على الحاويات ليبقى html[hidden] مخفيًا دائمًا */
@@ -65,11 +82,10 @@ html[data-theme="dark"] {
   --success-bg: #123325;
   --info-bg: #12293d;
   --warn-bg: #33280f;
-}
-
-html[dir="ltr"] {
-  --font: "Cairo", "Segoe UI", system-ui, sans-serif;
-  --font-head: "Cairo", sans-serif;
+  --gold-100: #3a3215;
+  --gold-soft: #1f2130;
+  --navy-50: #12172b;
+  --navy-100: #1a2240;
 }
 
 * { box-sizing: border-box; }
@@ -544,8 +560,8 @@ table.data td .row-actions { display: inline-flex; gap: 6px; }
 .pdf-page-wrap canvas { display: block; width: 100%; height: auto; }
 .pdf-page-loading { display: grid; place-items: center; color: #cdd6f5; padding: 60px 20px; font-size: 14px; }
 .pdf-empty { color: #cdd6f5; display: grid; place-items: center; padding: 80px 20px; font-size: 15px; text-align: center; }
-.pdf-text-layer { position: absolute; inset: 0; overflow: hidden; opacity: 0.25; line-height: 1; direction: rtl; }
-.pdf-text-layer span { position: absolute; white-space: pre; transform-origin: 0% 0%; cursor: text; display: inline; }
+.pdf-text-layer { position: absolute; inset: 0; overflow: hidden; line-height: 1; }
+.pdf-text-layer span { position: absolute; white-space: pre; transform-origin: 0% 0%; cursor: text; display: inline; color: transparent; }
 .pdf-text-layer span:hover { background: rgba(200, 155, 60, 0.15); }
 .pdf-text-layer span::selection { background: rgba(200, 155, 60, 0.4); color: transparent; }
 .pdf-find-bar { gap: 4px !important; }
@@ -603,18 +619,6 @@ table.data td .row-actions { display: inline-flex; gap: 6px; }
 .reaction-btn.active { background: var(--info-bg); color: var(--info); border-color: var(--info); }
 .comment { display: flex; gap: 10px; padding: 10px 0; border-block-start: 1px solid var(--line); }
 
-/* ---------- Admin ---------- */
-.admin-shell { display: grid; grid-template-columns: 240px 1fr; gap: 22px; align-items: start; }
-.admin-side { position: sticky; inset-block-start: calc(var(--header-h) + 16px); display: flex; flex-direction: column; gap: 4px; }
-.admin-side a { padding: 10px 14px; border-radius: var(--radius-sm); color: var(--ink-2); font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 8px; }
-.admin-side a:hover { background: var(--gold-soft); color: var(--navy); }
-.admin-side a.active { background: var(--navy-grad); color: var(--gold-light); box-shadow: 0 6px 16px rgba(7, 26, 54, 0.3); }
-.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 22px; }
-.stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease), border-color 0.2s; }
-.stat:hover { transform: translateY(-3px); box-shadow: var(--shadow-soft); border-color: rgba(200, 155, 60, 0.4); }
-.stat .num { font-family: var(--font-head); font-weight: 800; font-size: 26px; color: var(--navy); }
-.stat .lbl { color: var(--ink-3); font-size: 12.5px; }
-
 /* ---------- Misc ---------- */
 .muted { color: var(--ink-3); }
 .small { font-size: 12.5px; }
@@ -632,8 +636,6 @@ html[dir="ltr"] .legal-block { border-radius: var(--radius-sm) 0 0 var(--radius-
 @media (max-width: 1020px) {
   .grid-4 { grid-template-columns: repeat(2, 1fr); }
   .grid-6 { grid-template-columns: repeat(4, 1fr); }
-  .admin-shell { grid-template-columns: 1fr; }
-  .admin-side { position: static; flex-direction: row; flex-wrap: wrap; }
 }
 @media (max-width: 860px) {
   .main-nav {
@@ -660,7 +662,6 @@ html[dir="ltr"] .legal-block { border-radius: var(--radius-sm) 0 0 var(--radius-
   .grid-3, .grid-2 { grid-template-columns: 1fr; }
   .grid-6 { grid-template-columns: repeat(3, 1fr); }
   .form-row { grid-template-columns: 1fr; }
-  .stat-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 600px) {
   .grid-6 { grid-template-columns: repeat(2, 1fr); }
@@ -706,31 +707,6 @@ html[dir="ltr"] .legal-block { border-radius: var(--radius-sm) 0 0 var(--radius-
 .checkbox { display: flex; align-items: center; gap: 8px; }
 .checkbox input { width: 18px; height: 18px; }
 .checkbox span { font-size: 14px; }
-
-/* ============================================================
-   نبراس — الطبقة الاحترافية الثانية (v2): هوية بصرية حديثة
-   ============================================================ */
-:root {
-  --navy-50: #eef1f8;
-  --navy-100: #dde4f2;
-  --gold-100: #f6e7c2;
-  --gold-soft: #faf6ea;
-  --navy-grad: linear-gradient(135deg, #0b2a52 0%, #071a36 55%, #04101f 100%);
-  --gold-grad: linear-gradient(135deg, #c89b3c, #ddb86a);
-  --ring: 0 0 0 3px rgba(200, 155, 60, 0.28);
-  --radius-xl: 24px;
-  --radius-full: 999px;
-  --shadow-soft: 0 10px 30px rgba(7, 26, 54, 0.08);
-  --shadow-hover: 0 18px 44px rgba(7, 26, 54, 0.18);
-  --ease: cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-html[data-theme="dark"] {
-  --gold-100: #3a3215;
-  --gold-soft: #1f2130;
-  --navy-50: #12172b;
-  --navy-100: #1a2240;
-}
 
 html { -webkit-text-size-adjust: 100%; }
 body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }

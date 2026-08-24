@@ -3,11 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>نبراس — لوحة التحكم | دليلك إلى المعرفة القانونية</title>
+  <meta name="theme-color" content="#071a36">
+  <title>نبراس — لوحة التحكم</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/css/app.css">
   <link rel="stylesheet" href="assets/css/admin.css">
 </head>
 <body class="adm-app">
+  <noscript><div style="padding:40px;text-align:center;font-family:Cairo,sans-serif;color:#4b5568">
+    <h2>نبراس يتطلب تفعيل JavaScript</h2>
+    <p>يرجى تفعيل JavaScript في متصفحك لاستخدام لوحة التحكم.</p>
+  </div></noscript>
   <div class="adm-shell">
 
     <!-- الشريط الجانبي -->
@@ -66,7 +74,7 @@
 
   <div class="modal-backdrop" id="auth-modal" hidden>
     <div class="modal modal-lg" role="dialog" aria-modal="true">
-      <button class="modal-close" data-close-modal aria-label="إغلاق">×</button>
+      <button class="modal-close" data-close-modal aria-label="إغلاق"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       <div class="adm-modal-body" id="auth-modal-body"></div>
     </div>
   </div>

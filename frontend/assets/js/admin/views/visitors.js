@@ -11,6 +11,12 @@ const PERIODS = [
   { key: "90", label: "90 يوم" },
 ];
 
+const DONUT_COLORS = [
+  "var(--navy)", "var(--gold)", "#1e7e5a",
+  "var(--info)", "#b7791f", "var(--danger)",
+];
+const DONUT_COLORS_3 = ["var(--navy)", "var(--gold)", "#1e7e5a"];
+
 let currentPeriod = "30";
 let _liveTimer = null;
 
@@ -19,7 +25,6 @@ export async function visitorsView() {
 
   const root = el("div", { class: "flex-col", style: "gap:20px" });
 
-  // عنوان + فلتر الفترة
   const periodTabs = tabs(PERIODS, currentPeriod, (key) => {
     currentPeriod = key;
     loadAnalytics(root);
@@ -28,7 +33,7 @@ export async function visitorsView() {
   let autoRefresh = false;
   const refreshBtn = el("button", { class: "adm-auto-refresh", type: "button" }, [
     el("span", { class: "pulse-dot" }),
-    el("span", { text: "تحديث مباشر" }),
+    el("span", { text: t("visitorsLive") }),
   ]);
   refreshBtn.onclick = () => {
     autoRefresh = !autoRefresh;
@@ -65,7 +70,7 @@ async function loadAnalytics(root) {
     container.replaceChildren(
       el("div", { class: "adm-404" }, [
         el("div", { class: "ic" }, [icon("alertTriangle", 42)]),
-        el("p", { text: `خطأ في تحميل البيانات: ${e.message}` }),
+        el("p", { text: `${t("visitorsNoData")}: ${e.message}` }),
       ])
     );
   }
@@ -83,56 +88,80 @@ function buildDashboard(data) {
   const live = data.live || {};
   const nodes = [];
 
-  // ── KPIs الأساسية ──
+  // ── KPIs ──
   nodes.push(kpiGrid([
-    kpi({ icon: "eye", label: "إجمالي الزيارات", value: num(s.total_visits), sub: `آخر ${currentPeriod} يوم`, tone: "info" }),
-    kpi({ icon: "users", label: "الزوار الفريدون", value: num(s.unique_visitors), sub: `اليوم: ${num(s.today_visits)}`, tone: "green" }),
-    kpi({ icon: "userCheck", label: "مستخدمون مسجلون", value: num(s.unique_users), sub: `هذا الأسبوع: ${num(s.week_visits)}`, tone: "gold" }),
-    kpi({ icon: "activity", label: "الزوار النشطون الآن", value: num(live.active_now), sub: "آخر 5 دقائق", tone: "red" }),
+    kpi({
+      icon: "eye",
+      label: t("visitorsTotalVisits"),
+      value: num(s.total_visits),
+      sub: t("visitorsLastDays").replace("{d}", currentPeriod),
+      tone: "info",
+    }),
+    kpi({
+      icon: "users",
+      label: t("visitorsUniqueVisitors"),
+      value: num(s.unique_visitors),
+      sub: t("visitorsToday") + num(s.today_visits),
+      tone: "green",
+    }),
+    kpi({
+      icon: "userCheck",
+      label: t("visitorsRegisteredUsers"),
+      value: num(s.unique_users),
+      sub: t("visitorsThisWeek") + num(s.week_visits),
+      tone: "gold",
+    }),
+    kpi({
+      icon: "activity",
+      label: t("visitorsActiveNow"),
+      value: num(live.active_now),
+      sub: t("visitorsLast5min"),
+      tone: "red",
+    }),
   ]));
 
   // ── الاتجاه اليومي + التوزيع الساعي ──
   nodes.push(el("div", { class: "adm-grid-2" }, [
     panel([
-      head("اتجاه الزيارات اليومية", [badge(`آخر ${currentPeriod} يوم`, "gray")]),
+      head(t("visitorsTrendTitle"), [badge(t("visitorsLastDays").replace("{d}", currentPeriod), "gray")]),
       body(trend.length
         ? buildDualLineChart(trend)
-        : emptyState("لا توجد بيانات", "trendingUp")),
+        : emptyState(t("visitorsNoData"), "trendingUp")),
     ]),
     panel([
-      head("التوزيع الساعي", [badge("آخر 7 أيام", "blue")]),
+      head(t("visitorsHourlyTitle"), [badge(t("visitorsLastDays").replace("{d}", "7"), "blue")]),
       body(hourly.length
         ? barChart(hourly.map((h) => ({
             label: `${h.hour}`,
             value: h.visits,
             accent: h.hour >= 9 && h.hour <= 21,
           })), { width: 620, height: 200 })
-        : emptyState("لا توجد بيانات", "clock")),
+        : emptyState(t("visitorsNoData"), "clock")),
     ]),
   ]));
 
   // ── مصادر الزيارات + المتصفحات ──
   nodes.push(el("div", { class: "adm-grid-2" }, [
     panel([
-      head("مصادر الزيارات", [badge(`${referrers.length} مصدر`, "green")]),
+      head(t("visitorsSourcesTitle"), [badge(`${referrers.length}${t("visitorsSource")}`, "green")]),
       body(referrers.length
         ? buildDonutChart(referrers.slice(0, 6).map((r) => ({
             label: sourceLabel(r.source),
             value: r.visits,
-          })), ["#071a36", "#c89b3c", "#1e7e5a", "#2b6cb0", "#b7791f", "#c0392b"])
-        : emptyState("لا توجد بيانات", "link")),
+          })), DONUT_COLORS)
+        : emptyState(t("visitorsNoData"), "link")),
     ]),
     panel([
-      head("الأجهزة والمتصفحات", [badge("توزيع", "blue")]),
+      head(t("visitorsDevicesBrowsersTitle"), [badge(t("visitorsDistribution"), "blue")]),
       body(el("div", { class: "adm-grid-2", style: "gap:20px" }, [
         buildDonutChart(devices.map((d) => ({
           label: deviceLabel(d.device),
           value: d.visits,
-        })), ["#071a36", "#c89b3c", "#1e7e5a"]),
+        })), DONUT_COLORS_3),
         buildDonutChart(browsers.slice(0, 5).map((b) => ({
           label: b.browser,
           value: b.visits,
-        })), ["#2b6cb0", "#c89b3c", "#071a36", "#1e7e5a", "#b7791f"]),
+        })), ["var(--info)", "var(--gold)", "var(--navy)", "#1e7e5a", "#b7791f"]),
       ])),
     ]),
   ]));
@@ -140,51 +169,51 @@ function buildDashboard(data) {
   // ── أنظمة التشغيل + أكثر الصفحات ──
   nodes.push(el("div", { class: "adm-grid-2" }, [
     panel([
-      head("أنظمة التشغيل", [badge(`${osList.length} نظام`, "gold")]),
+      head(t("visitorsOssTitle"), [badge(`${osList.length} ${t("visitorsOS")}`, "gold")]),
       body(osList.length
         ? hBars(osList.map((o) => ({
             label: o.os,
             value: o.visits,
             accent: o.os === "Windows",
           })))
-        : emptyState("لا توجد بيانات", "monitor")),
+        : emptyState(t("visitorsNoData"), "monitor")),
     ]),
     panel([
-      head("مصادر الزيارات — تفصيل", [badge(`${referrers.length} مصدر`, "gray")]),
+      head(t("visitorsSourcesDetailTitle"), [badge(`${referrers.length}${t("visitorsSource")}`, "gray")]),
       body(referrers.length
-        ? el("div", { class: "adm-list" }, referrers.map((r, i) =>
+        ? el("div", { class: "adm-list" }, referrers.map((r) =>
             listItem({
               icon: "link",
               title: sourceLabel(r.source),
-              sub: `${num(r.unique_visitors)} زائر فريد`,
+              sub: t("visitorsUniqueCount").replace("{n}", num(r.unique_visitors)),
               val: num(r.visits),
             })
           ))
-        : emptyState("لا توجد بيانات", "link")),
+        : emptyState(t("visitorsNoData"), "link")),
     ]),
   ]));
 
   // ── أكثر الصفحات زيارة ──
   nodes.push(panel([
-    head("أكثر الصفحات زيارة", [badge(`${pages.length} صفحة`, "gray")]),
+    head(t("visitorsTopPagesTitle"), [badge(`${pages.length} ${t("visitorsPage")}`, "gray")]),
     body(pages.length
       ? el("div", { class: "adm-list" }, pages.slice(0, 15).map((p, i) =>
           listItem({
             icon: i < 3 ? "star" : "file",
             title: p.path,
-            sub: `${num(p.unique_visitors)} زائر فريد`,
+            sub: t("visitorsUniqueCount").replace("{n}", num(p.unique_visitors)),
             val: num(p.visits),
           })
         ))
-      : emptyState("لا توجد بيانات", "list")),
+      : emptyState(t("visitorsNoData"), "list")),
   ]));
 
   // ── الزوار النشطون الآن ──
   nodes.push(panel([
-    head("الزوار النشطون الآن", [
+    head(t("visitorsActiveNowTitle"), [
       live.active_now > 0
-        ? badge(`${live.active_now} نشط`, "green")
-        : badge("لا يوجد", "gray"),
+        ? badge(`${live.active_now} ${t("visitorsActive")}`, "green")
+        : badge(t("visitorsNone"), "gray"),
     ]),
     body(live.recent && live.recent.length
       ? el("div", { class: "adm-list" }, live.recent.map((r) =>
@@ -195,7 +224,7 @@ function buildDashboard(data) {
             val: r.time ? fmtDt(r.time) : "",
           })
         ))
-      : emptyState("لا يوجد زوار نشطون", "activity")),
+      : emptyState(t("visitorsNoActive"), "activity")),
   ]));
 
   return nodes;
@@ -236,20 +265,23 @@ function buildDualLineChart(trend) {
 
   return el("div", {}, [
     el("svg", {
-      class: "adm-chart", viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: "none", role: "img",
+      class: "adm-chart", viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: "xMidYMid meet", role: "img",
     }, [
       ...gridLines,
-      el("polygon", { class: "area", points: areaPts, fill: "var(--info-bg)", opacity: "0.3" }),
-      el("polyline", { class: "line", points: visitPts, stroke: "var(--navy)", "stroke-width": "2", fill: "none" }),
-      el("polyline", { class: "line", points: uniquePts, stroke: "var(--gold)", "stroke-width": "2", fill: "none", "stroke-dasharray": "6,3" }),
+      el("polygon", { class: "area", points: areaPts }),
+      el("polyline", { class: "line", points: visitPts }),
+      el("polyline", {
+        class: "line", points: uniquePts,
+        style: "stroke:var(--gold);stroke-dasharray:6,3",
+      }),
       ...lbls,
     ]),
     el("div", { class: "adm-legend", style: "padding:6px 34px 0" }, [
-      el("span", { class: "sw", style: "background:var(--navy);border-radius:3px;display:inline-block;width:12px;height:3px;vertical-align:middle;margin-inline-end:5px" }),
-      el("span", { text: "إجمالي الزيارات" }),
+      el("span", { class: "sw-line", style: "background:var(--navy)" }),
+      el("span", { text: t("visitorsTotalVisits") }),
       el("span", { style: "margin-inline-start:12px" }, [
-        el("span", { class: "sw", style: "background:var(--gold);border-radius:3px;display:inline-block;width:12px;height:3px;vertical-align:middle;margin-inline-end:5px;border-top:1px dashed var(--gold)" }),
-        el("span", { text: "الزوار الفريدون" }),
+        el("span", { class: "sw-line", style: "background:var(--gold);border-top:1px dashed var(--gold)" }),
+        el("span", { text: t("visitorsUniqueVisitors") }),
       ]),
     ]),
   ]);
@@ -258,7 +290,7 @@ function buildDualLineChart(trend) {
 // ── مخطط دائري (Donut Chart) ──
 function buildDonutChart(items, colors) {
   const total = items.reduce((s, it) => s + (Number(it.value) || 0), 0);
-  if (!total) return emptyState("لا توجد بيانات", "pieChart");
+  if (!total) return emptyState(t("visitorsNoData"), "pieChart");
 
   const size = 140;
   const stroke = 22;
@@ -271,14 +303,14 @@ function buildDonutChart(items, colors) {
     const pct = (Number(it.value) || 0) / total;
     const dash = pct * circ;
     const gap = circ - dash;
+    const col = colors[i % colors.length] || "#999";
     const seg = el("circle", {
       cx, cy, r,
       fill: "none",
-      stroke: colors[i % colors.length] || "#999",
       "stroke-width": stroke,
       "stroke-dasharray": `${dash.toFixed(2)} ${gap.toFixed(2)}`,
       "stroke-dashoffset": `${(-offset).toFixed(2)}`,
-      style: "transition: stroke-dashoffset .3s",
+      style: `stroke:${col};transition:stroke-dashoffset .3s`,
     });
     offset += dash;
     return seg;
@@ -286,8 +318,9 @@ function buildDonutChart(items, colors) {
 
   const legendNodes = items.map((it, i) => {
     const pct = total > 0 ? Math.round((Number(it.value) || 0) / total * 100) : 0;
+    const col = colors[i % colors.length] || "#999";
     return el("div", { class: "dl-item" }, [
-      el("span", { class: "dl-swatch", style: `background:${colors[i % colors.length] || "#999"}` }),
+      el("span", { class: "dl-swatch", style: `background:${col}` }),
       el("span", { class: "dl-label", text: it.label }),
       el("span", { class: "dl-val", text: `${num(it.value)} (${pct}%)` }),
     ]);
@@ -298,7 +331,7 @@ function buildDonutChart(items, colors) {
       el("svg", { viewBox: `0 0 ${size} ${size}` }, segs),
       el("div", { class: "donut-center" }, [
         el("div", { class: "val", text: num(total) }),
-        el("div", { class: "lbl", text: "إجمالي" }),
+        el("div", { class: "lbl", text: t("visitorsTotal") }),
       ]),
     ]),
     el("div", { class: "adm-donut-legend" }, legendNodes),

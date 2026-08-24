@@ -118,16 +118,19 @@ export function badge(text, kind = "gray") {
 
 export function statusBadge(status) {
   const map = {
-    active: ["green", "●"], published: ["green", "●"], verified: ["green", "●"],
-    sent: ["green", "●"], approved: ["green", "●"],
-    suspended: ["red", "●"], ended: ["red", "●"], failed: ["red", "●"],
-    rejected: ["red", "●"], hidden: ["gray", "●"], dismissed: ["gray", "●"],
-    paused: ["gold", "●"], pending: ["gold", "●"], pending_verification: ["gold", "●"],
-    open: ["gold", "●"],
+    active: "green", published: "green", verified: "green",
+    sent: "green", approved: "green",
+    suspended: "red", ended: "red", failed: "red",
+    rejected: "red", hidden: "gray", dismissed: "gray",
+    paused: "gold", pending: "gold", pending_verification: "gold",
+    open: "gold",
   };
-  const [kind, dot] = map[status] || ["blue", "●"];
+  const kind = map[status] || "blue";
   const label = statusLabel(status);
-  return badge(label, kind, dot);
+  return el("span", { class: `adm-badge ${kind}` }, [
+    el("span", { class: "dot" }),
+    document.createTextNode(" " + label),
+  ]);
 }
 
 const STATUS_LABELS = {
@@ -198,7 +201,7 @@ export function lineChart(labels, values, opts = {}) {
     return el("text", { class: "axis-label", x, y: pt + ih + 16, "text-anchor": "middle", text: String(lb) });
   });
   return el("svg", {
-    class: "adm-chart", viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: "none",
+    class: "adm-chart", viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: "xMidYMid meet",
     role: "img",
   }, [
     ...gridLines,
@@ -231,17 +234,18 @@ export function barChart(items, opts = {}) {
   }, [el("line", { class: "grid-line", x1: pl, x2: pl + iw, y1: pt + ih, y2: pt + ih }), ...bars.flat()]);
 }
 
-// ---------- أعمدة أفقية بتقنية CSS ----------
+// ---------- أعمدة أفقية (CSS classes) ----------
 export function hBars(items, max) {
   const m = max || Math.max(1, ...items.map((it) => Number(it.value) || 0));
-  return el("div", { class: "flex-col", style: "gap:10px" }, items.map((it) => {
+  return el("div", { class: "adm-hbar" }, items.map((it) => {
     const pct = Math.max(2, Math.round((Number(it.value) || 0) / m * 100));
-    return el("div", {}, [
-      el("div", { class: "flex-between small", style: "font-size:12px;color:var(--ink-2)" }, [
-        el("span", { text: it.label }), el("strong", { text: String(it.value ?? 0) }),
+    return el("div", { class: "adm-hbar-item" }, [
+      el("div", { class: "hbar-head" }, [
+        el("span", { text: it.label }),
+        el("strong", { text: String(it.value ?? 0) }),
       ]),
-      el("div", { style: "height:9px;background:var(--surface-2);border-radius:999px;overflow:hidden;margin-top:4px" }, [
-        el("div", { style: `width:${pct}%;height:100%;background:${it.accent ? "var(--gold)" : "var(--navy)"};border-radius:999px` }),
+      el("div", { class: "adm-hbar-track" }, [
+        el("div", { class: "adm-hbar-fill" + (it.accent ? " accent" : ""), style: `width:${pct}%` }),
       ]),
     ]);
   }));
