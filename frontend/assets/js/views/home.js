@@ -253,6 +253,11 @@ export async function homeView() {
         ]))),
     ]),
 
+    /* فاصل */
+    el("div", { class: "section-divider" }, [
+      el("div", { class: "sd-mark" }, [icon("star", 20)]),
+    ]),
+
     /* مولد الوثائق — CTA */
     el("section", { class: "home-section doc-cta-section" }, [
       el("div", { class: "doc-cta-card" }, [
@@ -291,6 +296,11 @@ export async function homeView() {
         : emptyState(tr("noResults"), "shield"),
     ]),
 
+    /* فاصل احترافي */
+    el("div", { class: "section-divider" }, [
+      el("div", { class: "sd-mark" }, [icon("shield", 20)]),
+    ]),
+
     /* الأسئلة الشائعة */
     faqSection(),
 
@@ -308,6 +318,26 @@ export async function homeView() {
             onclick: () => navigate("/legal-french"),
           }),
         ]),
+      ]),
+    ]),
+
+    /* شريط الثقة */
+    el("div", { class: "trust-row mt-24" }, [
+      el("div", { class: "trust-item" }, [
+        el("div", { class: "ti-icon" }, [icon("shield", 18)]),
+        el("span", { text: tr("trustOfficial") || "مصادر رسمية" }),
+      ]),
+      el("div", { class: "trust-item" }, [
+        el("div", { class: "ti-icon", style: "background:var(--info-bg);color:var(--info)" }, [icon("lock", 18)]),
+        el("span", { text: tr("trustSecure") || "آمن وموثوق" }),
+      ]),
+      el("div", { class: "trust-item" }, [
+        el("div", { class: "ti-icon", style: "background:var(--warn-bg);color:var(--warn)" }, [icon("zap", 18)]),
+        el("span", { text: tr("trustFast") || "بحث فوري" }),
+      ]),
+      el("div", { class: "trust-item" }, [
+        el("div", { class: "ti-icon", style: "background:var(--success-bg);color:var(--success)" }, [icon("users", 18)]),
+        el("span", { text: tr("trustFree") || "مجاني بالكامل" }),
       ]),
     ]),
   ]);

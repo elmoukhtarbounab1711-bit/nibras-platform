@@ -1,4 +1,5 @@
 {
+  "version": 2,
   "framework": "python",
   "installCommand": "pip install -r deps.txt",
   "functions": {

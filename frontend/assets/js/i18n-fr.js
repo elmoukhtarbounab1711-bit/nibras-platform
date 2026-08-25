@@ -206,6 +206,7 @@ export const FR = {
   fNav: "Explorer", fServices: "Services", fAbout: "À propos",
   fAbout1: "Actualités", fAbout2: "Rejoindre en tant que pro", fAbout3: "Mon compte", fAbout4: "Guide d'utilisation",
   footerDisclaimer: "Contenu informatif — ne remplace pas la consultation d'un professionnel certifié.",
+  trustOfficial: "Sources officielles", trustSecure: "Sécurisé", trustFast: "Recherche instantanée", trustFree: "Gratuit",
   fLegal: "Juridique",
   navPrivacy: "Politique de confidentialité", navTerms: "Conditions d'utilisation",
   navCookies: "Politique de cookies", navDisclaimer: "Avertissement juridique",
