@@ -39,7 +39,7 @@ def _create(admin=None, **overrides):
 
 def test_ensure_slots_seeded(fresh_db):
     slots = services_ads.list_slots()
-    assert len(slots) == 3
+    assert len(slots) == 10
     assert all(s["active_campaigns"] == 0 for s in slots)
 
 
@@ -271,7 +271,7 @@ def test_update_clears_target(fresh_db):
     services_ads.update_campaign(
         admin.id, cid, {"target_category_type": "jurisprudence",
                         "target_category_id": _category_id(
-                            "jurisprudence_categories", "madani")}
+                            "jurisprudence_categories", "test-jinaiya")}
     )
     with db_session() as conn:
         row = conn.execute(

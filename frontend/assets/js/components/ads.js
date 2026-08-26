@@ -26,6 +26,7 @@ const APPROVED_DOMAINS = [
   "openx.com",
   "indexww.com",
   "spotxchange.com",
+  "pagead2.googlesyndication.com",
 ];
 
 function isApprovedDomain(url) {
@@ -39,40 +40,7 @@ function isApprovedDomain(url) {
   }
 }
 
-function sanitizeScript(html) {
-  const stripped = html
-    .replace(/<script\b[^>]*>/gi, "")
-    .replace(/<\/script>/gi, "")
-    .replace(/on\w+\s*=\s*["'][^"']*["']/gi, "")
-    .replace(/javascript\s*:/gi, "");
-  return stripped;
-}
-
-function injectScript(scriptEl) {
-  const src = scriptEl.getAttribute("src");
-  if (src && LOADED_SCRIPTS.has(src)) return;
-  if (src) LOADED_SCRIPTS.add(src);
-
-  const clone = document.createElement("script");
-  for (const attr of scriptEl.attributes) {
-    if (attr.name === "src") {
-      if (!isApprovedDomain(attr.value)) return;
-      clone.src = attr.value;
-    } else {
-      clone.setAttribute(attr.name, attr.value);
-    }
-  }
-  if (scriptEl.textContent) {
-    clone.textContent = scriptEl.textContent;
-  }
-  scriptEl.replaceWith(clone);
-}
-
 async function fetchSlotProviders(slotSlug) {
-  if (AD_SLOTS_CACHE.has(slotSlug)) {
-    return AD_SLOTS_CACHE.get(slotSlug);
-  }
-
   try {
     const resp = await fetch(`/api/ads/slot/${encodeURIComponent(slotSlug)}`, {
       headers: session.token ? { Authorization: `Bearer ${session.token}` } : {},
@@ -80,9 +48,7 @@ async function fetchSlotProviders(slotSlug) {
     if (!resp.ok) return [];
     const data = await resp.json();
     if (!data.enabled) return [];
-    const providers = data.providers || [];
-    AD_SLOTS_CACHE.set(slotSlug, providers);
-    return providers;
+    return data.providers || [];
   } catch {
     return [];
   }
@@ -98,32 +64,42 @@ function createAdSlotNode(slotSlug, providers) {
   });
 
   for (const provider of providers) {
-    const raw = provider.script_html || "";
-    if (!raw) continue;
-
-    const cleaned = sanitizeScript(raw);
-    const temp = document.createElement("div");
-    temp.innerHTML = cleaned;
-    const scripts = temp.querySelectorAll("script");
-    if (scripts.length > 0) {
-      for (const s of scripts) {
-        const clone = document.createElement("script");
-        for (const attr of s.attributes) {
-          if (attr.name === "src") {
-            if (isApprovedDomain(attr.value)) clone.src = attr.value;
-          } else {
-            clone.setAttribute(attr.name, attr.value);
-          }
-        }
-        if (s.textContent) clone.textContent = s.textContent;
-        wrapper.appendChild(clone);
+    if (provider.script_url) {
+      const src = provider.script_url;
+      if (isApprovedDomain(src) && !LOADED_SCRIPTS.has(src)) {
+        LOADED_SCRIPTS.add(src);
+        const s = document.createElement("script");
+        s.src = src;
+        s.async = true;
+        wrapper.appendChild(s);
       }
-    } else {
-      wrapper.innerHTML = cleaned;
+    } else if (provider.script_tag) {
+      const temp = document.createElement("div");
+      temp.innerHTML = provider.script_tag;
+      const scripts = temp.querySelectorAll("script");
+      for (const s of scripts) {
+        const src = s.getAttribute("src");
+        if (src) {
+          if (!isApprovedDomain(src)) continue;
+          if (LOADED_SCRIPTS.has(src)) continue;
+          LOADED_SCRIPTS.add(src);
+          const clone = document.createElement("script");
+          clone.src = src;
+          clone.async = true;
+          for (const attr of s.attributes) {
+            if (attr.name !== "src") clone.setAttribute(attr.name, attr.value);
+          }
+          wrapper.appendChild(clone);
+        } else if (s.textContent) {
+          const clone = document.createElement("script");
+          clone.textContent = s.textContent;
+          wrapper.appendChild(clone);
+        }
+      }
     }
-    break;
   }
 
+  if (wrapper.children.length === 0) return null;
   return wrapper;
 }
 
@@ -141,6 +117,8 @@ async function loadSlot(slotElement) {
   const node = createAdSlotNode(slug, providers);
   if (node) {
     slotElement.replaceWith(node);
+  } else {
+    slotElement.remove();
   }
 }
 
@@ -185,4 +163,9 @@ export function createAdPlaceholder(slotSlug) {
 export function clearAdCache() {
   AD_SLOTS_CACHE.clear();
   LOADED_SCRIPTS.clear();
+  OBSERVED_SLOTS.clear();
+}
+
+export function resetAdObserver() {
+  OBSERVED_SLOTS.clear();
 }

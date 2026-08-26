@@ -86,11 +86,11 @@ def test_admin_slots(client):
     _create_campaign(client, admin_h)
     resp = client.get("/api/admin/ads/slots", headers=admin_h)
     slots = resp.get_json()["slots"]
-    assert len(slots) == 3
-    assert [s["slug"] for s in slots] == [
-        "library_sidebar", "search_results_top", "directory_listing_top",
-    ]
-    assert slots[0]["active_campaigns"] == 1
+    assert len(slots) == 10
+    slugs = [s["slug"] for s in slots]
+    assert "library_sidebar" in slugs
+    assert "header" in slugs
+    assert "mobile" in slugs
 
 
 def test_create_and_serve_campaign(client):

@@ -603,10 +603,6 @@ CREATE INDEX IF NOT EXISTS idx_legal_texts_category ON legal_texts(category_id);
 CREATE INDEX IF NOT EXISTS idx_legal_texts_type ON legal_texts(type);
 CREATE INDEX IF NOT EXISTS idx_articles_text_id ON articles(legal_text_id);
 CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id);
-CREATE INDEX IF NOT EXISTS idx_jurisprudence_category_published ON jurisprudence(category_id, published);
-CREATE INDEX IF NOT EXISTS idx_comp_laws_country ON comp_laws(country_id);
-CREATE INDEX IF NOT EXISTS idx_comp_law_articles_law ON comp_law_articles(law_id);
-CREATE INDEX IF NOT EXISTS idx_comp_jurisprudence_country ON comp_jurisprudence(country_id);
 
 -- =====================================================================
 -- تسليم الإشعارات الخارجية (المرحلة 16 — قرار D-034): بريد + دفع.
@@ -839,6 +835,8 @@ CREATE INDEX IF NOT EXISTS idx_jurisprudence_category
     ON jurisprudence(category_id);
 CREATE INDEX IF NOT EXISTS idx_jurisprudence_published
     ON jurisprudence(published);
+CREATE INDEX IF NOT EXISTS idx_jurisprudence_category_published
+    ON jurisprudence(category_id, published);
 CREATE INDEX IF NOT EXISTS idx_jurisprudence_categories_tenant
     ON jurisprudence_categories(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_jurisprudence_tenant
@@ -974,6 +972,10 @@ CREATE TABLE IF NOT EXISTS comp_jurisprudence (
     updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
     tenant_id         INTEGER REFERENCES tenants(id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_comp_laws_country ON comp_laws(country_id);
+CREATE INDEX IF NOT EXISTS idx_comp_law_articles_law ON comp_law_articles(law_id);
+CREATE INDEX IF NOT EXISTS idx_comp_jurisprudence_country ON comp_jurisprudence(country_id);
 
 CREATE TABLE IF NOT EXISTS comp_import_runs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,

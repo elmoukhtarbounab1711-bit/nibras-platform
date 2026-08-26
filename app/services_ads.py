@@ -81,6 +81,12 @@ BLOCKED_AD_PATTERNS = (
     "forced-click", "malvertising", "crypto-mining",
 )
 
+# نمط محتوى للبالغين — ممنوع تمامًا (Security §7)
+ADULT_CONTENT_PATTERNS = (
+    "porn", "xxx", "adult", "nude", "nsfw", "erotic",
+    "sex-video", "cam-girl", "hookup", "dating-adult",
+)
+
 
 class AdError(Exception):
     def __init__(self, message: str, status_code: int = 400):
@@ -92,10 +98,12 @@ class AdError(Exception):
 def _validate_script_security(script_url: str = "", script_tag: str = "") -> None:
     """يتحقق من أمن السكريبت الإعلاني (Security §7).
 
-    - لا scripts تحتوي على: eval, document.write, innerHTML ((JSONObject))
-    - domains ضمن القائمة البيضاء فقط
-    - لا popunders أو interstitials
+    - لا scripts تحتوي على أنماط JS خطيرة (eval, document.write, outerHTML...)
+    - domains ضمن القائمة البيضاء فقط — يُرفض النطاق غير المعتمد
+    - لا popunders, interstitials, أو محتوى للبالغين
     """
+    script_url = script_url or ""
+    script_tag = script_tag or ""
     combined = (script_url + " " + script_tag).lower()
     # حظر أنماط محظورة
     for pattern in BLOCKED_AD_PATTERNS:
@@ -104,28 +112,91 @@ def _validate_script_security(script_url: str = "", script_tag: str = "") -> Non
                 f"نمط الإعلان محظور: {pattern}. "
                 "الإعلانات المنبثقة والأكراهية غير مسموحة.", 400
             )
-    # التحقق من النطاق
+    # حظر محتوى للبالغين
+    for pattern in ADULT_CONTENT_PATTERNS:
+        if pattern in combined:
+            raise AdError(
+                "الإعلانات المحتوية على محتوى للبالغين محظورة.", 400
+            )
+    # التحقق من النطاق — يُرفض أي نطاق غير معتمد
     if script_url:
-        parsed = urlparse(script_url)
-        if parsed.netloc:
-            domain = parsed.netloc.split(":")[0]
-            # التحقق من النطاق الرئيسي أو أي نطاق فرعي
-            base_domain = ".".join(domain.split(".")[-2:])
-            if base_domain not in APPROVED_AD_DOMAINS:
-                logger.warning(
-                    "Ad script from unapproved domain: %s", domain
-                )
-                # نسجل تحذيرًا لكن لا نرفض — المشرف يتحمل المسؤولية
+        _validate_url_domain(script_url)
+    if script_tag:
+        _validate_script_tag_domains(script_tag)
     # حظر JavaScript خطير
     dangerous_patterns = (
-        "document.write", "eval(", "innerHTML",
+        "document.write", "eval(", "innerhtml",
         "window.location", "document.cookie",
+        "outerhtml", "insertadjacenthtml",
     )
     for dp in dangerous_patterns:
         if dp in combined:
             raise AdError(
                 f"الكود يحتوي على نمط غير آمن: {dp}", 400
             )
+    # حظر setTimeout/setInterval مع سلسلة نصية (ليس دالة)
+    _block_string_timers(combined)
+
+
+def _is_approved_domain(hostname: str) -> bool:
+    """يتحقق من أن النطاق معتمد بشكل آمن (لا يقبل تضليل adsterra.com.evil.com)."""
+    h = hostname.lower().strip().split(":")[0]
+    base_domain = ".".join(h.split(".")[-2:])
+    if base_domain in APPROVED_AD_DOMAINS:
+        return True
+    for approved in APPROVED_AD_DOMAINS:
+        if h.endswith("." + approved):
+            return True
+    return False
+
+
+def _validate_url_domain(url: str):
+    """يتحقق من أن رابط السكريبت على نطاق معتمد."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise AdError(f"رابط السكريبت يجب أن يكون http/https: {url}", 400)
+    if not parsed.netloc:
+        raise AdError(f"رابط السكريبت غير صالح: {url}", 400)
+    domain = parsed.netloc.split(":")[0]
+    if not _is_approved_domain(domain):
+        raise AdError(
+            f"النطاق غير معتمد: {domain}. "
+            "يجب أن يكون ضمن القائمة البيضاء للمزوّدين المعتمدين.", 400
+        )
+
+
+def _validate_script_tag_domains(script_tag: str):
+    """يتحقق من أن جميع نطاقات script src في الكود معتمدة."""
+    src_pattern = re.compile(r'<script\b[^>]*\bsrc=["\']([^"\']+)["\']', re.IGNORECASE)
+    for match in src_pattern.finditer(script_tag):
+        src_url = match.group(1)
+        if src_url.startswith("//"):
+            src_url = "https:" + src_url
+        try:
+            parsed = urlparse(src_url)
+            if parsed.netloc:
+                domain = parsed.netloc.split(":")[0]
+                if not _is_approved_domain(domain):
+                    raise AdError(
+                        f"نطاق السكريبت غير معتمد في script_tag: {domain}", 400
+                    )
+        except AdError:
+            raise
+        except Exception:
+            raise AdError(
+                f"رابط غير صالح في script_tag: {src_url}", 400
+            )
+
+
+def _block_string_timers(combined: str):
+    """يمنع setTimeout/setInterval مع سلسلة نصية (ليس دالة — متجه XSS)."""
+    timer_pattern = re.compile(
+        r'(?:setTimeout|setInterval)\s*\(\s*["\']', re.IGNORECASE
+    )
+    if timer_pattern.search(combined):
+        raise AdError(
+            "setTimeout/setInterval مع سلسلة نصية غير مسموح (مية أمان).", 400
+        )
 
 
 def ensure_defaults():
@@ -279,7 +350,7 @@ def set_setting(key: str, value: str):
 def is_ads_enabled() -> bool:
     """يتحقق مما إذا كانت الإعلانات مفعّلة عالميًا."""
     settings = get_settings()
-    return settings.get("ads_enabled", "1") == "1"
+    return settings.get("ads_enabled", "1").lower() in ("1", "true")
 
 
 def should_show_ads(is_premium: bool = False) -> bool:
@@ -292,7 +363,7 @@ def should_show_ads(is_premium: bool = False) -> bool:
     if not is_ads_enabled():
         return False
     settings = get_settings()
-    if is_premium and settings.get("ads_no_premium", "1") == "1":
+    if is_premium and settings.get("ads_no_premium", "1").lower() in ("1", "true"):
         return False
     return True
 

@@ -595,21 +595,6 @@ def ads_set_setting():
 
 
 # ---------------------------------------------------------------------------
-# تسليم الإعلانات للواجهة (API عام)
-# ---------------------------------------------------------------------------
-
-@admin_bp.route("/api/ads/slot/<slot_slug>", methods=["GET"])
-@require_role("admin")
-def ads_serve_slot_api(slot_slug):
-    """API عام لجلب مزوّدين فتحة — يستخدمه الواجهة لتحميل السكريبتات."""
-    providers = services_ads.serve_slot(slot_slug)
-    return jsonify({
-        "enabled": services_ads.is_ads_enabled(),
-        "providers": providers,
-    }), 200
-
-
-# ---------------------------------------------------------------------------
 # محرك رفع المستندات (المرحلة 10 — قرار D-028): استيعاب PDF/DOCX في المكتبة.
 # multipart بـ file + حقول النص، مع dry_run=1 لمعاينة التقسيم بلا كتابة.
 # الملف لا يُخزَّن؛ يُستخرج نصه ويُفهرس في legal_texts/articles (FTS).

@@ -132,14 +132,20 @@ def ads_serve_slot(slot_slug):
 
     لا يتطلب مصادقة. يعيد إعدادات الإعلانات ومزوّدين الفتحة.
     لا يُعيد أي بيانات المستخدم أو رموز المصادقة.
+    يتحقق من حالة الاشتراك المميز من جانب الخادم فقط.
     """
-    from ..middleware.auth_middleware import optional_auth
-    from .. import services_ads
-    from ..services_billing import is_premium_user
+    from ..middleware.auth_middleware import _bearer_token
+    from .. import services_ads, services_billing, services_auth
 
     is_premium = False
-    if hasattr(request, 'user') and request.user:
-        is_premium = is_premium_user(request.user.id)
+    token = _bearer_token()
+    if token is not None:
+        user_id = services_auth.decode_access_token(token)
+        if user_id is not None:
+            profile = services_auth.get_user_profile(user_id)
+            if profile is not None and profile.status == "active":
+                status = services_billing.premium_status_for_user(user_id)
+                is_premium = status.get("is_premium", False)
 
     show = services_ads.should_show_ads(is_premium=is_premium)
     if not show:

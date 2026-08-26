@@ -390,19 +390,17 @@ async function providersSubPanel() {
 function providerModal(p, onDone) {
   const nameI = input({ value: p?.name || "", placeholder: t("name") || "اسم المزوّد" });
   const slugI = input({ value: p?.slug || "", placeholder: t("slug") || "الرمز" });
-  const typeS = select({}, [
-    el("option", { value: "adsense", text: "Google AdSense" }),
-    el("option", { value: "adsterra", text: "Adsterra" }),
-    el("option", { value: "propellerads", text: "PropellerAds" }),
-    el("option", { value: "monetag", text: "Monetag" }),
-    el("option", { value: "media_net", text: "Media.net" }),
-    el("option", { value: "custom", text: t("custom") || "مخصّص" }),
+  const formatS = select({}, [
+    el("option", { value: "banner", text: "Banner (728x90)" }),
+    el("option", { value: "native", text: "Native" }),
+    el("option", { value: "display", text: "Display (300x250)" }),
+    el("option", { value: "in-article", text: "In-Article" }),
   ]);
-  if (p?.provider_type) typeS.value = p.provider_type;
-  const apiKey = input({ value: p?.api_key || "", placeholder: t("apiKey") || "مفتاح API (اختياري)" });
-  const scriptHtml = el("textarea", {
-    text: p?.script_html || "",
-    placeholder: t("scriptHtml") || "كود السكريبت الإعلاني HTML...",
+  if (p?.ad_format) formatS.value = p.ad_format;
+  const scriptUrlI = input({ value: p?.script_url || "", placeholder: "https://..." });
+  const scriptTagI = el("textarea", {
+    text: p?.script_tag || "",
+    placeholder: t("scriptTag") || "<script src=\"https://...\"> أو كود مخصص",
     rows: "6",
     style: "font-family:monospace;font-size:12px;min-height:120px",
   });
@@ -412,10 +410,10 @@ function providerModal(p, onDone) {
     field(t("name") || "الاسم" + " *", nameI),
     el("div", { class: "adm-grid-2" }, [
       field(t("slug") || "الرمز", slugI),
-      field(t("type") || "النوع", typeS),
+      field(t("format") || "النوع", formatS),
     ]),
-    field(t("apiKey") || "مفتاح API", apiKey),
-    field(t("scriptHtml") || "كود السكريبت", scriptHtml, t("scriptHint") || "HTML — يُحقّق تلقائيًا من النطاقات المعتمدة"),
+    field(t("scriptUrl") || "رابط السكريبت (script_url)", scriptUrlI),
+    field(t("scriptTag") || "كود السكريبت (script_tag)", scriptTagI, t("scriptHint") || "HTML — يُحقّق تلقائيًا من النطاقات المعتمدة"),
     el("div", { class: "modal-actions" }, [
       el("button", { class: "btn btn-ghost", text: t("cancel"), onclick: closeModal }),
       el("button", { class: "btn btn-primary", text: t("save"), onclick: async () => {
@@ -423,9 +421,9 @@ function providerModal(p, onDone) {
         const payload = {
           name: nameI.value.trim(),
           slug: slugI.value.trim() || nameI.value.trim().toLowerCase().replace(/\s+/g, "-"),
-          provider_type: typeS.value,
-          api_key: apiKey.value.trim() || undefined,
-          script_html: scriptHtml.value.trim() || undefined,
+          ad_format: formatS.value,
+          script_url: scriptUrlI.value.trim() || "",
+          script_tag: scriptTagI.value.trim() || "",
         };
         try {
           if (p) await api.put(`/api/admin/ads/providers/${p.id}`, payload);

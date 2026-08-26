@@ -3,6 +3,7 @@ import { tr, currentLang } from "../i18n.js";
 import { api } from "../api.js";
 import { el, esc, emptyState, skeleton } from "../ui.js";
 import { icon } from "../icons.js";
+import { createAdPlaceholder } from "../components/ads.js";
 
 function renderSteps(steps) {
   return el("div", { class: "flex-col mt-8" },
@@ -108,6 +109,7 @@ export async function procedureDetailView(params) {
         renderSteps(p.steps),
       ]) : null,
       renderFaq(p.faq),
+      createAdPlaceholder("article_bottom"),
     ]);
   } catch {
     return el("div", { class: "card empty", text: tr("notFound") });

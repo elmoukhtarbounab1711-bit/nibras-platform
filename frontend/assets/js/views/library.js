@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { el, esc, emptyState, fmtDate, pagination, typeLabel, downloadFile, toast } from "../ui.js";
 import { icon } from "../icons.js";
 import { navigate } from "../router.js";
+import { createAdPlaceholder } from "../components/ads.js";
 
 const PER_PAGE = 12;
 
@@ -234,7 +235,7 @@ async function dashboardView() {
     el("button", { class: "ai-cta", onclick: () => navigate("/assistant") }, "✨ " + tr("libAiCta")),
   ]);
 
-  const sidebar = el("aside", { class: "lib-side" }, [exploreCard, typeCard, aiCard]);
+  const sidebar = el("aside", { class: "lib-side" }, [exploreCard, typeCard, aiCard, createAdPlaceholder("library_sidebar")]);
 
   const main = el("div", { class: "lib-main" }, [
     el("div", { class: "lib-section-title" }, [el("span", { class: "lst-rule" }), tr("libCategoriesTitle")]),
@@ -310,6 +311,8 @@ export async function textView(params) {
       el("button", { class: "btn btn-outline", onclick: () => downloadFile(`/api/texts/${text.id}/pdf?download=1`, `${text.title || 'law'}.pdf`) }, [icon("download", 16), " " + tr("download")]),
     ]),
 
+    createAdPlaceholder("article_top"),
+
     articles.length ? el("div", { class: "mt-24" }, [
       el("h2", { class: "section-head", text: tr("materials") }),
       ...articles.map((a) => el("div", { class: "article-block" }, [
@@ -323,6 +326,8 @@ export async function textView(params) {
           el("span", { class: "chip", text: k.trim() }))) : null,
       ])),
     ]) : emptyState(tr("noResults"), "bookOpen"),
+
+    createAdPlaceholder("article_bottom"),
 
     related.length ? el("div", { class: "related" }, [
       el("h3", { text: "مواد ذات صلة" }),

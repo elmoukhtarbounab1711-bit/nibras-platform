@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { el, esc, truncate, emptyState, pagination, fmtDate, toast } from "../ui.js";
 import { icon } from "../icons.js";
 import { navigate } from "../router.js";
+import { createAdPlaceholder } from "../components/ads.js";
 
 const PER_PAGE = 12;
 
@@ -102,6 +103,7 @@ export async function jurisprudenceView(params) {
           el("span", { class: "small muted", text: `(${c.decision_count ?? 0})` }),
         ])),
     ]),
+    createAdPlaceholder("library_sidebar"),
   ]);
 
   // ---------- المحتوى الرئيسي ----------
@@ -219,7 +221,7 @@ export async function jurisprudenceDetailView(params) {
       downloadBtn,
       el("a", { class: "btn btn-ghost btn-sm mt-16", href: "#/jurisprudence", text: tr("jurisMore") }),
     ]);
-    node.append(backBtn, header, title, meta, ...sections, more);
+    node.append(backBtn, header, title, meta, ...sections, more, createAdPlaceholder("article_bottom"));
   } catch (e) {
     node.append(el("div", { class: "card empty" }, [
       el("div", { class: "empty-icon" }, [icon("alertTriangle", 30)]),

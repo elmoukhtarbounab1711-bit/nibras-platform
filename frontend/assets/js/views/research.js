@@ -4,6 +4,7 @@ import { el, esc, emptyState, pagination, toast } from "../ui.js";
 import { icon, iconHTML } from "../icons.js";
 import { navigate } from "../router.js";
 import { tr } from "../i18n.js";
+import { createAdPlaceholder } from "../components/ads.js";
 
 const PER_PAGE = 24;
 
@@ -92,6 +93,8 @@ export async function researchView() {
             }),
           ])
         : null,
+
+      createAdPlaceholder("search_results"),
     );
   }
 
@@ -291,6 +294,7 @@ export async function researchBookView(params) {
             }, [icon("download", 16), " تحميل PDF"])
           : null,
       ]),
+      createAdPlaceholder("article_middle"),
     ]),
   ]);
 }
