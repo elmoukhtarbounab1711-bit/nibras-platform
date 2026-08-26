@@ -1504,6 +1504,49 @@ def init_db(reset: bool = False):
         # الاستهداف الفئوي للحملات الإعلانية (المرحلة 19 — قرار D-037):
         _ensure_column(conn, "ad_campaigns", "target_category_type", "TEXT")
         _ensure_column(conn, "ad_campaigns", "target_category_id", "INTEGER")
+        # ═══════════════════════════════════════════════════════════════════════
+        # نظام الإعلانات — مزوّدون وفتحات وإعدادات عامة (الأمان §7)
+        # ═══════════════════════════════════════════════════════════════════════
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS ad_providers ("
+            "  id              INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "  name            TEXT NOT NULL,"
+            "  slug            TEXT UNIQUE NOT NULL,"
+            "  script_url      TEXT NOT NULL DEFAULT '',"
+            "  script_tag      TEXT NOT NULL DEFAULT '',"
+            "  ad_format       TEXT NOT NULL DEFAULT 'banner',"
+            "  slot_default     TEXT,"
+            "  enabled         INTEGER NOT NULL DEFAULT 0,"
+            "  is_approved      INTEGER NOT NULL DEFAULT 0,"
+            "  notes           TEXT,"
+            "  created_at      TEXT NOT NULL DEFAULT (datetime('now')),"
+            "  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))"
+            ")"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ad_providers_slug "
+            "ON ad_providers(slug)"
+        )
+        # إعدادات الإعلانات العامة (تفعيل/تعطيل + تفضيلات)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS ad_settings ("
+            "  key             TEXT PRIMARY KEY,"
+            "  value           TEXT NOT NULL DEFAULT '',"
+            "  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))"
+            ")"
+        )
+        # ربط المزوّد بالفتحة (فتحة قد تحتوي على عدة مزوّدين)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS ad_slot_providers ("
+            "  id              INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "  slot_id         INTEGER NOT NULL REFERENCES ad_slots(id) ON DELETE CASCADE,"
+            "  provider_id     INTEGER NOT NULL REFERENCES ad_providers(id) ON DELETE CASCADE,"
+            "  slot_config     TEXT NOT NULL DEFAULT '{}',"
+            "  priority        INTEGER NOT NULL DEFAULT 0,"
+            "  enabled         INTEGER NOT NULL DEFAULT 1,"
+            "  UNIQUE(slot_id, provider_id)"
+            ")"
+        )
         # ربط النصوص والاجتهادات بالولايات القضائية (صفحات القانون المقارن — D-038):
         _ensure_column(conn, "legal_texts", "jurisdiction_id", "INTEGER")
         _ensure_column(conn, "jurisprudence", "jurisdiction_id", "INTEGER")

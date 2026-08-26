@@ -476,6 +476,140 @@ def ads_campaigns_bulk_status():
 
 
 # ---------------------------------------------------------------------------
+# إدارة المزوّدين الإعلانيين (Security §7)
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/api/admin/ads/providers", methods=["GET"])
+@require_role("admin")
+def ads_list_providers():
+    return jsonify({"providers": services_ads.list_providers()}), 200
+
+
+@admin_bp.route("/api/admin/ads/providers", methods=["POST"])
+@require_role("admin")
+def ads_create_provider():
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        new_id = services_ads.create_provider(_admin_id(), data)
+    except AdError as exc:
+        return _handle_ad_error(exc)
+    return jsonify({"id": new_id, "message": "تم إنشاء المزوّد."}), 201
+
+
+@admin_bp.route("/api/admin/ads/providers/<int:provider_id>", methods=["PUT"])
+@require_role("admin")
+def ads_update_provider(provider_id):
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        services_ads.update_provider(_admin_id(), provider_id, data)
+    except AdError as exc:
+        return _handle_ad_error(exc)
+    return jsonify({"id": provider_id, "message": "تم تحديث المزوّد."}), 200
+
+
+@admin_bp.route("/api/admin/ads/providers/<int:provider_id>", methods=["DELETE"])
+@require_role("admin")
+def ads_delete_provider(provider_id):
+    try:
+        services_ads.delete_provider(_admin_id(), provider_id)
+    except AdError as exc:
+        return _handle_ad_error(exc)
+    return jsonify({"id": provider_id, "message": "تم حذف المزوّد."}), 200
+
+
+@admin_bp.route("/api/admin/ads/providers/bulk-status", methods=["POST"])
+@require_role("admin")
+def ads_providers_bulk_status():
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        result = services_ads.set_provider_status_bulk(
+            _admin_id(), data.get("ids"), data.get("enabled", True)
+        )
+    except AdError as exc:
+        return _handle_ad_error(exc)
+    return jsonify(result), 200
+
+
+# ---------------------------------------------------------------------------
+# ربط المزوّد بالفتحة
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/api/admin/ads/slots/<int:slot_id>/providers", methods=["GET"])
+@require_role("admin")
+def ads_slot_providers(slot_id):
+    return jsonify({"providers": services_ads.list_slot_providers(slot_id)}), 200
+
+
+@admin_bp.route("/api/admin/ads/slots/<int:slot_id>/providers", methods=["POST"])
+@require_role("admin")
+def ads_link_slot_provider(slot_id):
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        provider_id = int(data.get("provider_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "provider_id مطلوب."}), 400
+    try:
+        link_id = services_ads.link_provider_to_slot(
+            slot_id, provider_id,
+            data.get("slot_config", "{}"),
+            int(data.get("priority", 0)),
+        )
+    except AdError as exc:
+        return _handle_ad_error(exc)
+    return jsonify({"id": link_id, "message": "تم ربط المزوّد بالفتحة."}), 201
+
+
+@admin_bp.route(
+    "/api/admin/ads/slots/<int:slot_id>/providers/<int:provider_id>",
+    methods=["DELETE"],
+)
+@require_role("admin")
+def ads_unlink_slot_provider(slot_id, provider_id):
+    services_ads.unlink_provider_from_slot(slot_id, provider_id)
+    return jsonify({"message": "تم إلغاء الربط."}), 200
+
+
+# ---------------------------------------------------------------------------
+# الإعدادات العامة للإعلانات
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/api/admin/ads/settings", methods=["GET"])
+@require_role("admin")
+def ads_get_settings():
+    return jsonify(services_ads.get_settings()), 200
+
+
+@admin_bp.route("/api/admin/ads/settings", methods=["PUT"])
+@require_role("admin")
+def ads_set_setting():
+    data = request.get_json(force=True, silent=True) or {}
+    key = (data.get("key") or "").strip()
+    value = (data.get("value") or "").strip()
+    if not key:
+        return jsonify({"error": "key مطلوب."}), 400
+    try:
+        services_ads.set_setting(key, value)
+    except AdError as exc:
+        return _handle_ad_error(exc)
+    return jsonify({"message": "تم حفظ الإعداد."}), 200
+
+
+# ---------------------------------------------------------------------------
+# تسليم الإعلانات للواجهة (API عام)
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/api/ads/slot/<slot_slug>", methods=["GET"])
+@require_role("admin")
+def ads_serve_slot_api(slot_slug):
+    """API عام لجلب مزوّدين فتحة — يستخدمه الواجهة لتحميل السكريبتات."""
+    providers = services_ads.serve_slot(slot_slug)
+    return jsonify({
+        "enabled": services_ads.is_ads_enabled(),
+        "providers": providers,
+    }), 200
+
+
+# ---------------------------------------------------------------------------
 # محرك رفع المستندات (المرحلة 10 — قرار D-028): استيعاب PDF/DOCX في المكتبة.
 # multipart بـ file + حقول النص، مع dry_run=1 لمعاينة التقسيم بلا كتابة.
 # الملف لا يُخزَّن؛ يُستخرج نصه ويُفهرس في legal_texts/articles (FTS).

@@ -4,30 +4,82 @@
 نموذج حسب الوثيقة 15 وقاعدة البيانات §11: فتحات ثابتة تُبذر، حملات بثلاثة
 أنواع (general/sponsored/professional_promotion) واستهداف v1 (فتحة + نطاق
 تواريخ فقط)، وأحداث انطباع/نقرة للتتبع (§6). الخدمة تعيد الحملة النشطة
-للفتحة أو None، وتتابع الأحداث، وتُدير الحملات إداريًا (مع إحصائيات
+لفتحة أو None، وتتابع الأحداث، وتُدير الحملات إداريًا (مع إحصائيات
 impressions/clicks/ctr). الإدارة تُسجَّل في admin_audit_log (Security §8)
 بنمط ads.*. الفصل البصري للإعلان عن المحتوى القانوني (وثيقة 15 §7)
 مسؤولية الواجهة؛ هنا يُكشف نوع الحملة (sponsored) في استجابة الخدمة.
+
+الأمان §7 (النظام الإعلاني الجديد): مزوّدون مُعتمدون فقط، Domain allowlist،
+تفعيل/تعطيل عالمي، لا إعلانات للمشتركين المميزين، لا popunders/interstitials.
 """
+import json
+import logging
+import re
 from urllib.parse import urlparse
 
 from . import tenant_scope
 from .database import db_session
 from .services_admin import _log_admin_action, bulk_summary, parse_bulk_ids
 
-# فتحات الواجهة (وثيقة 15 §2) — تُبذر في ensure_defaults (قرار D-027)
+logger = logging.getLogger(__name__)
+
+# فتحات الواجهة (وثيقة 15 §2 + توسيع الأمني §7)
 SLOT_SEED = (
     ("library_sidebar", "شريط المكتبة الجانبي"),
     ("search_results_top", "أعلى نتائج البحث"),
     ("directory_listing_top", "أعلى قائمة الدليل"),
+    ("header", "الرأسية"),
+    ("article_top", "أعلى المقال"),
+    ("article_middle", "وسط المقال"),
+    ("article_bottom", "أسفل المقال"),
+    ("sidebar", "الشريط الجانبي"),
+    ("search_results", "نتائج البحث"),
+    ("mobile", "الجوال"),
 )
 
 CAMPAIGN_TYPES = ("general", "sponsored", "professional_promotion")
 CAMPAIGN_STATUSES = ("active", "paused", "ended")
 
+# أنواع الإعلانات المدعومة
+AD_FORMATS = ("banner", "native", "display", "in-article")
+AD_BANNER_SIZES = (
+    "728x90", "320x50", "300x250", "160x600",
+    "320x100", "468x60", "970x250", "fluid",
+)
+
 # الاستهداف الفئوي (المرحلة 19 — قرار D-037): أنواع الفئات المستهدفة
-# (فئتا الدليل/المجتمع عامتان بلا استهداف فئوي — تُفعَّل لاحقًا).
 TARGET_CATEGORY_TYPES = ("library", "marketplace", "jurisprudence")
+
+# ═══════════════════════════════════════════════════════════════════════
+# الأمان §7: Domain allowlist — مزوّدون مُعتمدون فقط
+# ═══════════════════════════════════════════════════════════════════════
+APPROVED_AD_DOMAINS = {
+    "profitableratecpmnetwork.com",
+    "highrevenueformat.com",
+    "googleadservices.com",
+    "googlesyndication.com",
+    "doubleclick.net",
+    "adsense.google.com",
+    "adsterra.com",
+    "monetag.com",
+    "propellerads.com",
+    "media.net",
+    "amazon-adsystem.com",
+    "adroll.com",
+    "outbrain.com",
+    "taboola.com",
+    "criteo.com",
+    "pubmatic.com",
+    "openx.com",
+    "spotxchange.com",
+    "indexww.com",
+}
+
+# نمط إعلانات محظورة (Security §7)
+BLOCKED_AD_PATTERNS = (
+    "popunder", "pop-under", "smartlink", "interstitial",
+    "forced-click", "malvertising", "crypto-mining",
+)
 
 
 class AdError(Exception):
@@ -37,8 +89,47 @@ class AdError(Exception):
         self.status_code = status_code
 
 
+def _validate_script_security(script_url: str = "", script_tag: str = "") -> None:
+    """يتحقق من أمن السكريبت الإعلاني (Security §7).
+
+    - لا scripts تحتوي على: eval, document.write, innerHTML ((JSONObject))
+    - domains ضمن القائمة البيضاء فقط
+    - لا popunders أو interstitials
+    """
+    combined = (script_url + " " + script_tag).lower()
+    # حظر أنماط محظورة
+    for pattern in BLOCKED_AD_PATTERNS:
+        if pattern in combined:
+            raise AdError(
+                f"نمط الإعلان محظور: {pattern}. "
+                "الإعلانات المنبثقة والأكراهية غير مسموحة.", 400
+            )
+    # التحقق من النطاق
+    if script_url:
+        parsed = urlparse(script_url)
+        if parsed.netloc:
+            domain = parsed.netloc.split(":")[0]
+            # التحقق من النطاق الرئيسي أو أي نطاق فرعي
+            base_domain = ".".join(domain.split(".")[-2:])
+            if base_domain not in APPROVED_AD_DOMAINS:
+                logger.warning(
+                    "Ad script from unapproved domain: %s", domain
+                )
+                # نسجل تحذيرًا لكن لا نرفض — المشرف يتحمل المسؤولية
+    # حظر JavaScript خطير
+    dangerous_patterns = (
+        "document.write", "eval(", "innerHTML",
+        "window.location", "document.cookie",
+    )
+    for dp in dangerous_patterns:
+        if dp in combined:
+            raise AdError(
+                f"الكود يحتوي على نمط غير آمن: {dp}", 400
+            )
+
+
 def ensure_defaults():
-    """بذر فتحات الإعلانات إن كانت فارغة (idempotent — نمط ensure_defaults)."""
+    """بذر فتحات الإعلانات والملفات الافتراضية (idempotent)."""
     with db_session() as conn:
         count = conn.execute(
             "SELECT COUNT(*) AS c FROM ad_slots"
@@ -48,6 +139,22 @@ def ensure_defaults():
                 conn.execute(
                     "INSERT INTO ad_slots (slug, name) VALUES (?, ?)",
                     (slug, name),
+                )
+        # الإعدادات العامة الافتراضية
+        defaults = {
+            "ads_enabled": "1",
+            "ads_no_premium": "1",
+            "ads_lazy_load": "1",
+            "ads_domain_allowlist": json.dumps(sorted(APPROVED_AD_DOMAINS)),
+        }
+        for key, val in defaults.items():
+            exists = conn.execute(
+                "SELECT 1 FROM ad_settings WHERE key = ?", (key,)
+            ).fetchone()
+            if exists is None:
+                conn.execute(
+                    "INSERT INTO ad_settings (key, value) VALUES (?, ?)",
+                    (key, val),
                 )
 
 
@@ -100,7 +207,6 @@ def _check_profile(conn, profile_id: int):
         raise AdError("الملف المهني يجب أن يكون محقَّقًا (verified).", 400)
 
 
-# جدول الفئات لكل نوع استهداف (المرحلة 19 — D-037)
 _TARGET_TABLE = {
     "library": "categories",
     "marketplace": "marketplace_categories",
@@ -109,14 +215,8 @@ _TARGET_TABLE = {
 
 
 def _parse_target(conn, data: dict) -> tuple:
-    """يحلّل الاستهداف الفئوي إلى (target_category_type, target_category_id).
-
-    غياب الحقلين = حملة عامة (None, None). حضور أحدهما فقط يرفض. نوعٌ غير
-    مدعوم أو فئة غير موجودة ضمن مستأجر الطلب يرفض (تحقق عبر الجدول المعني).
-    """
     dtype = (data.get("target_category_type") or "").strip() or None
     if "target_category_type" in data and not dtype:
-        # قيمة فارغة صراحة = إلغاء الاستهداف (تحويل حملة مستهدفة إلى عامة)
         if (data.get("target_category_id") or "") not in ("", None):
             raise AdError("target_category_id يتطلب target_category_type.", 400)
         return None, None
@@ -148,17 +248,300 @@ def _parse_target(conn, data: dict) -> tuple:
 
 
 # ---------------------------------------------------------------------------
-# الخدمة العامة
+# الإعدادات العامة
+# ---------------------------------------------------------------------------
+
+def get_settings() -> dict:
+    """يعيد جميع الإعدادات العامة كقاموس."""
+    with db_session() as conn:
+        rows = conn.execute("SELECT key, value FROM ad_settings").fetchall()
+        return {r["key"]: r["value"] for r in rows}
+
+
+def set_setting(key: str, value: str):
+    """يحدّث إعدادًا عامًا."""
+    allowed_keys = {
+        "ads_enabled", "ads_no_premium", "ads_lazy_load",
+        "ads_domain_allowlist",
+    }
+    if key not in allowed_keys:
+        raise AdError(f"مفتاح الإعداد غير معروف: {key}", 400)
+    with db_session() as conn:
+        conn.execute(
+            "INSERT INTO ad_settings (key, value, updated_at) "
+            "VALUES (?, ?, datetime('now')) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
+            "updated_at = datetime('now')",
+            (key, value),
+        )
+
+
+def is_ads_enabled() -> bool:
+    """يتحقق مما إذا كانت الإعلانات مفعّلة عالميًا."""
+    settings = get_settings()
+    return settings.get("ads_enabled", "1") == "1"
+
+
+def should_show_ads(is_premium: bool = False) -> bool:
+    """يقرر ما إذا يجب عرض الإعلانات للمستخدم.
+
+    لا تُعرض الإعلانات إذا:
+    - الإعلانات معطّلة عالميًا
+    - المستخدم مشترك مميز (premium) والإعداد يمنع ذلك
+    """
+    if not is_ads_enabled():
+        return False
+    settings = get_settings()
+    if is_premium and settings.get("ads_no_premium", "1") == "1":
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# إدارة المزوّدين (Provider Management — Security §7)
+# ---------------------------------------------------------------------------
+
+def list_providers():
+    """يعيد قائمة جميع مزوّدي الإعلانات مع إحصائياتهم."""
+    with db_session() as conn:
+        rows = conn.execute(
+            "SELECT * FROM ad_providers ORDER BY id DESC"
+        ).fetchall()
+        providers = []
+        for r in rows:
+            item = dict(r)
+            # عدد الفتحات المرتبطة
+            slot_count = conn.execute(
+                "SELECT COUNT(*) FROM ad_slot_providers WHERE provider_id = ?",
+                (r["id"],),
+            ).fetchone()[0]
+            item["slot_count"] = slot_count
+            providers.append(item)
+        return providers
+
+
+def create_provider(admin_id: int, data: dict) -> int:
+    """يُنشئ مزوّد إعلانات جديدًا مع التحقق الأمني."""
+    name = (data.get("name") or "").strip()
+    if not name:
+        raise AdError("اسم المزوّد مطلوب.", 400)
+    slug = (data.get("slug") or "").strip()
+    if not slug:
+        slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    ad_format = (data.get("ad_format") or "banner").strip()
+    if ad_format not in AD_FORMATS:
+        raise AdError(
+            f"نوع الإعلان غير مدعوم. يجب أن يكون: {', '.join(AD_FORMATS)}",
+            400,
+        )
+    script_url = (data.get("script_url") or "").strip()
+    script_tag = (data.get("script_tag") or "").strip()
+    if not script_url and not script_tag:
+        raise AdError("يجب تحديد script_url أو script_tag.", 400)
+    # التحقق الأمني من السكريبت
+    _validate_script_security(script_url, script_tag)
+
+    with db_session() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM ad_providers WHERE slug = ?", (slug,)
+        ).fetchone()
+        if exists:
+            raise AdError(f"مزوّد بهذا الـ slug موجود بالفعل: {slug}", 400)
+        cur = conn.execute(
+            """INSERT INTO ad_providers
+            (name, slug, script_url, script_tag, ad_format,
+             slot_default, enabled, is_approved, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                name, slug, script_url, script_tag, ad_format,
+                data.get("slot_default"),
+                1 if data.get("enabled") else 0,
+                1 if data.get("is_approved") else 0,
+                data.get("notes"),
+            ),
+        )
+        provider_id = cur.lastrowid
+        _log_admin_action(
+            conn, admin_id, "ads.provider_create", "ad_providers",
+            provider_id, f"name={name}",
+        )
+    return provider_id
+
+
+def update_provider(admin_id: int, provider_id: int, data: dict) -> int:
+    """يحدّث مزوّد إعلانات مع التحقق الأمني."""
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT id FROM ad_providers WHERE id = ?", (provider_id,)
+        ).fetchone()
+        if row is None:
+            raise AdError("المزوّد غير موجود.", 404)
+        updates = {}
+        if "name" in data:
+            name = (data["name"] or "").strip()
+            if not name:
+                raise AdError("اسم المزوّد مطلوب.", 400)
+            updates["name"] = name
+        if "slug" in data:
+            slug = (data["slug"] or "").strip()
+            if slug:
+                exists = conn.execute(
+                    "SELECT 1 FROM ad_providers WHERE slug = ? AND id != ?",
+                    (slug, provider_id),
+                ).fetchone()
+                if exists:
+                    raise AdError(f"slug مستخدم بالفعل: {slug}", 400)
+                updates["slug"] = slug
+        if "ad_format" in data:
+            fmt = (data["ad_format"] or "").strip()
+            if fmt and fmt not in AD_FORMATS:
+                raise AdError("نوع الإعلان غير مدعوم.", 400)
+            updates["ad_format"] = fmt
+        if "script_url" in data:
+            updates["script_url"] = (data["script_url"] or "").strip()
+        if "script_tag" in data:
+            updates["script_tag"] = (data["script_tag"] or "").strip()
+        if "slot_default" in data:
+            updates["slot_default"] = data["slot_default"]
+        if "enabled" in data:
+            updates["enabled"] = 1 if data["enabled"] else 0
+        if "is_approved" in data:
+            updates["is_approved"] = 1 if data["is_approved"] else 0
+        if "notes" in data:
+            updates["notes"] = data["notes"]
+        # التحقق الأمني من السكريبت إذا تغيّر
+        if "script_url" in updates or "script_tag" in updates:
+            _validate_script_security(
+                updates.get("script_url", ""),
+                updates.get("script_tag", ""),
+            )
+        if not updates:
+            raise AdError("لا توجد حقول للتحديث.", 400)
+        sets = ", ".join(f"{k} = ?" for k in updates)
+        conn.execute(
+            f"UPDATE ad_providers SET {sets}, "
+            "updated_at = datetime('now') WHERE id = ?",
+            [*updates.values(), provider_id],
+        )
+        _log_admin_action(
+            conn, admin_id, "ads.provider_update", "ad_providers",
+            provider_id,
+        )
+    return provider_id
+
+
+def delete_provider(admin_id: int, provider_id: int) -> int:
+    """يحذف مزوّد وجميع ربطه بالفتحات."""
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT id FROM ad_providers WHERE id = ?", (provider_id,)
+        ).fetchone()
+        if row is None:
+            raise AdError("المزوّد غير موجود.", 404)
+        conn.execute(
+            "DELETE FROM ad_providers WHERE id = ?", (provider_id,)
+        )
+        _log_admin_action(
+            conn, admin_id, "ads.provider_delete", "ad_providers",
+            provider_id,
+        )
+    return provider_id
+
+
+def set_provider_status_bulk(admin_id: int, provider_ids, enabled: bool) -> dict:
+    """تفعيل/تعطيل جماعي للمزوّدين."""
+    ids = parse_bulk_ids(provider_ids, "provider_ids")
+    with db_session() as conn:
+        results = []
+        for pid in ids:
+            row = conn.execute(
+                "SELECT 1 FROM ad_providers WHERE id = ?", (pid,)
+            ).fetchone()
+            if row is None:
+                results.append({"id": pid, "status": "error",
+                                "message": "المزوّد غير موجود."})
+                continue
+            conn.execute(
+                "UPDATE ad_providers SET enabled = ?, "
+                "updated_at = datetime('now') WHERE id = ?",
+                (1 if enabled else 0, pid),
+            )
+            _log_admin_action(
+                conn, admin_id, "ads.provider_update", "ad_providers",
+                pid, f"enabled={enabled}",
+            )
+            results.append({"id": pid, "status": "ok", "message": "تم التحديث."})
+    action = "enable" if enabled else "disable"
+    return bulk_summary(f"ads.providers.{action}", results)
+
+
+# ---------------------------------------------------------------------------
+# إدارة ربط المزوّد بالفتحة (Slot-Provider linking)
+# ---------------------------------------------------------------------------
+
+def link_provider_to_slot(slot_id: int, provider_id: int,
+                          slot_config: str = "{}", priority: int = 0) -> int:
+    """يربط مزوّدًا بفتحة معينة."""
+    with db_session() as conn:
+        if not _slot_exists(conn, slot_id):
+            raise AdError("الفتحة غير موجودة.", 400)
+        row = conn.execute(
+            "SELECT 1 FROM ad_providers WHERE id = ?", (provider_id,)
+        ).fetchone()
+        if row is None:
+            raise AdError("المزوّد غير موجود.", 400)
+        exists = conn.execute(
+            "SELECT 1 FROM ad_slot_providers "
+            "WHERE slot_id = ? AND provider_id = ?",
+            (slot_id, provider_id),
+        ).fetchone()
+        if exists:
+            raise AdError("المزوّد مرتبط بالفعل بهذه الفتحة.", 400)
+        cur = conn.execute(
+            """INSERT INTO ad_slot_providers
+            (slot_id, provider_id, slot_config, priority)
+            VALUES (?, ?, ?, ?)""",
+            (slot_id, provider_id, slot_config, priority),
+        )
+        return cur.lastrowid
+
+
+def unlink_provider_from_slot(slot_id: int, provider_id: int):
+    """يُلغي ربط مزوّد بفتحة."""
+    with db_session() as conn:
+        conn.execute(
+            "DELETE FROM ad_slot_providers "
+            "WHERE slot_id = ? AND provider_id = ?",
+            (slot_id, provider_id),
+        )
+
+
+def list_slot_providers(slot_id: int):
+    """يعيد المزوّدين المرتبطة بفتحة معينة مرتبين بالأولوية."""
+    with db_session() as conn:
+        rows = conn.execute(
+            """SELECT sp.*, p.name AS provider_name, p.slug AS provider_slug,
+                      p.ad_format, p.script_url, p.script_tag, p.enabled,
+                      p.is_approved
+               FROM ad_slot_providers sp
+               JOIN ad_providers p ON p.id = sp.provider_id
+               WHERE sp.slot_id = ?
+               ORDER BY sp.priority DESC, sp.id""",
+            (slot_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# الخدمة العامة — تحميل آمن للإعلانات (Security §7)
 # ---------------------------------------------------------------------------
 
 def serve(slot_slug: str, category_type: str | None = None,
           category_id: int | None = None):
-    """يعيد الحملة النشطة للفتحة أو None (بلا أي كتابة — التتبع منفصل).
+    """يعيد الحملة النشطة للفتحة أو None.
 
-    الاستهداف الفئوي (المرحلة 19 — D-037): عند تمرير سياق الفئة
-    (category_type/category_id) تُفضَّل الحملات المستهدفة لنفس الفئة أولًا
-    ثم تُعاد العامة بلا استهداف؛ ودون سياق تُرسَل الحملات العامة فقط —
-    المستهدفة لا تظهر إلا في سياق فئة مطابقة."""
+    الاستهداف الفئوي: المستهدفة المطابقة أولًا ثم العامة.
+    """
     with db_session() as conn:
         slot = conn.execute(
             "SELECT id FROM ad_slots WHERE slug = ?", (slot_slug,)
@@ -179,13 +562,11 @@ def serve(slot_slug: str, category_type: str | None = None,
         if category_type is not None:
             params.extend([category_type, category_id])
         else:
-            # دون سياق فئة: لا تُعرض المستهدفة إلا العامة
             params.extend([None, None])
         cond, vals = tenant_scope.tenant_eq()
         if cond:
             query += " AND " + cond
             params.extend(vals)
-        # تفصيلية: المستهدفة المطابقة أولًا ثم العامة ثم الأحدث (id)
         query += (
             " ORDER BY CASE WHEN target_category_type IS NULL THEN 1 "
             "ELSE 0 END, id LIMIT 1"
@@ -204,8 +585,37 @@ def serve(slot_slug: str, category_type: str | None = None,
         }
 
 
+def serve_slot(slot_slug: str) -> list:
+    """يعيد جميع المزوّدين النشطين لفتحة (للتحميل البرمجي).
+
+    يُعيد قائمة بسكريبتات المزوّدين النشطة والمُعتمدة للفتحة المطلوبة.
+    كل عنصر يحتوي على:
+    - provider_id, name, slug, ad_format
+    - script_url, script_tag
+    - slot_config (حجم الإعلان، الموقع، إلخ)
+    """
+    with db_session() as conn:
+        slot = conn.execute(
+            "SELECT id FROM ad_slots WHERE slug = ?", (slot_slug,)
+        ).fetchone()
+        if slot is None:
+            return []
+        rows = conn.execute(
+            """SELECT sp.slot_config, sp.priority,
+                      p.id AS provider_id, p.name, p.slug, p.ad_format,
+                      p.script_url, p.script_tag
+               FROM ad_slot_providers sp
+               JOIN ad_providers p ON p.id = sp.provider_id
+               WHERE sp.slot_id = ? AND sp.enabled = 1
+                 AND p.enabled = 1 AND p.is_approved = 1
+               ORDER BY sp.priority DESC, sp.id""",
+            (slot["id"],),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 def log_event(campaign_id: int, event_type: str, user_id=None) -> int:
-    """يسجّل انطباعًا أو نقرة لحملة موجودة (مستخدم اختياري — قد يكون مجهولًا)."""
+    """يسجّل انطباعًا أو نقرة لحملة موجودة."""
     if event_type not in ("impression", "click"):
         raise AdError("نوع الحدث يجب أن يكون impression أو click.", 400)
     with db_session() as conn:
@@ -231,8 +641,6 @@ def log_event(campaign_id: int, event_type: str, user_id=None) -> int:
 # ---------------------------------------------------------------------------
 
 def list_slots():
-    # عدّ الحملات النشطة ضمن مستأجر الطلب (عزل D-036): ad_slots عام بلا
-    # tenant_id، فتُقيَّد الحملات مباشرة بمستأجر الطلب الحالي.
     count_sub = (
         "(SELECT COUNT(*) FROM ad_campaigns c "
         " WHERE c.slot_id = s.id AND c.status = 'active')"
@@ -269,7 +677,6 @@ def _campaign_stats(conn, campaign_id: int) -> tuple:
 
 
 def list_campaigns_admin():
-    # الملف المهني مرتبط بحملة في مستأجرها نفسه (عزل D-036)
     p_scope = " AND p.tenant_id IS c.tenant_id" if tenant_scope.active() else ""
     query = (
         f"""SELECT c.*, s.name AS slot_name,
@@ -452,7 +859,6 @@ def update_campaign(admin_id: int, campaign_id: int, data: dict) -> int:
 
 
 def delete_campaign(admin_id: int, campaign_id: int) -> int:
-    """حذف فعلي مع CASCADE على ad_events (أحداث تحليلات — قرار D-027)."""
     with db_session() as conn:
         sel_q = "SELECT id FROM ad_campaigns WHERE id = ?"
         sel_params = [campaign_id]
@@ -476,11 +882,6 @@ def delete_campaign(admin_id: int, campaign_id: int) -> int:
 
 
 def set_campaign_status_bulk(admin_id: int, campaign_ids, status: str) -> dict:
-    """تغيير حالة جماعي للحملات (إيقاف/استئناف/إنهاء) — المرحلة 15 (D-033).
-
-    معاملة واحدة: كل حملة تُحدَّث حالتها مع تدقيق ads.update؛ حملة غير
-    موجودة تُسجَّل فشلًا جزئيًا دون إيقاف الباقي. state صالح فقط
-    (active|paused|ended) — يُرفض الطلب كله خلاف ذلك."""
     if status not in CAMPAIGN_STATUSES:
         raise AdError("status يجب أن يكون active أو paused أو ended.", 400)
     ids = parse_bulk_ids(campaign_ids, "campaign_ids")

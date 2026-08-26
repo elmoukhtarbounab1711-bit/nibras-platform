@@ -204,32 +204,61 @@ function categoryModal(c, onDone) {
 // الإعلانات
 // =====================================================================
 async function adsPanel() {
+  const box = el("div", { class: "flex-col", style: "gap:16px" });
+  let subTab = "campaigns";
+
+  function render() {
+    const subTabs = el("div", { class: "adm-tabs", role: "tablist" }, [
+      el("button", {
+        class: "adm-tab" + (subTab === "campaigns" ? " active" : ""),
+        type: "button", text: t("campaigns"), role: "tab",
+        onclick: () => { subTab = "campaigns"; render(); },
+      }),
+      el("button", {
+        class: "adm-tab" + (subTab === "providers" ? " active" : ""),
+        type: "button", text: t("adProviders") || "المزوّدون الإعلانيون", role: "tab",
+        onclick: () => { subTab = "providers"; render(); },
+      }),
+      el("button", {
+        class: "adm-tab" + (subTab === "settings" ? " active" : ""),
+        type: "button", text: t("adSettings") || "إعدادات الإعلانات", role: "tab",
+        onclick: () => { subTab = "settings"; render(); },
+      }),
+    ]);
+
+    box.replaceChildren(subTabs, skeleton(3, 90));
+    const p = subTab === "campaigns" ? campaignsSubPanel()
+      : subTab === "providers" ? providersSubPanel()
+      : settingsSubPanel();
+    p.then((n) => { box.replaceChildren(subTabs, n); }).catch((e) => {
+      box.replaceChildren(subTabs, el("div", { class: "adm-404", text: String(e?.message || e) }));
+    });
+  }
+  render();
+  return box;
+}
+
+// =====================================================================
+// حملات الإعلانات (ال㞖 فرعي)
+// =====================================================================
+async function campaignsSubPanel() {
   const [slotsData, campsData] = await Promise.all([
     api.get("/api/admin/ads/slots"),
     api.get("/api/admin/ads/campaigns"),
   ]);
   const slots = slotsData.slots || [];
   const camps = campsData.campaigns || campsData || [];
-  const box = el("div", { class: "flex-col", style: "gap:16px" });
+  const box = el("div", { class: "flex-col", style: "gap:14px" });
   let page = 1, q = "";
   const tbody = el("tbody");
   const searchI = el("input", { type: "search", placeholder: t("search"), oninput: (e) => { q = e.target.value.trim().toLowerCase(); page = 1; draw(); } });
   const pager = el("div", { class: "adm-pager" });
 
-  // خريطة أسماء الفئات للاستهداف الفئوي (المرحلة 19 — D-037)
   const catNames = {};
   (async () => {
-    const sources = {
-      library: "/api/categories",
-      marketplace: "/api/marketplace/categories",
-      jurisprudence: "/api/admin/jurisprudence/categories",
-    };
+    const sources = { library: "/api/categories", marketplace: "/api/marketplace/categories", jurisprudence: "/api/admin/jurisprudence/categories" };
     for (const [dtype, url] of Object.entries(sources)) {
-      try {
-        const data = await api.get(url);
-        const cats = data.categories || data || [];
-        for (const c of cats) catNames[`${dtype}:${c.id}`] = c.name;
-      } catch (e) { /* تجاهل */ }
+      try { const data = await api.get(url); for (const c of (data.categories || data || [])) catNames[`${dtype}:${c.id}`] = c.name; } catch {}
     }
     draw();
   })();
@@ -260,9 +289,7 @@ async function adsPanel() {
         el("td", { class: "cell-main" }, [
           el("span", { class: "t", text: c.advertiser_name || `#${c.id}` }),
           el("span", { class: "s", text: [c.campaign_type, c.slot_name].filter(Boolean).join(" · ") }),
-          c.target_category_type
-            ? el("span", { class: "s", text: catLabel(c) })
-            : null,
+          c.target_category_type ? el("span", { class: "s", text: catLabel(c) }) : null,
         ]),
         el("td", {}, badge(c.status || "—", c.status === "active" ? "green" : c.status === "paused" ? "gold" : "red")),
         el("td", { class: "num", text: num(c.impressions) }),
@@ -302,6 +329,169 @@ async function adsPanel() {
       ])),
       tbody,
     ])])), pager]),
+  );
+  return box;
+}
+
+// =====================================================================
+// المزوّدون الإعلانيون (Security §7)
+// =====================================================================
+async function providersSubPanel() {
+  const data = await api.get("/api/admin/ads/providers");
+  const providers = data.providers || data || [];
+  const box = el("div", { class: "flex-col", style: "gap:14px" });
+  const tbody = el("tbody");
+
+  function draw() {
+    tbody.replaceChildren(providers.length ? providers.map((p) =>
+      el("tr", {}, [
+        el("td", { class: "cell-main" }, [
+          el("span", { class: "t", text: p.name }),
+          el("span", { class: "s", text: p.slug }),
+        ]),
+        el("td", { text: p.provider_type || "—" }),
+        el("td", {}, badge(p.is_enabled ? (t("activeUsers") || "مفعّل") : (t("hidden") || "معطّل"), p.is_enabled ? "green" : "red")),
+        el("td", { class: "num", text: String(p.slot_count ?? 0) }),
+        el("td", {}, el("div", { class: "adm-actions" }, [
+          el("button", { class: "btn btn-ghost btn-sm", text: t("edit"), onclick: () => providerModal(p, () => draw()) }),
+          el("button", {
+            class: "btn btn-ghost btn-sm",
+            text: p.is_enabled ? (t("hidden") || "تعطيل") : (t("activeUsers") || "تفعيل"),
+            onclick: async () => {
+              try { await api.post("/api/admin/ads/providers/bulk-status", { ids: [p.id], enabled: !p.is_enabled }); toast(t("saved"), "success"); p.is_enabled = !p.is_enabled; draw(); }
+              catch (e) { toast(e.message, "error"); }
+            },
+          }),
+          el("button", { class: "btn btn-danger btn-sm", text: t("delete"), onclick: async () => {
+            if (!(await confirmDialog({ title: t("delete"), text: `${p.name}؟` }))) return;
+            try { await api.del(`/api/admin/ads/providers/${p.id}`); providers.splice(providers.indexOf(p), 1); draw(); }
+            catch (e) { toast(e.message, "error"); }
+          } }),
+        ])),
+      ])) : el("tr", {}, el("td", { colspan: 5 }, emptyState(t("noProviders") || "لا يوجد مزوّدون", "users"))));
+  }
+  draw();
+  box.append(
+    el("div", { class: "adm-toolbar" }, [
+      el("button", { class: "btn btn-ghost btn-sm", text: "↻ " + t("refresh"), onclick: () => providersSubPanel().then((n) => box.replaceWith(n)) }),
+      el("button", { class: "btn btn-primary btn-sm", text: "+ " + (t("newProvider") || "مزوّد جديد"), onclick: () => providerModal(null, () => draw()) }),
+    ]),
+    panel([head(t("adProviders") || "المزوّدون الإعلانيون", []), body(el("div", { class: "adm-tbl-wrap" }, [el("table", { class: "adm-tbl" }, [
+      el("thead", {}, el("tr", {}, [
+        el("th", { text: t("name") || "الاسم" }), el("th", { text: t("type") || "النوع" }),
+        el("th", { text: t("status") }), el("th", { text: t("slots") || "الفتحات" }), el("th", { text: t("actions") }),
+      ])),
+      tbody,
+    ])]))]),
+  );
+  return box;
+}
+
+function providerModal(p, onDone) {
+  const nameI = input({ value: p?.name || "", placeholder: t("name") || "اسم المزوّد" });
+  const slugI = input({ value: p?.slug || "", placeholder: t("slug") || "الرمز" });
+  const typeS = select({}, [
+    el("option", { value: "adsense", text: "Google AdSense" }),
+    el("option", { value: "adsterra", text: "Adsterra" }),
+    el("option", { value: "propellerads", text: "PropellerAds" }),
+    el("option", { value: "monetag", text: "Monetag" }),
+    el("option", { value: "media_net", text: "Media.net" }),
+    el("option", { value: "custom", text: t("custom") || "مخصّص" }),
+  ]);
+  if (p?.provider_type) typeS.value = p.provider_type;
+  const apiKey = input({ value: p?.api_key || "", placeholder: t("apiKey") || "مفتاح API (اختياري)" });
+  const scriptHtml = el("textarea", {
+    text: p?.script_html || "",
+    placeholder: t("scriptHtml") || "كود السكريبت الإعلاني HTML...",
+    rows: "6",
+    style: "font-family:monospace;font-size:12px;min-height:120px",
+  });
+
+  openModal(el("div", {}, [
+    el("h2", { text: p ? (t("editProvider") || "تعديل المزوّد") : (t("newProvider") || "مزوّد جديد") }),
+    field(t("name") || "الاسم" + " *", nameI),
+    el("div", { class: "adm-grid-2" }, [
+      field(t("slug") || "الرمز", slugI),
+      field(t("type") || "النوع", typeS),
+    ]),
+    field(t("apiKey") || "مفتاح API", apiKey),
+    field(t("scriptHtml") || "كود السكريبت", scriptHtml, t("scriptHint") || "HTML — يُحقّق تلقائيًا من النطاقات المعتمدة"),
+    el("div", { class: "modal-actions" }, [
+      el("button", { class: "btn btn-ghost", text: t("cancel"), onclick: closeModal }),
+      el("button", { class: "btn btn-primary", text: t("save"), onclick: async () => {
+        if (!nameI.value.trim()) return toast(t("required"), "warn");
+        const payload = {
+          name: nameI.value.trim(),
+          slug: slugI.value.trim() || nameI.value.trim().toLowerCase().replace(/\s+/g, "-"),
+          provider_type: typeS.value,
+          api_key: apiKey.value.trim() || undefined,
+          script_html: scriptHtml.value.trim() || undefined,
+        };
+        try {
+          if (p) await api.put(`/api/admin/ads/providers/${p.id}`, payload);
+          else await api.post("/api/admin/ads/providers", payload);
+          closeModal(); toast(t("saved"), "success"); onDone && onDone();
+        } catch (e) { toast(e.message, "error"); }
+      } }),
+    ]),
+  ]));
+}
+
+// =====================================================================
+// إعدادات الإعلانات العامة
+// =====================================================================
+async function settingsSubPanel() {
+  const data = await api.get("/api/admin/ads/settings");
+  const settings = data.settings || data || {};
+  const box = el("div", { class: "flex-col", style: "gap:16px" });
+
+  const enabledCheck = el("input", { type: "checkbox", checked: settings.ads_enabled === "true" ? "" : undefined });
+  enabledCheck.checked = settings.ads_enabled === "true";
+  const noPremiumCheck = el("input", { type: "checkbox", checked: settings.ads_no_premium === "true" ? "" : undefined });
+  noPremiumCheck.checked = settings.ads_no_premium === "true";
+  const lazyCheck = el("input", { type: "checkbox", checked: settings.ads_lazy_load !== "false" ? "" : undefined });
+  lazyCheck.checked = settings.ads_lazy_load !== "false";
+  const allowlistI = el("textarea", {
+    text: (settings.ads_domain_allowlist || "").replace(/,/g, "\n"),
+    rows: "5",
+    placeholder: t("domainAllowlist") || "قائمة النطاقات (كل نطاق في سطر)",
+    style: "font-family:monospace;font-size:12px",
+  });
+
+  async function saveSetting(key, value) {
+    try { await api.put("/api/admin/ads/settings", { key, value }); }
+    catch (e) { toast(e.message, "error"); }
+  }
+
+  box.append(
+    panel([
+      head(t("adSettings") || "إعدادات الإعلانات العامة", []),
+      body(el("div", { class: "flex-col", style: "gap:14px" }, [
+        el("label", { class: "adm-checkbox-row" }, [
+          enabledCheck,
+          el("span", { text: t("adsEnabled") || "تفعيل الإعلانات على المنصة" }),
+        ]),
+        el("label", { class: "adm-checkbox-row" }, [
+          noPremiumCheck,
+          el("span", { text: t("adsNoPremium") || "إخفاء الإعلانات عن المشتركين المدفوعين" }),
+        ]),
+        el("label", { class: "adm-checkbox-row" }, [
+          lazyCheck,
+          el("span", { text: t("adsLazyLoad") || "التحميل الكسول (IntersectionObserver)" }),
+        ]),
+        field(t("domainAllowlist") || "قائمة النطاقات المعتمدة", allowlistI, t("allowlistHint") || "كل نطاق في سطر منفصل"),
+        el("div", { class: "modal-actions" }, [
+          el("button", { class: "btn btn-primary", text: t("save"), onclick: async () => {
+            await saveSetting("ads_enabled", String(enabledCheck.checked));
+            await saveSetting("ads_no_premium", String(noPremiumCheck.checked));
+            await saveSetting("ads_lazy_load", String(lazyCheck.checked));
+            const domains = allowlistI.value.split("\n").map((l) => l.trim()).filter(Boolean).join(",");
+            await saveSetting("ads_domain_allowlist", domains);
+            toast(t("saved"), "success");
+          } }),
+        ]),
+      ])),
+    ]),
   );
   return box;
 }

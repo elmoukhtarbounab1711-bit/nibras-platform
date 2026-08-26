@@ -124,3 +124,29 @@ def search():
     if not results:
         results = services.search_texts_by_title(q, limit=limit)
     return jsonify({"query": q, "count": len(results), "results": results})
+
+
+@library_bp.route("/api/ads/slot/<slot_slug>", methods=["GET"])
+def ads_serve_slot(slot_slug):
+    """API عام لجلب مزوّدين فتحة — يستخدمه الواجهة لتحميل السكريبتات.
+
+    لا يتطلب مصادقة. يعيد إعدادات الإعلانات ومزوّدين الفتحة.
+    لا يُعيد أي بيانات المستخدم أو رموز المصادقة.
+    """
+    from ..middleware.auth_middleware import optional_auth
+    from .. import services_ads
+    from ..services_billing import is_premium_user
+
+    is_premium = False
+    if hasattr(request, 'user') and request.user:
+        is_premium = is_premium_user(request.user.id)
+
+    show = services_ads.should_show_ads(is_premium=is_premium)
+    if not show:
+        return jsonify({"enabled": False, "providers": []}), 200
+
+    providers = services_ads.serve_slot(slot_slug)
+    return jsonify({
+        "enabled": True,
+        "providers": providers,
+    }), 200

@@ -219,6 +219,11 @@ requestAnimationFrame(() => {
   });
 });
 
+// تهيئة الإعلانات بعد كل تغيير مسار
+import { setAfterRender } from "./router.js";
+import { initAdSlots } from "./components/ads.js";
+setAfterRender(() => { setTimeout(initAdSlots, 100); });
+
 setInterval(() => { if (session.token) refreshNotifBadge(); }, 60000);
 
 if ("serviceWorker" in navigator) {

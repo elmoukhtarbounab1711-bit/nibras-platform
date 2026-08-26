@@ -2018,3 +2018,31 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
   .doc-cta-actions { justify-content: center; }
   .doc-cta-icon { display: none; }
 }
+
+/* ===== إعلانات (Security §7) ===== */
+.nibras-ad-slot {
+  min-height: 0;
+  margin: 16px 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.nibras-ad-slot:empty { display: none; }
+.nibras-ad-slot[data-slot]::before {
+  content: "";
+  display: block;
+  min-height: 90px;
+  background: var(--surface-2, #f5f5f5);
+  border: 1px dashed var(--line, #e0e0e0);
+  border-radius: 8px;
+}
+.nibras-ad-slot[data-slot]:empty::before {
+  content: "إعلان";
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .75rem;
+  color: var(--muted, #999);
+}
+@media (max-width: 768px) {
+  .nibras-ad-slot { margin: 12px 0; }
+}

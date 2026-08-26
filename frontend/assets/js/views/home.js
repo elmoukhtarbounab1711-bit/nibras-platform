@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { el, esc, emptyState, fmtDate, typeLabel, avatarColor, initials } from "../ui.js";
 import { icon, iconHTML } from "../icons.js";
 import { navigate } from "../router.js";
+import { createAdPlaceholder } from "../components/ads.js";
 
 const truncate = (s, n = 120) => {
   s = String(s ?? "");
@@ -242,6 +243,9 @@ export async function homeView() {
         : emptyState(tr("noResults"), "book"),
     ]),
 
+    /* إعلان: بين القوانين والبوابات */
+    createAdPlaceholder("article_middle"),
+
     /* بوابات الوصول السريع */
     el("section", { class: "home-section" }, [
       el("div", { class: "portal-grid" }, portals.map(([ic, t, d, route]) =>
@@ -284,6 +288,9 @@ export async function homeView() {
         ? el("div", { class: "tile-grid" }, articles.map((a) => tile(() => articleTile(a)())))
         : emptyState(tr("noResults"), "pen"),
     ]),
+
+    /* إعلان: بعد المقالات */
+    createAdPlaceholder("article_bottom"),
 
     /* أحدث الاجتهادات */
     el("section", { class: "home-section" }, [
