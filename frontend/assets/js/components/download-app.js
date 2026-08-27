@@ -155,17 +155,20 @@ function showButton(installLabel) {
   });
 }
 
+/* ---------- التهيئة المبكرة: التقاط حدث التثبيت بأسرع وقت ممكن ---------- */
 export function initDownloadAppButton() {
   if (isStandalone()) return;              // مثبّت بالفعل → لا نعرض شيئاً
-  if (storedVal() === "installed") return; // لقد ثبّته سابقاً
+  if (storedVal() === "installed") return; // ثبّته سابقاً
+  if (storedVal() === "dismissed") return; // أغلقه سابقاً → احترام اختياره
 
   const fr = currentLang() === "fr";
 
-  // Android / Chrome / Edge / Samsung : حدث التثبيت الحقيقي
   window.addEventListener("beforeinstallprompt", (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    if (storedVal() !== "dismissed") showButton(fr ? "Installer l'app" : "تثبيت التطبيق");
+    if (!document.getElementById("download-app-btn")) {
+      showButton(fr ? "Installer l'app" : "تثبيت التطبيق");
+    }
   });
 
   window.addEventListener("appinstalled", () => {
@@ -173,14 +176,17 @@ export function initDownloadAppButton() {
     dismiss();
   });
 
-  // iOS : لا يوجد قبلinstallprompt → دليل إضافة للشاشة الرئيسية
+  // iOS : لا يوجد beforeinstallprompt → دليل الإضافة إلى الشاشة الرئيسية
   if (isIOS() || (isMobile() && !window.chrome)) {
     setTimeout(() => {
       if (document.getElementById("download-app-btn")) return;
-      if (storedVal() === "dismissed") return;
       showButton(fr ? "Installer l'app" : "تثبيت التطبيق");
     }, 2500);
   }
 
-  // سطح المكتب غير المدعوم: لا شيء
+  // وقع الحدث قبل اكتمال تحميل الوحدة (شبكة بطيئة) → أظهر فوراً
+  if (deferredPrompt) showButton(fr ? "Installer l'app" : "تثبيت التطبيق");
 }
+
+// لا ننتظر موافقة الكوكيز ولا نفوّت الحدث — نبدأ فور تحميل الوحدة
+initDownloadAppButton();

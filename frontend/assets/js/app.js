@@ -6,6 +6,7 @@ import { icon } from "./icons.js";
 import { register, setNotFound, initRouter, render, navigate } from "./router.js";
 import { openAuth, logout } from "./views/auth.js";
 import { initAppMode, updateAppMode } from "./components/app-mode.js";
+import "./components/download-app.js";
 
 initAppMode();
 
@@ -213,12 +214,8 @@ render();
 
 // شريط موافقة ملفات تعريف الارتباط (القانون 09-08) — متأخر عن الإقلاع
 requestAnimationFrame(() => {
-  import("./components/cookie-consent.js").then(({ initCookieConsent, onCookieConsent, hasCookieConsent }) => {
+  import("./components/cookie-consent.js").then(({ initCookieConsent }) => {
     initCookieConsent();
-    import("./components/download-app.js").then(({ initDownloadAppButton }) => {
-      onCookieConsent(() => initDownloadAppButton());
-      if (hasCookieConsent()) initDownloadAppButton();
-    });
   });
 });
 
