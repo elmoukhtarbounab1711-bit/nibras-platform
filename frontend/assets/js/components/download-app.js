@@ -1,50 +1,120 @@
-// نبراس — زر تحميل التطبيق (PWA) — يظهر بعد موافقة الكوكيز
+// نبراس — زر تحميل/تثبيت التطبيق (PWA) — قبلinstallprompt + تعليمات iOS
 import { currentLang } from "../i18n.js";
 import { el } from "../ui.js";
 
-const STORAGE_KEY = "nibras_download_dismissed";
+const STORAGE_KEY = "nibras_pwa_prompt";
+let deferredPrompt = null;
 
-function isDismissed() {
-  try { return localStorage.getItem(STORAGE_KEY) === "1"; }
-  catch { return false; }
+function storedVal() {
+  try { return localStorage.getItem(STORAGE_KEY); } catch { return null; }
+}
+function setStoredVal(v) {
+  try { localStorage.setItem(STORAGE_KEY, v); } catch { /* ok */ }
+}
+
+function isStandalone() {
+  return window.matchMedia("(display-mode: standalone)").matches
+    || window.navigator.standalone === true;
+}
+
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+function isMobile() {
+  return /Android|iPhone|iPad|iPod|Mobile/.test(navigator.userAgent);
 }
 
 function dismiss() {
-  try { localStorage.setItem(STORAGE_KEY, "1"); }
-  catch { /* ok */ }
+  setStoredVal("dismissed");
   const btn = document.getElementById("download-app-btn");
   if (btn) {
     btn.style.opacity = "0";
     btn.style.transform = "translateY(20px) scale(0.9)";
     setTimeout(() => btn.remove(), 300);
   }
+  const sheet = document.getElementById("pwa-install-sheet");
+  if (sheet) closeSheet();
 }
 
-function installPWA() {
-  if (window._deferredInstallPrompt) {
-    window._deferredInstallPrompt.prompt();
-    window._deferredInstallPrompt.userChoice.then((choice) => {
-      if (choice.outcome === "accepted") dismiss();
-      window._deferredInstallPrompt = null;
+function runInstall() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then((choice) => {
+      if (choice.outcome === "accepted") {
+        setStoredVal("installed");
+        dismiss();
+      }
+      deferredPrompt = null;
     });
-  } else {
-    const isFr = currentLang() === "fr";
-    alert(isFr
-      ? "Pour installer, utilisez le menu du navigateur > Ajouter a l'ecran d'accueil."
-      : "لتنزيل التطبيق، استخدم قائمة المتصفح > إضافة إلى الشاشة الرئيسية."
-    );
+    return;
   }
+  if (isIOS()) showIOSSheet();
+  else showIOSSheet(); // fallback: instructions
 }
 
-function showButton() {
-  if (document.getElementById("download-app-btn") || isDismissed()) return;
+/* ---------- ورقة تعليمات iOS (أو عامة) ---------- */
+let sheetRemoved = false;
+function closeSheet() {
+  const sheet = document.getElementById("pwa-install-sheet");
+  const veil = document.getElementById("pwa-install-veil");
+  const remove = () => { sheet && sheet.remove(); veil && veil.remove(); };
+  if (sheet) sheet.style.transform = "translateY(105%)";
+  if (veil) veil.style.opacity = "0";
+  setTimeout(remove, 250);
+}
 
-  const isFr = currentLang() === "fr";
+function showIOSSheet() {
+  if (document.getElementById("pwa-install-sheet")) return;
+  sheetRemoved = false;
+
+  const fr = currentLang() === "fr";
+
+  const veil = el("div", {
+    id: "pwa-install-veil",
+    class: "pwa-veil",
+    onclick: closeSheet,
+  });
+
+  const sheet = el("div", { id: "pwa-install-sheet", class: "pwa-sheet" }, [
+    el("div", { class: "pwa-sheet-head" }, [
+      el("img", { src: "/icons/apple-touch-icon.png", alt: "نبراس", class: "pwa-sheet-icon" }),
+      el("div", { class: "pwa-sheet-title", text: fr ? "Installer l'application Nibras" : "تثبيت تطبيق نبراس" }),
+      el("button", { class: "pwa-sheet-close", onclick: () => { setStoredVal("dismissed"); closeSheet(); } }, ["✕"]),
+    ]),
+    el("ol", { class: "pwa-sheet-steps" }, [
+      el("li", {}, [
+        el("strong", { text: fr ? "Appuyez sur le bouton Partager" : "اضغط على زر المشاركة" }),
+        el("span", { class: "pwa-sheet-hint", text: fr ? "dans Safari (en bas de l'écran)" : "في سفاري Safari (أسفل الشاشة)" }),
+      ]),
+      el("li", {}, [
+        el("strong", { text: fr ? "Appuyez sur « Ajouter à l'écran d'accueil »" : "اضغط على «إضافة إلى الشاشة الرئيسية»" }),
+      ]),
+      el("li", {}, [
+        el("strong", { text: fr ? "Appuyez sur « Ajouter »" : "اضغط على «إضافة»" }),
+        el("span", { class: "pwa-sheet-hint", text: fr ? "Puis retrouvez Nibras sur votre écran d'accueil" : "ثم ستفقد تطبيق نبراس على شاشتك الرئيسية" }),
+      ]),
+    ]),
+    el("button", { class: "btn btn-primary pwa-sheet-btn", onclick: closeSheet }, [fr ? "Compris" : "فهمت"]),
+  ]);
+
+  document.body.append(veil, sheet);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      sheet.style.transform = "translateY(0)";
+      veil.style.opacity = "1";
+    });
+  });
+}
+
+/* ---------- زر عائم ---------- */
+function showButton(installLabel) {
+  if (document.getElementById("download-app-btn") || storedVal() === "dismissed") return;
+
+  const fr = currentLang() === "fr";
 
   const dlIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   dlIcon.setAttribute("viewBox", "0 0 24 24");
-  dlIcon.setAttribute("width", "20");
-  dlIcon.setAttribute("height", "20");
+  dlIcon.setAttribute("width", "18");
+  dlIcon.setAttribute("height", "18");
   dlIcon.setAttribute("fill", "none");
   dlIcon.setAttribute("stroke", "currentColor");
   dlIcon.setAttribute("stroke-width", "2");
@@ -65,13 +135,13 @@ function showButton() {
   const btn = el("button", {
     id: "download-app-btn",
     class: "download-app-btn",
-    onclick: installPWA,
+    onclick: runInstall,
   }, [
     el("span", { class: "download-app-icon" }, [dlIcon]),
-    el("span", { class: "download-app-text", text: isFr ? "Télécharger l'app" : "تنزيل التطبيق" }),
+    el("span", { class: "download-app-text", text: installLabel || (fr ? "Installer l'app" : "تثبيت التطبيق") }),
     el("button", {
       class: "download-app-close",
-      title: isFr ? "Fermer" : "إغلاق",
+      title: fr ? "Fermer" : "إغلاق",
       onclick: (e) => { e.stopPropagation(); dismiss(); },
     }, [closeIcon]),
   ]);
@@ -86,16 +156,31 @@ function showButton() {
 }
 
 export function initDownloadAppButton() {
-  if (isDismissed()) return;
+  if (isStandalone()) return;              // مثبّت بالفعل → لا نعرض شيئاً
+  if (storedVal() === "installed") return; // لقد ثبّته سابقاً
 
+  const fr = currentLang() === "fr";
+
+  // Android / Chrome / Edge / Samsung : حدث التثبيت الحقيقي
   window.addEventListener("beforeinstallprompt", (e) => {
     e.preventDefault();
-    window._deferredInstallPrompt = e;
-    showButton();
+    deferredPrompt = e;
+    if (storedVal() !== "dismissed") showButton(fr ? "Installer l'app" : "تثبيت التطبيق");
   });
 
-  setTimeout(() => {
-    if (document.getElementById("download-app-btn")) return;
-    showButton();
-  }, 2000);
+  window.addEventListener("appinstalled", () => {
+    setStoredVal("installed");
+    dismiss();
+  });
+
+  // iOS : لا يوجد قبلinstallprompt → دليل إضافة للشاشة الرئيسية
+  if (isIOS() || (isMobile() && !window.chrome)) {
+    setTimeout(() => {
+      if (document.getElementById("download-app-btn")) return;
+      if (storedVal() === "dismissed") return;
+      showButton(fr ? "Installer l'app" : "تثبيت التطبيق");
+    }, 2500);
+  }
+
+  // سطح المكتب غير المدعوم: لا شيء
 }

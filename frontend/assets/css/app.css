@@ -1808,6 +1808,75 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
   .download-app-icon svg { width: 16px; height: 16px; }
 }
 
+/* ورقة تعليمات التثبيت (iOS + البديل العام) */
+.pwa-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: rgba(7, 26, 54, 0.55);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.pwa-sheet {
+  position: fixed;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%) translateY(105%);
+  z-index: 10002;
+  width: min(420px, calc(100vw - 24px));
+  background: var(--surface, #fff);
+  color: var(--ink, #1a202c);
+  border-radius: 20px;
+  padding: 18px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  direction: rtl;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.pwa-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.pwa-sheet-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(31, 58, 147, 0.35);
+}
+.pwa-sheet-title {
+  flex: 1;
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--navy, #1f3a93);
+}
+.pwa-sheet-close {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--ink-2, #555);
+  cursor: pointer;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.pwa-sheet-steps {
+  margin: 0 0 16px;
+  padding-inline-start: 20px;
+}
+.pwa-sheet-steps li {
+  margin-bottom: 12px;
+  line-height: 1.6;
+  font-size: 14px;
+}
+.pwa-sheet-steps strong { display: block; }
+.pwa-sheet-hint { color: var(--ink-3, #888); font-size: 13px; }
+.pwa-sheet-btn { width: 100%; }
+
 /* ════════════════════════════════════════════════════════════════════════
    Mobile Responsive — تحسينات الهاتف فقط (لا تؤثر على سطح المكتب)
    ════════════════════════════════════════════════════════════════════════ */
