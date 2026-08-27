@@ -3,6 +3,8 @@ export const FR = {
   brand: "Nibras",
   brandSub: "La plateforme juridique marocaine",
   navHome: "Accueil", navLibrary: "Bibliothèque", navBlog: "Articles",
+  tabHome: "Accueil", tabLibrary: "Bibliothèque", tabProcedures: "Procédures",
+  tabAssistant: "Assistant", tabProfile: "Compte",
   navJurisprudence: "Jurisprudence",
   navResearch: "Bibliothèque du chercheur",
   navProcedures: "Procédures", navDocuments: "Documents",

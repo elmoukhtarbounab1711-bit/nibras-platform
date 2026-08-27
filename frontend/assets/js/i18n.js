@@ -4,6 +4,8 @@ const AR = {
   brand: "نبراس",
   brandSub: "المنصة القانونية المغربية",
   navHome: "الرئيسية", navLibrary: "المكتبة", navBlog: "المقالات",
+  tabHome: "الرئيسية", tabLibrary: "المكتبة", tabProcedures: "المساطر",
+  tabAssistant: "المساعد", tabProfile: "حسابي",
   navJurisprudence: "الاجتهادات",
   navResearch: "مكتبة الباحث",
   navProcedures: "المساطر", navDocuments: "الوثائق",

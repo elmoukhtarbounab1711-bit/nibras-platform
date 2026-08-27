@@ -5,6 +5,9 @@ import { el, toast } from "./ui.js";
 import { icon } from "./icons.js";
 import { register, setNotFound, initRouter, render, navigate } from "./router.js";
 import { openAuth, logout } from "./views/auth.js";
+import { initAppMode, updateAppMode } from "./components/app-mode.js";
+
+initAppMode();
 
 // حمولة أولى فقط: الرئيسية + المكونات الأساسية (~35KB بدل ~450KB)
 import { homeView } from "./views/home.js";
@@ -225,6 +228,7 @@ import { initAdSlots, resetAdObserver } from "./components/ads.js";
 setAfterRender(() => {
   resetAdObserver();
   setTimeout(initAdSlots, 100);
+  updateAppMode();
 });
 
 setInterval(() => { if (session.token) refreshNotifBadge(); }, 60000);
