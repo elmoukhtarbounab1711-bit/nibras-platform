@@ -2088,6 +2088,83 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
   .doc-cta-icon { display: none; }
 }
 
+/* ===== تحسينات موبايل احترافية ===== */
+@media (max-width: 860px) {
+  /* أهداف اللمس الدنيا 44px */
+  .btn, .icon-btn, .nav-toggle, .tab a, .chip, .dropdown-toggle,
+  .pagination a, .pagination button, .btn-user,
+  .download-app-btn, .cookie-banner-actions .btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .btn { padding: 12px 20px; }
+  .icon-btn { width: 44px; height: 44px; display: inline-grid; place-items: center; }
+  a[href], button, [role="button"], input[type="submit"], input[type="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* حقول الإدخال */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  select, textarea {
+    min-height: 44px;
+    padding-block: 10px;
+    font-size: 16px; /* يمنع زوم iOS */
+  }
+  .search-box input { padding: 12px 16px; font-size: 16px; }
+
+  /* البطاقات: منطقة لمس كاملة إذا كانت رابطًا */
+  .card a[href] { display: block; }
+  .card > a[href] { padding: 16px; border-radius: inherit; }
+  .card > a[href]:active { background: var(--surface-2); }
+
+  /* Toast فوق الشريط السفلي + safe-area */
+  .toast-stack { inset-block-end: calc(20px + env(safe-area-inset-bottom, 0px)); inset-inline-end: 12px; inset-inline-start: 12px; }
+  .toast { min-width: 0; max-width: 100%; }
+
+  /* Modal لا يغطي النوتش */
+  .modal-backdrop { padding: calc(20px + env(safe-area-inset-top, 0px)) 12px calc(20px + env(safe-area-inset-bottom, 0px)); }
+
+  /* Hero: إيقاع عمودي أفضل */
+  .hero { padding-block: clamp(28px, 6vw, 48px); }
+  .hero h1 { line-height: 1.2; }
+  .hero p { margin-bottom: 20px; }
+  .hero-actions { gap: 10px; }
+
+  /* مكتبة Hero */
+  .lib-hero { min-height: 260px; padding: 32px 18px 40px; }
+  .lib-hero h1 { font-size: clamp(22px, 5vw, 32px); line-height: 1.25; }
+  .lib-hero .hero-sub { font-size: 14px; }
+
+  /* تمرير ناعم + احتواء التجاوز */
+  html { scroll-behavior: smooth; }
+  body { -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
+  .main-nav { -webkit-overflow-scrolling: touch; }
+
+  /* شريط الكوكيز فوق الشريط السفلي */
+  .cookie-banner { bottom: 0; transform: none; }
+  .cookie-banner.show { transform: none; }
+
+  /* زر التحميل العائم فوق الشريط السفلي */
+  .download-app-btn { bottom: calc(90px + env(safe-area-inset-bottom, 0px)); }
+
+  /* نص قانوني: قابلية القراءة */
+  .legal-text, .legal-list { font-size: 15px; line-height: 1.85; }
+  .legal-section h2 { font-size: 17px; }
+  .legal-table th, .legal-table td { padding: 8px 10px; font-size: 14px; }
+
+  /* قوائم تنقل: مسافة بين العناصر */
+  .main-nav a { padding: 14px 16px; }
+}
+
+@media (max-width: 480px) {
+  .container { padding-inline: 14px; }
+  .hero { border-radius: var(--radius-lg); }
+  .lib-hero { border-radius: var(--radius-lg); }
+  .card { border-radius: var(--radius-sm); }
+  .section-head h2 { font-size: 18px; }
+  .trust-item { padding: 12px; }
+}
+
 /* ===== إعلانات (Security §7) ===== */
 .nibras-ad-slot {
   min-height: 0;
@@ -2148,8 +2225,9 @@ html.app-mode .app-tabbar {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  padding: 8px 2px 6px;
+  gap: 4px;
+  padding: 10px 2px 8px;
+  min-height: 58px;
   color: #9aa9d8;
   font-size: 11px;
   font-weight: 600;
@@ -2158,6 +2236,8 @@ html.app-mode .app-tabbar {
   transition: color 0.2s;
   text-decoration: none;
 }
+.app-tabbar a svg { width: 23px; height: 23px; stroke-width: 1.9; }
+.app-tabbar a.active svg { stroke-width: 2.3; }
 .app-tabbar a:active { opacity: 0.65; }
 .app-tabbar a.active { color: var(--gold-light, #e7c973); }
 .app-tabbar a.active::before {
@@ -2170,7 +2250,7 @@ html.app-mode .app-tabbar {
   background: linear-gradient(90deg, var(--gold, #c9a227), var(--gold-light, #e7c973));
   box-shadow: 0 2px 8px rgba(201, 162, 39, 0.5);
 }
-html.app-mode main.site-main { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+html.app-mode main.site-main { padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px)); }
 html.app-mode.immersive .app-tabbar { transform: translateY(110%); }
 html.app-mode.immersive .site-header { transform: translateY(-100%); }
 html.app-mode.immersive main.site-main { padding-top: 12px; padding-bottom: 40px; }
@@ -2191,7 +2271,10 @@ html.app-mode.immersive main.site-main { padding-top: 12px; padding-bottom: 40px
     background: linear-gradient(90deg, rgba(7, 26, 54, 0.985), rgba(11, 42, 82, 0.96));
     box-shadow: 0 4px 18px rgba(7, 26, 54, 0.45);
     transition: transform 0.32s var(--ease);
+    padding-top: env(safe-area-inset-top, 0px);
   }
+  html.app-mode .site-header::before,
+  html.app-mode .site-header::after { display: none; }
   html.app-mode .header-inner { min-height: 56px; gap: 10px; }
   html.app-mode .brand-text { display: none; }
   html.app-mode .brand-mark { width: 34px; height: 34px; border-radius: 10px; box-shadow: 0 4px 12px rgba(201, 162, 39, 0.35); }
@@ -2201,7 +2284,7 @@ html.app-mode.immersive main.site-main { padding-top: 12px; padding-bottom: 40px
 
   /* المحتوى أعلى الصفحة أسفل الرأس */
   html.app-mode main.site-main {
-    padding-top: 72px;
+    padding-top: calc(72px + env(safe-area-inset-top, 0px));
     min-height: calc(100vh - 56px);
   }
 }
