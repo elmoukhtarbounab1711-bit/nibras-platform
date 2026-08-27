@@ -1,12 +1,13 @@
 // نبراس — موجّه SPA قائم على hash مع حراسة الصلاحيات
 import { tr } from "./i18n.js";
-import { el, toast } from "./ui.js";
+import { el, toast, skeleton } from "./ui.js";
 import { icon } from "./icons.js";
 import { session } from "./api.js";
 
 const routes = [];
 let notFound = null;
 let afterRender = null;
+let transitioning = false;
 
 export function register(path, handler, { auth = false, admin = false } = {}) {
   const parts = path.split("/").filter(Boolean).map((p) =>
@@ -40,6 +41,26 @@ export function matchHash(hash) {
   return { route: { handler: notFound }, params: {} };
 }
 
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+async function withTransition(view, fn) {
+  if (prefersReducedMotion() || !document.startViewTransition) {
+    return fn();
+  }
+  transitioning = true;
+  try {
+    await document.startViewTransition(fn).finished;
+  } finally {
+    transitioning = false;
+  }
+}
+
+function showSkeleton(view) {
+  view.replaceChildren(skeleton(4, 80));
+}
+
 export function render() {
   const { route, params } = matchHash(location.hash);
   const view = document.getElementById("view");
@@ -69,12 +90,18 @@ export function render() {
   });
 
   const start = performance.now();
-  Promise.resolve(route.handler(params)).then((html) => {
-    if (typeof html === "string") view.innerHTML = html;
-    else if (html instanceof Node) { view.replaceChildren(html); }
-    else view.innerHTML = "";
-    view.scrollTop = 0;
-    window.scrollTo({ top: 0, behavior: "instant" });
+  
+  // Show skeleton immediately for perceived performance
+  showSkeleton(view);
+
+  Promise.resolve(route.handler(params)).then(async (html) => {
+    await withTransition(view, () => {
+      if (typeof html === "string") view.innerHTML = html;
+      else if (html instanceof Node) { view.replaceChildren(html); }
+      else view.innerHTML = "";
+      view.scrollTop = 0;
+      window.scrollTo({ top: 0, behavior: "instant" });
+    });
     if (afterRender) afterRender(route, params, performance.now() - start);
   }).catch((err) => {
     console.error(err);

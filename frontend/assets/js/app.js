@@ -7,8 +7,10 @@ import { register, setNotFound, initRouter, render, navigate } from "./router.js
 import { openAuth, logout } from "./views/auth.js";
 import { initAppMode, updateAppMode } from "./components/app-mode.js";
 import "./components/download-app.js";
+import { initMobileEnhancements } from "./components/mobile-enhancements.js";
 
 initAppMode();
+initMobileEnhancements();
 
 // حمولة أولى فقط: الرئيسية + المكونات الأساسية (~35KB بدل ~450KB)
 import { homeView } from "./views/home.js";
