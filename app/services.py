@@ -668,7 +668,8 @@ def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_ty
         results = []
         for row in rows:
             r = row_to_dict(row)
-            content = r.get("content") or r.get("description") or r.get("source_note")
+            # استخدام title كمصدر أساسي للتمييز (لأن الوصف/المحتوى غالباً فارغ)
+            content = r.get("content") or r.get("description") or r.get("source_note") or r.get("legal_text_title") or ""
             if highlight and content:
                 for term in highlight_terms:
                     if len(term) > 2:
