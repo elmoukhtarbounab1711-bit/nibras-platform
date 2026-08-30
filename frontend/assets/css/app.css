@@ -3168,3 +3168,268 @@ html.app-mode.immersive main.site-main { padding-top: 12px; padding-bottom: 40px
     min-height: calc(100vh - 56px);
   }
 }
+
+/* ============================================================
+   بحث محسّن — Facets، Domain Cards، Search Enhanced
+   ============================================================ */
+
+/* ── Domain Grid (لوحة النطاقات القانونية) ── */
+.domain-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+.domain-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-1);
+  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base);
+  text-decoration: none;
+  color: inherit;
+  text-align: start;
+}
+.domain-card::before {
+  content: "";
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  height: 4px;
+  background: var(--domain-color, var(--gold-grad));
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+.domain-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--elevation-3);
+  border-color: var(--domain-color, var(--gold));
+}
+.domain-card:hover::before { opacity: 1; }
+.domain-card:active { transform: scale(0.98); }
+.dc-icon-wrap {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius);
+  display: grid;
+  place-items: center;
+  margin-bottom: 12px;
+  color: var(--domain-color, var(--gold));
+  font-size: 28px;
+}
+.dc-info { width: 100%; }
+.dc-name {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+  margin-bottom: 4px;
+  line-height: 1.3;
+}
+.dc-desc {
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.dc-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.dc-arrow { color: var(--domain-color, var(--gold)); }
+
+/* ── Search Enhanced ── */
+.search-bar-enhanced {
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
+.search-field-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.search-field-wrapper svg {
+  position: absolute;
+  inset-inline-start: 14px;
+  color: var(--ink-3);
+  z-index: 1;
+}
+.search-field-wrapper input {
+  width: 100%;
+  padding: 14px 16px 14px 48px;
+  font-size: 16px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--ink);
+  min-height: 52px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.search-field-wrapper input:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: var(--ring);
+}
+.search-field-wrapper .search-btn {
+  position: absolute;
+  inset-inline-end: 4px;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  background: var(--navy-grad);
+  color: white;
+  border: none;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.search-field-wrapper .search-btn:hover { transform: scale(1.05); box-shadow: var(--elevation-2); }
+.search-field-wrapper .search-btn:active { transform: scale(0.95); }
+
+.search-suggestions {
+  position: absolute;
+  inset-block-start: calc(100% + 8px);
+  inset-inline: 0;
+  z-index: 100;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-3);
+  padding: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+  animation: fade-up 0.2s var(--ease);
+}
+.search-suggestions:empty { display: none !important; }
+.suggestion-item {
+  border-radius: var(--radius);
+}
+.suggestion-item:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* ── Search Facets (الفلاتر الجانبية) ── */
+.search-facets {
+  position: sticky;
+  top: calc(var(--header-h) + 5px + env(safe-area-inset-top, 0px));
+  max-height: calc(100vh - var(--header-h) - 20px);
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-1);
+  margin-bottom: 20px;
+}
+html.app-mode .search-facets {
+  top: calc(56px + env(safe-area-inset-top, 0px));
+}
+@media (max-width: 860px) {
+  .search-facets {
+    position: fixed;
+    inset: 0;
+    z-index: 1010;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    padding: calc(56px + env(safe-area-inset-top, 0px)) 16px calc(20px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(100%);
+    transition: transform 0.3s var(--ease);
+    max-height: none;
+  }
+  .search-facets.open { transform: translateX(0); }
+  .facet-close-btn {
+    position: absolute;
+    inset-block-start: 16px;
+    inset-inline-end: 16px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--surface-2);
+    border: none;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+  }
+}
+.facet-section { margin-bottom: 20px; }
+.facet-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.facet-options { display: flex; flex-direction: column; gap: 6px; }
+.facet-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.facet-option:hover { background: var(--gold-soft); }
+.facet-option.active { background: var(--gold-soft); border-color: var(--gold); }
+.facet-option input { display: none; }
+.facet-label { flex: 1; font-size: 14px; font-weight: 500; color: var(--ink); }
+.facet-count { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.facet-option .facet-label { border-inline-start: 3px solid transparent; padding-inline-start: 10px; }
+.facet-option.active .facet-label { border-inline-start-color: var(--gold); }
+
+/* ── Highlighted search terms ── */
+mark {
+  background: var(--gold-soft);
+  color: var(--navy);
+  padding: 1px 3px;
+  border-radius: 3px;
+  font-weight: 700;
+}
+
+/* ── Law card enhancements for domain context ── */
+.law-card .law-ic svg { color: var(--navy); }
+.law-card:hover .law-ic svg { color: var(--gold); transform: scale(1.1); transition: transform var(--transition-fast), color var(--transition-fast); }
+.badge-pill[style*="background"] { font-weight: 600; font-size: 11px; }
+
+/* ── Domain banner enhancements ── */
+.lib-cat-banner .lcb-ic { transition: transform var(--transition-base); }
+.lib-cat-banner:hover .lcb-ic { transform: scale(1.1) rotate(-3deg); }
+
+/* ── Mobile facets toggle ── */
+@media (max-width: 860px) {
+  .search-facets-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--navy-grad);
+    color: white;
+    border: none;
+    border-radius: var(--radius-full);
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 16px;
+    box-shadow: var(--elevation-2);
+  }
+  .search-facets-toggle svg { width: 18px; height: 18px; }
+}

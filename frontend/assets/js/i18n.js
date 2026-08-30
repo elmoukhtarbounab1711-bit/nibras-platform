@@ -509,6 +509,14 @@ const AR = {
     errorLoading: "خطأ في تحميل البيانات",
     visitorsLastWeek: "زيارات آخر أسبوع", visitorsUnique: "زوار فريدون",
     visitorsRegistered: "مسجلون",
+    // Search & Domains
+    libDomainsTitle: "النطاقات القانونية",
+    domainFilter: "النطاق القانوني",
+    categoryFilter: "التصنيف",
+    typeFilter: "نوع النص",
+    synonym: "مرادف",
+    filters: "الفلاتر",
+    clearFilters: "مسح الفلاتر",
   },
 };
 

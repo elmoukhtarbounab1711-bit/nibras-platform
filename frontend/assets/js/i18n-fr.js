@@ -508,5 +508,13 @@ export const FR = {
     visitorsPage: "page", visitorsDistribution: "Répartition", visitorsLive: "En direct",
     visitorsLastWeek: "Visites -7j", visitorsUnique: "Uniques",
     visitorsRegistered: "Enregistrés :",
+    // Search & Domains
+    libDomainsTitle: "Domaines juridiques",
+    domainFilter: "Domaine juridique",
+    categoryFilter: "Catégorie",
+    typeFilter: "Type de texte",
+    synonym: "Synonyme",
+    filters: "Filtres",
+    clearFilters: "Effacer les filtres",
   },
 };

@@ -498,3 +498,309 @@ def library_stats():
         ).fetchone()[0]
         stats["last_update"] = row or None
     return stats
+
+
+# ============================================================
+# محسّن البحث المحسّن — مع فلاتر النطاق/الفئة، تمييز، وجوهات
+# ============================================================
+
+def _build_highlight_snippet(content, query_terms, max_len=200):
+    """بناء مقتطف مع تمييز مصطلحات البحث."""
+    if not content or not query_terms:
+        return content[:max_len] + ("..." if len(content) > max_len else "")
+    normalized = arabic_text.normalize_arabic(content)
+    # العثور على أول ظهور لأي مصطلح
+    best_pos = len(normalized)
+    for term in query_terms:
+        if not term:
+            continue
+        pos = normalized.find(arabic_text.normalize_arabic(term))
+        if pos != -1 and pos < best_pos:
+            best_pos = pos
+    start = max(0, best_pos - 60)
+    end = min(len(content), start + max_len)
+    snippet = content[start:end]
+    if start > 0:
+        snippet = "..." + snippet
+    if end < len(content):
+        snippet = snippet + "..."
+    # تمييز المصطلحات (بسيط - لـ HTML frontend)
+    return snippet
+
+
+def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_type=None,
+                 date_from=None, date_to=None, highlight=True, facets=True):
+    """
+    بحث قانوني محسّن مع:
+    - فلترة حسب النطاق القانوني (domain_id) والفئة (category_id)
+    - فلترة حسب نوع النص (law, decree, decision, etc.)
+    - فلترة حسب التاريخ
+    - تمييز مصطلحات البحث في النتائج
+    - وجوهات (facets) للفلترة الجانبية
+    """
+    if not query_text or not query_text.strip():
+        return {"results": [], "facets": {}, "total": 0, "query": query_text}
+
+    term_groups = arabic_text.build_search_terms(query_text)
+    if not term_groups:
+        return {"results": [], "facets": {}, "total": 0, "query": query_text}
+
+    # مصطلحات البحث للتمييز
+    highlight_terms = []
+    for g in term_groups:
+        highlight_terms.extend(g)
+
+    with db_session() as conn:
+        # بناء شرط WHERE
+        where_parts = []
+        params = []
+
+        # FTS query
+        fts_query = arabic_text.build_fts_query(term_groups)
+        where_parts.append("articles_fts MATCH ?")
+        params.append(fts_query)
+
+        # فلترة النطاق/الفئة/النوع
+        if domain_id:
+            where_parts.append("lt.domain_id = ?")
+            params.append(domain_id)
+        if category_id:
+            where_parts.append("lt.category_id = ?")
+            params.append(category_id)
+        if text_type:
+            where_parts.append("lt.type = ?")
+            params.append(text_type)
+        if date_from:
+            where_parts.append("COALESCE(lt.last_amended, lt.enacted_date) >= ?")
+            params.append(date_from)
+        if date_to:
+            where_parts.append("COALESCE(lt.last_amended, lt.enacted_date) <= ?")
+            params.append(date_to)
+
+        # نطاق المستأجر
+        for alias in ("a", "lt", "c"):
+            cond, vals = tenant_scope.tenant_eq(alias)
+            if cond:
+                where_parts.append(cond)
+                params.extend(vals)
+
+        where_parts.append("lt.jurisdiction_id IS NULL")
+
+        where_clause = " AND ".join(where_parts)
+
+        # الاستعلام الرئيسي مع BM25 rank
+        base_query = f"""
+            SELECT a.id, a.label, a.content, a.plain_explanation,
+                 lt.id AS legal_text_id, lt.title AS legal_text_title,
+                 lt.type AS text_type, lt.official_ref, lt.enacted_date,
+                 lt.last_amended, lt.domain_id, lt.category_id,
+                 c.name AS category_name, c.slug AS category_slug,
+                 d.name_ar AS domain_name_ar, d.name_fr AS domain_name_fr,
+                 d.slug AS domain_slug, d.color AS domain_color, d.icon AS domain_icon,
+                 bm25(articles_fts) AS rank
+            FROM articles_fts
+            JOIN articles a ON a.id = articles_fts.rowid
+            JOIN legal_texts lt ON lt.id = a.legal_text_id
+            JOIN categories c ON c.id = lt.category_id
+            JOIN legal_domains d ON d.id = lt.domain_id
+            WHERE {where_clause}
+            ORDER BY rank
+            LIMIT ?
+        """
+        params.append(limit)
+        rows = conn.execute(base_query, params).fetchall()
+
+        # نتائج مع تمييز
+        results = []
+        for row in rows:
+            r = row_to_dict(row)
+            if highlight and r.get("content"):
+                # تمييز بسيط: نحيط بمصطلحات البحث بـ <mark>
+                content = r["content"]
+                for term in highlight_terms:
+                    if len(term) > 2:
+                        norm_term = arabic_text.normalize_arabic(term)
+                        norm_content = arabic_text.normalize_arabic(content)
+                        if norm_term in norm_content:
+                            # استبدال بسيط (يحافظ على النص الأصلي)
+                            import re
+                            pattern = re.compile(re.escape(term), re.IGNORECASE)
+                            content = pattern.sub(f'<mark>{term}</mark>', content)
+                r["highlighted_content"] = content[:300] + ("..." if len(content) > 300 else "")
+            results.append(r)
+
+        # وجوهات (Facets) للفلترة الجانبية
+        facet_data = {}
+        if facets:
+            # توزيع حسب النطاق
+            domain_facet = conn.execute(f"""
+                SELECT d.id, d.name_ar, d.name_fr, d.slug, d.color, d.icon, COUNT(DISTINCT a.id) as count
+                FROM articles_fts
+                JOIN articles a ON a.id = articles_fts.rowid
+                JOIN legal_texts lt ON lt.id = a.legal_text_id
+                JOIN legal_domains d ON d.id = lt.domain_id
+                WHERE {where_clause}
+                GROUP BY d.id
+                ORDER BY count DESC
+            """, params[:-1]).fetchall()  # exclude limit param
+            facet_data["domains"] = [row_to_dict(r) for r in domain_facet]
+
+            # توزيع حسب الفئة
+            cat_facet = conn.execute(f"""
+                SELECT c.id, c.name, c.slug, COUNT(DISTINCT a.id) as count
+                FROM articles_fts
+                JOIN articles a ON a.id = articles_fts.rowid
+                JOIN legal_texts lt ON lt.id = a.legal_text_id
+                JOIN categories c ON c.id = lt.category_id
+                WHERE {where_clause}
+                GROUP BY c.id
+                ORDER BY count DESC
+            """, params[:-1]).fetchall()
+            facet_data["categories"] = [row_to_dict(r) for r in cat_facet]
+
+            # توزيع حسب النوع
+            type_facet = conn.execute(f"""
+                SELECT lt.type, COUNT(DISTINCT a.id) as count
+                FROM articles_fts
+                JOIN articles a ON a.id = articles_fts.rowid
+                JOIN legal_texts lt ON lt.id = a.legal_text_id
+                WHERE {where_clause}
+                GROUP BY lt.type
+                ORDER BY count DESC
+            """, params[:-1]).fetchall()
+            facet_data["types"] = [row_to_dict(r) for r in type_facet]
+
+        # إجمالي النتائج (للترقيم)
+        total_query = f"""
+            SELECT COUNT(DISTINCT a.id)
+            FROM articles_fts
+            JOIN articles a ON a.id = articles_fts.rowid
+            JOIN legal_texts lt ON lt.id = a.legal_text_id
+            WHERE {where_clause}
+        """
+        total = conn.execute(total_query, params[:-1]).fetchone()[0]
+
+    return {
+        "query": query_text,
+        "total": total,
+        "results": results,
+        "facets": facet_data,
+        "highlight_terms": highlight_terms
+    }
+
+
+def get_search_suggestions(query_text, limit=8):
+    """
+    اقتراحات بحث (Autocomplete) — تُرجع استعلامات شائعة وعناوين نصوص مطابقة.
+    """
+    if not query_text or len(query_text.strip()) < 2:
+        return []
+
+    normalized = arabic_text.normalize_arabic(query_text.strip())
+    like_q = f"%{normalized}%"
+
+    with db_session() as conn:
+        # اقتراحات من عناوين النصوص
+        text_rows = conn.execute("""
+            SELECT lt.title, lt.type, c.name as category_name
+            FROM legal_texts lt
+            JOIN categories c ON c.id = lt.category_id
+            WHERE lt.title LIKE ? AND lt.jurisdiction_id IS NULL
+            ORDER BY lt.title
+            LIMIT ?
+        """, (like_q, limit)).fetchall()
+
+        # اقتراحات من مصطلحات قانونية شائعة (synonyms)
+        synonym_suggestions = []
+        for term, syn in arabic_text.LEGAL_SYNONYMS.items():
+            if normalized in arabic_text.normalize_arabic(term):
+                synonym_suggestions.append({"text": term, "type": "synonym", "synonym": syn})
+                if len(synonym_suggestions) >= 3:
+                    break
+
+        suggestions = []
+        for row in text_rows:
+            r = row_to_dict(row)
+            suggestions.append({
+                "text": r["title"],
+                "type": "legal_text",
+                "text_type": r["type"],
+                "category": r["category_name"]
+            })
+        for syn in synonym_suggestions:
+            suggestions.append(syn)
+
+        return suggestions[:limit]
+
+
+def get_legal_domains(with_counts=True):
+    """إرجاع جميع النطاقات القانونية مع عدد النصوص (اختياري)."""
+    with db_session() as conn:
+        if with_counts:
+            rows = conn.execute("""
+                SELECT d.id, d.slug, d.name_ar, d.name_fr, d.description_ar, d.description_fr,
+                       d.icon, d.color, d.display_order,
+                       COUNT(lt.id) as text_count
+                FROM legal_domains d
+                LEFT JOIN legal_texts lt ON lt.domain_id = d.id AND lt.jurisdiction_id IS NULL
+                GROUP BY d.id
+                ORDER BY d.display_order
+            """).fetchall()
+        else:
+            rows = conn.execute("""
+                SELECT id, slug, name_ar, name_fr, description_ar, description_fr,
+                       icon, color, display_order
+                FROM legal_domains
+                ORDER BY display_order
+            """).fetchall()
+        return [row_to_dict(r) for r in rows]
+
+
+def get_domain_categories(domain_id):
+    """إرجاع الفئات التابعة لنطاق قانوني معين."""
+    with db_session() as conn:
+        rows = conn.execute("""
+            SELECT c.id, c.slug, c.name, c.description,
+                   COUNT(lt.id) as text_count
+            FROM categories c
+            LEFT JOIN legal_texts lt ON lt.category_id = c.id AND lt.jurisdiction_id IS NULL
+            WHERE c.domain_id = ?
+            GROUP BY c.id
+            ORDER BY text_count DESC, c.name
+        """, (domain_id,)).fetchall()
+        return [row_to_dict(r) for r in rows]
+
+
+def get_legal_texts_by_domain(domain_id, limit=20, offset=0, text_type=None):
+    """جلب النصوص القانونية ضمن نطاق معين مع ترقيم."""
+    where = "WHERE lt.domain_id = ? AND lt.jurisdiction_id IS NULL"
+    params = [domain_id]
+    if text_type:
+        where += " AND lt.type = ?"
+        params.append(text_type)
+    params.extend([limit, offset])
+    with db_session() as conn:
+        rows = conn.execute(f"""
+            SELECT lt.id, lt.title, lt.type, lt.official_ref, lt.enacted_date,
+                   lt.last_amended, c.name as category_name, c.slug as category_slug
+            FROM legal_texts lt
+            JOIN categories c ON c.id = lt.category_id
+            {where}
+            ORDER BY lt.title
+            LIMIT ? OFFSET ?
+        """, params).fetchall()
+        return [row_to_dict(r) for r in rows]
+
+
+def count_legal_texts_by_domain(domain_id, text_type=None):
+    """عدد النصوص في نطاق معين."""
+    where = "WHERE lt.domain_id = ? AND lt.jurisdiction_id IS NULL"
+    params = [domain_id]
+    if text_type:
+        where += " AND lt.type = ?"
+        params.append(text_type)
+    with db_session() as conn:
+        row = conn.execute(f"""
+            SELECT COUNT(*) FROM legal_texts lt {where}
+        """, params).fetchone()
+        return row[0] if row else 0

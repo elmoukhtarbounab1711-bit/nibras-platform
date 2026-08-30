@@ -23,6 +23,8 @@ register("/", homeView);
 register("/login", () => { openAuth("login"); return el("div"); });
 
 register("/library", lazy("./views/library.js", "libraryView"));
+register("/library/domain/:id", lazy("./views/library.js", "domainView"));
+register("/library/domain/:id/page/:page", lazy("./views/library.js", "domainView"));
 register("/text/:id", lazy("./views/library.js", "textView"));
 register("/pdf/:id", lazy("./views/library.js", "pdfView"));
 

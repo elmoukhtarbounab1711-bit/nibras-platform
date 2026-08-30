@@ -114,16 +114,58 @@ def library_stats():
     return jsonify(services.library_stats())
 
 
+@library_bp.route("/api/domains", methods=["GET"])
+def get_domains():
+    """إرجاع جميع النطاقات القانونية مع عدد النصوص."""
+    return jsonify(services.get_legal_domains(with_counts=True))
+
+
+@library_bp.route("/api/domains/<int:domain_id>/categories", methods=["GET"])
+def get_domain_categories(domain_id):
+    """إرجاع الفئات التابعة لنطاق قانوني معين."""
+    return jsonify(services.get_domain_categories(domain_id))
+
+
+@library_bp.route("/api/domains/<int:domain_id>/texts", methods=["GET"])
+def get_domain_texts(domain_id):
+    """جلب النصوص القانونية ضمن نطاق معين مع ترقيم."""
+    limit = min(int(request.args.get("limit", 20)), 100)
+    offset = max(int(request.args.get("offset", 0)), 0)
+    text_type = request.args.get("type")
+    texts = services.get_legal_texts_by_domain(domain_id, limit, offset, text_type)
+    total = services.count_legal_texts_by_domain(domain_id, text_type)
+    return jsonify({"total": total, "texts": texts})
+
+
 @library_bp.route("/api/search", methods=["GET"])
 def search():
     q = request.args.get("q", "")
     limit = min(int(request.args.get("limit", 20)), 50)
+    domain_id = request.args.get("domain_id", type=int)
+    category_id = request.args.get("category_id", type=int)
+    text_type = request.args.get("type")
+    date_from = request.args.get("date_from")
+    date_to = request.args.get("date_to")
+    highlight = request.args.get("highlight", "true").lower() != "false"
+    facets = request.args.get("facets", "true").lower() != "false"
+
     if not q.strip():
         return jsonify({"error": "الرجاء إدخال نص للبحث عبر المعامل q"}), 400
-    results = services.search_articles(q, limit=limit)
-    if not results:
-        results = services.search_texts_by_title(q, limit=limit)
-    return jsonify({"query": q, "count": len(results), "results": results})
+
+    result = services.search_legal(
+        q, limit=limit, domain_id=domain_id, category_id=category_id,
+        text_type=text_type, date_from=date_from, date_to=date_to,
+        highlight=highlight, facets=facets
+    )
+    return jsonify(result)
+
+
+@library_bp.route("/api/search/suggestions", methods=["GET"])
+def search_suggestions():
+    q = request.args.get("q", "")
+    limit = min(int(request.args.get("limit", 8)), 20)
+    suggestions = services.get_search_suggestions(q, limit=limit)
+    return jsonify({"query": q, "suggestions": suggestions})
 
 
 @library_bp.route("/api/ads/slot/<slot_slug>", methods=["GET"])

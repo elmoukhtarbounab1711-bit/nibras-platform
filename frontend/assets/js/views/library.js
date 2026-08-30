@@ -49,41 +49,83 @@ const CAT_META = {
 };
 const catMeta = (slug) => CAT_META[slug] || ["book"];
 
+let searchSuggestionsCache = {};
+let suggestionsDebounce = null;
+
 export async function libraryView(params) {
   const page = Math.max(1, parseInt(params.page || "1", 10) || 1);
   const activeCat = params.category || "";
   const q = params.q || "";
+  const domainId = params.domain ? parseInt(params.domain, 10) : null;
+  const textType = params.type || "";
+  const PER_PAGE = 12;
 
   // المسار الأساسي (/library) → لوحة التصميم الجديدة
-  if (!q && !activeCat && page === 1) {
+  if (!q && !activeCat && page === 1 && !domainId) {
     return dashboardView();
   }
 
-  const [cats, data] = await Promise.all([
-    api.get("/api/categories"),
-    api.get(q
-      ? `/api/search?q=${encodeURIComponent(q)}`
-      : `/api/texts?limit=${PER_PAGE}&offset=${(page - 1) * PER_PAGE}${activeCat ? `&category=${encodeURIComponent(activeCat)}` : ""}`),
-  ]);
-
-  let texts = [], total = 0;
+  // استدعاء API البحث المحسّن
+  let searchResult, cats;
   if (q) {
-    const res = Array.isArray(data) ? data : (data.results || []);
-    // تجميع نتائج البحث: نأخذ المادة الأولى من كل نص قانوني لتفادي تكرار النصوص
-    const seen = new Set();
-    texts = res.filter((r) => { const k = r.legal_text_id; if (k == null || seen.has(k)) return false; seen.add(k); return true; }).map((r) => ({
-      id: r.legal_text_id, title: r.legal_text_title || r.title || "", type: r.text_type || "law",
-      category_name: r.category_name || "", official_ref: r.official_ref || "",
-      description: r.content || "", article_count: null,
-    }));
-    total = texts.length;
+    const searchParams = new URLSearchParams({
+      q,
+      limit: PER_PAGE,
+      offset: (page - 1) * PER_PAGE,
+      highlight: "true",
+      facets: "true"
+    });
+    if (domainId) searchParams.set("domain_id", domainId);
+    if (activeCat) searchParams.set("category_id", activeCat);
+    if (textType) searchParams.set("type", textType);
+    
+    [cats, searchResult] = await Promise.all([
+      api.get("/api/categories"),
+      api.get(`/api/search?${searchParams.toString()}`)
+    ]);
   } else {
-    texts = Array.isArray(data) ? data : data.texts || [];
-    total = Array.isArray(data) ? texts.length : (data.count ?? 0);
+    // تصفح حسب الفئة/النطاق
+    const textsParams = new URLSearchParams({
+      limit: PER_PAGE,
+      offset: (page - 1) * PER_PAGE
+    });
+    if (activeCat) textsParams.set("category", activeCat);
+    if (domainId) textsParams.set("domain", domainId);
+    if (textType) textsParams.set("type", textType);
+    
+    [cats, searchResult] = await Promise.all([
+      api.get("/api/categories"),
+      api.get(`/api/texts?${textsParams.toString()}`)
+    ]);
+  }
+
+  let texts = [], total = 0, facets = {}, highlightTerms = [];
+  
+  if (q && searchResult.results) {
+    // نتائج البحث المحسّن مع تمييز
+    texts = searchResult.results.map((r) => ({
+      id: r.legal_text_id, 
+      title: r.legal_text_title || r.title || "", 
+      type: r.text_type || "law",
+      category_name: r.category_name || "", 
+      official_ref: r.official_ref || "",
+      description: r.highlighted_content || r.content || "", 
+      article_count: null,
+      domain_name: r.domain_name_ar,
+      domain_color: r.domain_color,
+      domain_icon: r.domain_icon,
+      enacted_date: r.enacted_date,
+    }));
+    total = searchResult.total || 0;
+    facets = searchResult.facets || {};
+    highlightTerms = searchResult.highlight_terms || [];
+  } else {
+    texts = searchResult.texts || searchResult || [];
+    total = searchResult.count ?? searchResult.total ?? (Array.isArray(texts) ? texts.length : 0);
   }
 
   const cat = cats.find((c) => c.slug === activeCat);
-  const [ic] = cat ? catMeta(activeCat) : ["search"];
+  const [ic] = cat ? catMeta(activeCat) : (domainId ? ["folder"] : ["search"]);
 
   // بنر احترافي للفئة / البحث
   const banner = el("section", { class: "lib-cat-banner" }, [
@@ -92,29 +134,118 @@ export async function libraryView(params) {
       el("button", { class: "lcb-back", type: "button", onclick: () => navigate("/library") }, [icon("arrowLeft", 16), tr("back")]),
       el("div", { class: "lcb-ic", style: `color:var(--gold); background:linear-gradient(135deg, rgba(200,155,60,.25), rgba(200,155,60,.08))` }, [icon(ic, 30)]),
       el("div", { class: "lcb-text" }, [
-        el("div", { class: "lcb-eyebrow", text: cat ? tr("libCategoriesTitle") : tr("search") }),
-        el("h1", { text: cat ? cat.name : `"${q}"` }),
+        el("div", { class: "lcb-eyebrow", text: cat ? tr("libCategoriesTitle") : (q ? tr("search") : tr("libDomainsTitle")) }),
+        el("h1", { text: cat ? cat.name : (q ? `"${q}"` : "") }),
         el("p", { class: "lcb-sub", text: q ? `${total} ${tr("materials")}` : `${total} ${tr("libStatsTexts")}` }),
       ]),
     ]),
   ]);
 
-  const searchBox = el("div", { class: "search-bar" }, [
-    el("input", { type: "search", placeholder: tr("search"), value: q,
-      onkeydown: (e) => { if (e.key === "Enter") navigate(`/library/q/${encodeURIComponent(e.target.value)}`); } }),
-    el("button", { class: "btn btn-primary", text: tr("search"), onclick: () => navigate(`/library/q/${encodeURIComponent(searchBox.querySelector("input").value)}`) }),
+  // صندوق بحث محسّن مع اقتراحات
+  const searchInputId = "lib-search-input";
+  const suggestionsId = "lib-search-suggestions";
+  const searchBox = el("div", { class: "search-bar-enhanced" }, [
+    el("div", { class: "search-field-wrapper" }, [
+      icon("search", 18),
+      el("input", { 
+        type: "search", 
+        placeholder: tr("search"), 
+        value: q,
+        id: searchInputId,
+        autocomplete: "off",
+        onkeydown: (e) => { 
+          if (e.key === "Enter") {
+            const v = e.target.value.trim();
+            if (v) navigate(`/library/q/${encodeURIComponent(v)}`);
+          }
+        },
+        oninput: async (e) => {
+          const v = e.target.value.trim();
+          clearTimeout(suggestionsDebounce);
+          suggestionsDebounce = setTimeout(async () => {
+            if (v.length < 2) {
+              document.getElementById(suggestionsId).innerHTML = "";
+              return;
+            }
+            if (searchSuggestionsCache[v]) {
+              renderSuggestions(searchSuggestionsCache[v]);
+              return;
+            }
+            try {
+              const res = await api.get(`/api/search/suggestions?q=${encodeURIComponent(v)}&limit=8`);
+              searchSuggestionsCache[v] = res.suggestions;
+              renderSuggestions(res.suggestions);
+            } catch {}
+          }, 200);
+        }
+      }),
+      el("button", { class: "search-btn", type: "button", title: tr("search"),
+        onclick: () => {
+          const v = document.getElementById(searchInputId).value.trim();
+          if (v) navigate(`/library/q/${encodeURIComponent(v)}`);
+        } }, [icon("search", 20)]),
+    ]),
+    el("div", { class: "search-suggestions", id: suggestionsId, style: "display:none" }),
   ]);
+
+  function renderSuggestions(suggestions) {
+    const container = document.getElementById(suggestionsId);
+    if (!container || !suggestions.length) {
+      if (container) container.style.display = "none";
+      return;
+    }
+    container.innerHTML = suggestions.map((s) => `
+      <button type="button" class="suggestion-item" data-text="${esc(s.text)}" style="
+        display:flex; align-items:center; gap:10px; width:100%; padding:12px 16px;
+        background:var(--surface); border:none; border-radius:10px; text-align:start;
+        cursor:pointer; transition:background .15s; border:1px solid var(--line);
+      " onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background='var(--surface)'">
+        <span style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:8px;background:${s.type === 'synonym' ? 'var(--gold-soft)' : 'var(--navy-50)'};color:${s.type === 'synonym' ? 'var(--gold)' : 'var(--navy)'};">
+          ${icon(s.type === 'synonym' ? 'zap' : 'file', 14).outerHTML}
+        </span>
+        <span style="flex:1;font-size:14px;font-weight:500;color:var(--ink);">${esc(s.text)}</span>
+        ${s.category ? `<span class="small muted">${esc(s.category)}</span>` : ""}
+        ${s.synonym ? `<span class="small" style="color:var(--gold);">${tr("synonym")}: ${esc(s.synonym)}</span>` : ""}
+      </button>
+    `).join("");
+    container.style.display = "block";
+    
+    container.querySelectorAll(".suggestion-item").forEach((btn) => {
+      btn.onclick = () => {
+        const text = btn.dataset.text;
+        document.getElementById(searchInputId).value = text;
+        container.style.display = "none";
+        container.innerHTML = "";
+        navigate(`/library/q/${encodeURIComponent(text)}`);
+      };
+    });
+  }
+
+  // إخفاء الاقتراحات عند النقر خارج الصندوق
+  setTimeout(() => {
+    document.addEventListener("click", (e) => {
+      const wrapper = document.getElementById(searchInputId)?.closest(".search-field-wrapper");
+      const suggestions = document.getElementById(suggestionsId);
+      if (suggestions && wrapper && !wrapper.contains(e.target)) {
+        suggestions.style.display = "none";
+      }
+    });
+  }, 0);
+
+  // فلترات جانبية (Facets)
+  const facetHtml = (q && facets) ? buildFacets(facets, { domainId, activeCat, textType }) : "";
 
   const grid = texts.length ? el("div", { class: "grid grid-3" }, texts.map((t) =>
     el("article", { class: "law-card card-hover" }, [
-      el("div", { class: "law-ic" }, [icon("file", 20)]),
+      el("div", { class: "law-ic" }, [icon(t.domain_icon || "file", 20)]),
       el("div", { class: "law-body" }, [
         el("div", { class: "flex-between mb-8" }, [
           el("span", { class: "badge-pill badge-navy", text: typeLabel(t.type, currentLang()) }),
+          t.domain_name ? el("span", { class: "badge-pill", style: `background:${t.domain_color}22;color:${t.domain_color}`, text: t.domain_name }) : null,
           t.category_name ? el("span", { class: "small muted", text: t.category_name }) : null,
         ]),
         el("h3", { class: "card-title" }, el("a", { href: `#/text/${t.id}`, text: t.title })),
-        t.description ? el("p", { class: "small muted", text: esc(truncate(t.description, 100)) }) : null,
+        t.description ? el("p", { class: "small muted", innerHTML: esc(truncate(t.description, 120)) }) : null,
         el("div", { class: "flex-between mt-8" }, [
           el("span", { class: "small muted", text: t.official_ref || fmtDate(t.enacted_date, currentLang()) }),
           el("div", { class: "flex", style: "gap:8px" }, [
@@ -125,19 +256,97 @@ export async function libraryView(params) {
       ]),
     ]))) : emptyState(tr("noResults"), "book");
 
+  function buildFacets(facets, active) {
+    if (!facets.domains && !facets.categories && !facets.types) return "";
+    
+    const sections = [];
+    
+    if (facets.domains?.length) {
+      sections.push(el("div", { class: "facet-section" }, [
+        el("h4", { class: "facet-title" }, [icon("folder", 14), tr("domainFilter")]),
+        el("div", { class: "facet-options" }, facets.domains.map((d) =>
+          el("label", { class: `facet-option${active.domainId == d.id ? " active" : ""}` }, [
+            el("input", { 
+              type: "checkbox", 
+              checked: active.domainId == d.id,
+              onchange: (e) => {
+                const url = new URL(location.href);
+                if (e.target.checked) url.searchParams.set("domain", d.id);
+                else url.searchParams.delete("domain");
+                url.searchParams.set("page", "1");
+                navigate(url.hash.slice(1));
+              }
+            }),
+            el("span", { class: "facet-label", style: `border-left:3px solid ${d.color}` }, d.name_ar),
+            el("span", { class: "facet-count" }, `(${d.count})`)
+          ])
+        ))
+      ]));
+    }
+    
+    if (facets.categories?.length) {
+      sections.push(el("div", { class: "facet-section" }, [
+        el("h4", { class: "facet-title" }, [icon("book", 14), tr("categoryFilter")]),
+        el("div", { class: "facet-options" }, facets.categories.slice(0, 10).map((c) =>
+          el("label", { class: `facet-option${active.activeCat == c.slug ? " active" : ""}` }, [
+            el("input", { 
+              type: "checkbox", 
+              checked: active.activeCat == c.slug,
+              onchange: (e) => {
+                const url = new URL(location.href);
+                if (e.target.checked) url.searchParams.set("category", c.slug);
+                else url.searchParams.delete("category");
+                url.searchParams.set("page", "1");
+                navigate(url.hash.slice(1));
+              }
+            }),
+            el("span", { class: "facet-label" }, c.name),
+            el("span", { class: "facet-count" }, `(${c.count})`)
+          ])
+        ))
+      ]));
+    }
+    
+    if (facets.types?.length) {
+      sections.push(el("div", { class: "facet-section" }, [
+        el("h4", { class: "facet-title" }, [icon("file", 14), tr("typeFilter")]),
+        el("div", { class: "facet-options" }, facets.types.map((t) =>
+          el("label", { class: `facet-option${active.textType == t.type ? " active" : ""}` }, [
+            el("input", { 
+              type: "checkbox", 
+              checked: active.textType == t.type,
+              onchange: (e) => {
+                const url = new URL(location.href);
+                if (e.target.checked) url.searchParams.set("type", t.type);
+                else url.searchParams.delete("type");
+                url.searchParams.set("page", "1");
+                navigate(url.hash.slice(1));
+              }
+            }),
+            el("span", { class: "facet-label" }, typeLabel(t.type, currentLang())),
+            el("span", { class: "facet-count" }, `(${t.count})`)
+          ])
+        ))
+      ]));
+    }
+    
+    return el("aside", { class: "search-facets", "aria-label": tr("filters") }, sections);
+  }
+
   return el("div", {}, [
     banner,
     searchBox,
+    facetHtml,
     grid,
     pagination(total, page, PER_PAGE, (p) =>
-      navigate(`/library${activeCat ? `/cat/${activeCat}` : ""}${q ? `/q/${encodeURIComponent(q)}` : ""}${p > 1 ? `/page/${p}` : ""}`)),
+      navigate(`/library${activeCat ? `/cat/${activeCat}` : ""}${q ? `/q/${encodeURIComponent(q)}` : ""}${domainId ? `/domain/${domainId}` : ""}${textType ? `/type/${textType}` : ""}${p > 1 ? `/page/${p}` : ""}`)),
   ]);
 }
 
-/* ---------- لوحة المكتبة الجديدة (Dashboard) ---------- */
+/* ---------- لوحة المكتبة الجديدة (Dashboard) — النطاقات القانونية ---------- */
 async function dashboardView() {
-  const [cats, stats] = await Promise.all([
-    api.get("/api/categories"),
+  const [domains, stats] = await Promise.all([
+    api.get("/api/domains"),
     api.get("/api/library/stats"),
   ]);
 
@@ -171,7 +380,7 @@ async function dashboardView() {
   ]);
 
   const statCards = [
-    { n: stats.categories ?? cats.length, l: tr("libStatsCategories"), i: "folder" },
+    { n: stats.categories ?? 0, l: tr("libStatsCategories"), i: "folder" },
     { n: stats.texts ?? 0, l: tr("libStatsTexts"), i: "book" },
     { n: stats.articles ?? 0, l: tr("libStatsArticles"), i: "file" },
     { n: stats.decisions ?? 0, l: tr("libStatsDecisions"), i: "clipboard" },
@@ -186,14 +395,26 @@ async function dashboardView() {
       ]),
     ])));
 
-  const catCards = cats.length ? el("div", { class: "cat-grid" }, cats.map((c, idx) => {
-    const [ic] = catMeta(c.slug);
-    return el("button", { class: "cat-card", type: "button", style: `animation-delay:${(idx % 12) * 40}ms`,
-      onclick: () => navigate(`/library/cat/${c.slug}`) }, [
-      el("span", { class: "cc-arrow" }, [icon("arrowLeft", 14)]),
-      el("div", { class: "cc-icon" }, [icon(ic, 20)]),
-      el("div", { class: "cc-name", text: c.name }),
-      el("div", { class: "cc-count", text: `(${c.text_count ?? 0})` }),
+  // بطاقات النطاقات القانونية (Legal Domains)
+  const domainCards = domains.length ? el("div", { class: "domain-grid" }, domains.map((d, idx) => {
+    const count = d.text_count ?? 0;
+    return el("button", { 
+      class: "domain-card", 
+      type: "button", 
+      style: `--domain-color: ${d.color}; animation-delay:${(idx % 12) * 40}ms`,
+      onclick: () => navigate(`/library/domain/${d.id}`) 
+    }, [
+      el("div", { class: "dc-icon-wrap", style: `background: ${d.color}22` }, [
+        icon(d.icon, 28),
+      ]),
+      el("div", { class: "dc-info" }, [
+        el("h3", { class: "dc-name", text: d.name_ar }),
+        d.description_ar ? el("p", { class: "dc-desc", text: d.description_ar }) : null,
+        el("div", { class: "dc-meta" }, [
+          el("span", { class: "dc-count", text: `${count} ${tr("texts")}` }),
+          el("span", { class: "dc-arrow" }, [icon("arrowLeft", 14)]),
+        ]),
+      ]),
     ]);
   })) : emptyState(tr("noResults"), "book");
 
@@ -212,6 +433,7 @@ async function dashboardView() {
       ])),
   ]);
 
+  // أنواع النصوص القانونية
   const typeList = [
     { label: tr("libTypeBasic"), i: "star", href: "/library/cat/dostouri" },
     { label: tr("libTypeCodes"), i: "book", href: "/library/cat/madan_k" },
@@ -238,8 +460,8 @@ async function dashboardView() {
   const sidebar = el("aside", { class: "lib-side" }, [exploreCard, typeCard, aiCard, createAdPlaceholder("library_sidebar")]);
 
   const main = el("div", { class: "lib-main" }, [
-    el("div", { class: "lib-section-title" }, [el("span", { class: "lst-rule" }), tr("libCategoriesTitle")]),
-    catCards,
+    el("div", { class: "lib-section-title" }, [el("span", { class: "lst-rule" }), tr("libDomainsTitle")]),
+    domainCards,
   ]);
 
   const trust = el("div", { class: "lib-trust" }, [
@@ -257,6 +479,94 @@ async function dashboardView() {
     statsRow,
     el("div", { class: "lib-layout" }, [main, sidebar]),
     trust,
+  ]);
+}
+
+/* ---------- عرض النطاق القانوني (Domain Detail) ---------- */
+export async function domainView(params) {
+  const domainId = parseInt(params.id, 10);
+  if (!domainId) return navigate("/library");
+
+  const page = Math.max(1, parseInt(params.page || "1", 10) || 1);
+  const PER_PAGE = 12;
+
+  const [domain, categories, textsData] = await Promise.all([
+    api.get(`/api/domains/${domainId}`),
+    api.get(`/api/domains/${domainId}/categories`),
+    api.get(`/api/domains/${domainId}/texts?limit=${PER_PAGE}&offset=${(page - 1) * PER_PAGE}`),
+  ]);
+
+  if (!domain) return navigate("/library");
+
+  const texts = textsData.texts || [];
+  const total = textsData.total || 0;
+
+  const banner = el("section", { class: "lib-cat-banner" }, [
+    el("div", { class: "hero-bg", style: `background: ${domain.color}22` }),
+    el("div", { class: "lcb-inner" }, [
+      el("button", { class: "lcb-back", type: "button", onclick: () => navigate("/library") }, [icon("arrowLeft", 16), tr("back")]),
+      el("div", { class: "lcb-ic", style: `color:${domain.color}; background:${domain.color}22` }, [icon(domain.icon, 30)]),
+      el("div", { class: "lcb-text" }, [
+        el("div", { class: "lcb-eyebrow", text: tr("libDomainsTitle") }),
+        el("h1", { text: domain.name_ar }),
+        el("p", { class: "lcb-sub", text: domain.description_ar || `${total} ${tr("libStatsTexts")}` }),
+      ]),
+    ]),
+  ]);
+
+  const searchBox = el("div", { class: "search-bar" }, [
+    el("input", { type: "search", placeholder: tr("search"), 
+      onkeydown: (e) => { if (e.key === "Enter") navigate(`/library/q/${encodeURIComponent(e.target.value.trim())}`); } }),
+    el("button", { class: "btn btn-primary", text: tr("search"), 
+      onclick: () => navigate(`/library/q/${encodeURIComponent(searchBox.querySelector("input").value.trim())}`) }),
+  ]);
+
+  const grid = texts.length ? el("div", { class: "grid grid-3" }, texts.map((t) =>
+    el("article", { class: "law-card card-hover" }, [
+      el("div", { class: "law-ic" }, [icon("file", 20)]),
+      el("div", { class: "law-body" }, [
+        el("div", { class: "flex-between mb-8" }, [
+          el("span", { class: "badge-pill badge-navy", text: typeLabel(t.type, currentLang()) }),
+          t.category_name ? el("span", { class: "small muted", text: t.category_name }) : null,
+        ]),
+        el("h3", { class: "card-title" }, el("a", { href: `#/text/${t.id}`, text: t.title })),
+        el("div", { class: "flex-between mt-8" }, [
+          el("span", { class: "small muted", text: t.official_ref || fmtDate(t.enacted_date, currentLang()) }),
+          el("div", { class: "flex", style: "gap:8px" }, [
+            el("button", { class: "btn btn-ghost btn-sm", onclick: () => downloadFile(`/api/texts/${t.id}/pdf?download=1`, `${t.title || 'law'}.pdf`), title: tr("download") }, [icon("download", 14)]),
+            el("button", { class: "btn btn-outline btn-sm", text: tr("view"), onclick: () => navigate(`/text/${t.id}`) }),
+          ]),
+        ]),
+      ]),
+    ]))) : emptyState(tr("noResults"), "book");
+
+  // فئات النطاق في الشريط الجانبي
+  const catList = categories.length ? el("div", { class: "side-card" }, [
+    el("h3", {}, [icon("folder", 16), tr("categories")]),
+    el("div", { class: "flex-col", style: "gap:8px" }, categories.map((c) =>
+      el("a", { class: "side-link", href: `#/library/cat/${c.slug}`, onclick: () => navigate(`/library/cat/${c.slug}`) }, [
+        el("span", { class: "sl-dot" }, [icon("file", 14)]),
+        el("span", {}, [c.name, el("span", { class: "small muted", text: `(${c.text_count ?? 0})` })]),
+      ])
+    )),
+  ]) : null;
+
+  const sidebar = el("aside", { class: "lib-side" }, [
+    catList,
+    createAdPlaceholder("library_sidebar"),
+  ]).filter(Boolean);
+
+  return el("div", { class: "lib-page" }, [
+    banner,
+    searchBox,
+    el("div", { class: "lib-layout" }, [
+      el("div", { class: "lib-main" }, [
+        el("div", { class: "lib-section-title" }, [el("span", { class: "lst-rule" }), domain.name_ar]),
+        grid,
+        pagination(total, page, PER_PAGE, (p) => navigate(`/library/domain/${domainId}${p > 1 ? `/page/${p}` : ""}`)),
+      ]),
+      sidebar,
+    ]),
   ]);
 }
 
