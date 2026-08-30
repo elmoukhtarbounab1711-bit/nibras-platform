@@ -583,86 +583,66 @@ def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_ty
         filter_parts.append("lt.jurisdiction_id IS NULL")
         filter_clause = " AND ".join(filter_parts) if filter_parts else "lt.jurisdiction_id IS NULL"
 
-        # بناء استعلام موحد: FTS UNION LIKE
-        # المعاملات المشتركة
-        base_params = list(filter_params)
-        
-        # FTS query part
+        # === المرحلة 1: العثور على IDs النصوص المطابقة ===
         fts_query = arabic_text.build_fts_query(term_groups)
-        
-        # LIKE query part - normalized
         like_q = f"%{arabic_text.normalize_arabic(query_text.strip())}%"
-        
-        # استعلام موحد: FTS على المواد + LIKE على النصوص + LIKE على المواد
-        unified_query = f"""
-            -- FTS على المواد (دقة عالية، ترتيب BM25)
-            SELECT 
-                a.id, a.label, a.content, a.plain_explanation,
-                lt.id AS legal_text_id, lt.title AS legal_text_title,
-                lt.type AS text_type, lt.official_ref, lt.enacted_date,
-                lt.last_amended, lt.domain_id, lt.category_id,
-                c.name AS category_name, c.slug AS category_slug,
-                d.name_ar AS domain_name_ar, d.name_fr AS domain_name_fr,
-                d.slug AS domain_slug, d.color AS domain_color, d.icon AS domain_icon,
-                bm25(articles_fts) AS rank, 1 AS source_priority
-            FROM articles_fts
-            JOIN articles a ON a.id = articles_fts.rowid
-            JOIN legal_texts lt ON lt.id = a.legal_text_id
-            JOIN categories c ON c.id = lt.category_id
-            JOIN legal_domains d ON d.id = lt.domain_id
-            WHERE articles_fts MATCH ? AND {filter_clause}
-            
-            UNION ALL
-            
-            -- LIKE على عناوين وأوصاف النصوص القانونية (تغطية شاملة)
-            SELECT 
-                NULL, lt.description, lt.source_note, NULL,
-                lt.id, lt.title, lt.type, lt.official_ref, lt.enacted_date,
-                lt.last_amended, lt.domain_id, lt.category_id,
-                c.name, c.slug,
-                d.name_ar, d.name_fr, d.slug, d.color, d.icon,
-                999999.0 AS rank, 2 AS source_priority
+
+        # الحصول على IDs من FTS (أولوية عالية)
+        fts_ids = set()
+        try:
+            fts_id_rows = conn.execute(f"""
+                SELECT DISTINCT lt.id
+                FROM legal_texts lt
+                JOIN articles a ON a.legal_text_id = lt.id
+                JOIN articles_fts ON articles_fts.rowid = a.id
+                JOIN categories c ON c.id = lt.category_id
+                JOIN legal_domains d ON d.id = lt.domain_id
+                WHERE articles_fts MATCH ? AND {filter_clause}
+                LIMIT ?
+            """, [fts_query] + filter_params + [limit * 3]).fetchall()
+            fts_ids = {row[0] for row in fts_id_rows}
+        except sqlite3.OperationalError:
+            fts_ids = set()
+
+        # الحصول على IDs من LIKE على العناوين/الأوصاف/المصادر
+        like_ids = set()
+        like_q = f"%{arabic_text.normalize_arabic(query_text.strip())}%"
+        like_id_rows = conn.execute(f"""
+            SELECT DISTINCT lt.id
             FROM legal_texts lt
             JOIN categories c ON c.id = lt.category_id
             JOIN legal_domains d ON d.id = lt.domain_id
-            WHERE (lt.title LIKE ? OR lt.description LIKE ? OR lt.source_note LIKE ?) AND {filter_clause}
-            AND lt.id NOT IN (
-                SELECT lt2.id FROM legal_texts lt2
-                JOIN articles a2 ON a2.legal_text_id = lt2.id
-                JOIN articles_fts ON articles_fts.rowid = a2.id
-                WHERE articles_fts MATCH ? AND {filter_clause.replace("lt.", "lt2.")}
-            )
-            
-            UNION ALL
-            
-            -- LIKE على محتوى المواد (للنصوص التي لها مواد ولكن لم تطابق FTS)
-            SELECT 
-                a2.id, a2.label, a2.content, a2.plain_explanation,
-                lt2.id, lt2.title, lt2.type, lt2.official_ref, lt2.enacted_date,
-                lt2.last_amended, lt2.domain_id, lt2.category_id,
-                c2.name, c2.slug,
-                d2.name_ar, d2.name_fr, d2.slug, d2.color, d2.icon,
-                999999.0, 3
-            FROM articles a2
-            JOIN legal_texts lt2 ON lt2.id = a2.legal_text_id
-            JOIN categories c2 ON c2.id = lt2.category_id
-            JOIN legal_domains d2 ON d2.id = lt2.domain_id
-            WHERE a2.content LIKE ? AND {filter_clause.replace("lt.", "lt2.")}
-            AND lt2.id NOT IN (
-                SELECT lt3.id FROM legal_texts lt3
-                JOIN articles a3 ON a3.legal_text_id = lt3.id
-                JOIN articles_fts ON articles_fts.rowid = a3.id
-                WHERE articles_fts MATCH ? AND {filter_clause.replace("lt.", "lt3.")}
-            )
-            
-            ORDER BY source_priority, rank
+            WHERE {filter_clause}
+            AND (lt.title LIKE ? OR lt.description LIKE ? OR lt.source_note LIKE ?
+                 OR EXISTS (SELECT 1 FROM articles a WHERE a.legal_text_id = lt.id AND a.content LIKE ?))
             LIMIT ?
+        """, [like_q] * 4 + filter_params + [limit * 3]).fetchall()
+        like_ids = {row[0] for row in like_id_rows}
+
+        # دمج IDs مع أولوية FTS
+        all_ids = list(fts_ids) + [id for id in like_ids if id not in fts_ids]
+        all_ids = all_ids[:limit]
+        
+        if not all_ids:
+            return {"query": query_text, "total": 0, "results": [], "facets": {}, "highlight_terms": highlight_terms}
+
+        # === المرحلة 2: جلب التفاصيل الكاملة للأ IDs ===
+        placeholders = ','.join(['?'] * len(all_ids))
+        detail_query = f"""
+            SELECT 
+                lt.id, lt.title, lt.type, lt.official_ref, lt.enacted_date,
+                lt.last_amended, lt.domain_id, lt.category_id, lt.description, lt.source_note,
+                c.name AS category_name, c.slug AS category_slug,
+                d.name_ar AS domain_name_ar, d.name_fr AS domain_name_fr,
+                d.slug AS domain_slug, d.color AS domain_color, d.icon AS domain_icon,
+                a.content AS article_content, a.label AS article_label
+            FROM legal_texts lt
+            JOIN categories c ON c.id = lt.category_id
+            JOIN legal_domains d ON d.id = lt.domain_id
+            LEFT JOIN articles a ON a.legal_text_id = lt.id
+            WHERE lt.id IN ({','.join(['?'] * len(all_ids))})
         """
-        
-        # المعاملات: fts_query, like_q, like_q, like_q, fts_query, like_q, fts_query, limit
-        exec_params = [fts_query] + filter_params + [like_q, like_q, like_q] + filter_params + [fts_query] + filter_params + [like_q] + filter_params + [fts_query] + filter_params + [limit]
-        
-        rows = conn.execute(unified_query, exec_params).fetchall()
+        rows = conn.execute(detail_query, all_ids).fetchall()
 
         # نتائج مع تمييز
         results = []
@@ -682,7 +662,7 @@ def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_ty
                 r["highlighted_content"] = content[:300] + ("..." if len(content) > 300 else "")
             results.append(r)
 
-        # إجمالي النتائج (للتقسيط) - حساب تقريبي
+        # إجمالي النتائج (للتقسيط) - عدد تقريبي
         total_query = f"""
             SELECT COUNT(DISTINCT lt.id) FROM legal_texts lt
             JOIN categories c ON c.id = lt.category_id
