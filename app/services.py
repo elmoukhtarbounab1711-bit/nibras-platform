@@ -610,7 +610,7 @@ def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_ty
         params.append(limit)
         rows = conn.execute(base_query, params).fetchall()
 
-        # Fallback: إن لم تُجد نتائج بـ FTS، ابحث في العناوين (title search)
+        # Fallback: إن لم تُجد نتائج بـ FTS، ابحث في العناوين (title search) مع محتوى أول مادة
         if not rows:
             like_q = f"%{arabic_text.normalize_arabic(query_text.strip())}%"
             where_fallback = where_clause.replace("articles_fts MATCH ?", "lt.title LIKE ?")
@@ -622,11 +622,14 @@ def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_ty
                      c.name AS category_name, c.slug AS category_slug,
                      d.name_ar AS domain_name_ar, d.name_fr AS domain_name_fr,
                      d.slug AS domain_slug, d.color AS domain_color, d.icon AS domain_icon,
+                     a.content AS article_content, a.label AS article_label,
                      0 AS rank
                 FROM legal_texts lt
                 JOIN categories c ON c.id = lt.category_id
                 JOIN legal_domains d ON d.id = lt.domain_id
+                LEFT JOIN articles a ON a.legal_text_id = lt.id
                 WHERE {where_fallback}
+                GROUP BY lt.id
                 ORDER BY lt.title
                 LIMIT ?
             """
@@ -644,9 +647,10 @@ def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_ty
         results = []
         for row in rows:
             r = row_to_dict(row)
-            if highlight and r.get("content"):
+            # استخدام article_content كـ fallback للمحتوى
+            content = r.get("content") or r.get("article_content")
+            if highlight and content:
                 # تمييز بسيط: نحيط بمصطلحات البحث بـ <mark>
-                content = r["content"]
                 for term in highlight_terms:
                     if len(term) > 2:
                         norm_term = arabic_text.normalize_arabic(term)
