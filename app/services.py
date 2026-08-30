@@ -532,6 +532,8 @@ def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_ty
                  date_from=None, date_to=None, highlight=True, facets=True):
     """
     بحث قانوني محسّن مع:
+    - بحث FTS على المواد (دقيق مع ترتيب BM25)
+    - بحث LIKE على عناوين وأوصاف النصوص القانونية (تغطية شاملة)
     - فلترة حسب النطاق القانوني (domain_id) والفئة (category_id)
     - فلترة حسب نوع النص (law, decree, decision, etc.)
     - فلترة حسب التاريخ
@@ -551,173 +553,173 @@ def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_ty
         highlight_terms.extend(g)
 
     with db_session() as conn:
-        # بناء شرط WHERE
-        where_parts = []
-        params = []
+        # بناء شروط الفلترة المشتركة
+        filter_parts = []
+        filter_params = []
 
-        # FTS query
-        fts_query = arabic_text.build_fts_query(term_groups)
-        where_parts.append("articles_fts MATCH ?")
-        params.append(fts_query)
-
-        # فلترة النطاق/الفئة/النوع
         if domain_id:
-            where_parts.append("lt.domain_id = ?")
-            params.append(domain_id)
+            filter_parts.append("lt.domain_id = ?")
+            filter_params.append(domain_id)
         if category_id:
-            where_parts.append("lt.category_id = ?")
-            params.append(category_id)
+            filter_parts.append("lt.category_id = ?")
+            filter_params.append(category_id)
         if text_type:
-            where_parts.append("lt.type = ?")
-            params.append(text_type)
+            filter_parts.append("lt.type = ?")
+            filter_params.append(text_type)
         if date_from:
-            where_parts.append("COALESCE(lt.last_amended, lt.enacted_date) >= ?")
-            params.append(date_from)
+            filter_parts.append("COALESCE(lt.last_amended, lt.enacted_date) >= ?")
+            filter_params.append(date_from)
         if date_to:
-            where_parts.append("COALESCE(lt.last_amended, lt.enacted_date) <= ?")
-            params.append(date_to)
+            filter_parts.append("COALESCE(lt.last_amended, lt.enacted_date) <= ?")
+            filter_params.append(date_to)
 
         # نطاق المستأجر
-        for alias in ("a", "lt", "c"):
+        for alias in ("lt", "c", "d"):
             cond, vals = tenant_scope.tenant_eq(alias)
             if cond:
-                where_parts.append(cond)
-                params.extend(vals)
+                filter_parts.append(cond)
+                filter_params.extend(vals)
 
-        where_parts.append("lt.jurisdiction_id IS NULL")
+        filter_parts.append("lt.jurisdiction_id IS NULL")
+        filter_clause = " AND ".join(filter_parts) if filter_parts else "lt.jurisdiction_id IS NULL"
 
-        where_clause = " AND ".join(where_parts)
-
-        # الاستعلام الرئيسي مع BM25 rank
-        base_query = f"""
-            SELECT a.id, a.label, a.content, a.plain_explanation,
-                 lt.id AS legal_text_id, lt.title AS legal_text_title,
-                 lt.type AS text_type, lt.official_ref, lt.enacted_date,
-                 lt.last_amended, lt.domain_id, lt.category_id,
-                 c.name AS category_name, c.slug AS category_slug,
-                 d.name_ar AS domain_name_ar, d.name_fr AS domain_name_fr,
-                 d.slug AS domain_slug, d.color AS domain_color, d.icon AS domain_icon,
-                 bm25(articles_fts) AS rank
+        # بناء استعلام موحد: FTS UNION LIKE
+        # المعاملات المشتركة
+        base_params = list(filter_params)
+        
+        # FTS query part
+        fts_query = arabic_text.build_fts_query(term_groups)
+        
+        # LIKE query part - normalized
+        like_q = f"%{arabic_text.normalize_arabic(query_text.strip())}%"
+        
+        # استعلام موحد: FTS على المواد + LIKE على النصوص + LIKE على المواد
+        unified_query = f"""
+            -- FTS على المواد (دقة عالية، ترتيب BM25)
+            SELECT 
+                a.id, a.label, a.content, a.plain_explanation,
+                lt.id AS legal_text_id, lt.title AS legal_text_title,
+                lt.type AS text_type, lt.official_ref, lt.enacted_date,
+                lt.last_amended, lt.domain_id, lt.category_id,
+                c.name AS category_name, c.slug AS category_slug,
+                d.name_ar AS domain_name_ar, d.name_fr AS domain_name_fr,
+                d.slug AS domain_slug, d.color AS domain_color, d.icon AS domain_icon,
+                bm25(articles_fts) AS rank, 1 AS source_priority
             FROM articles_fts
             JOIN articles a ON a.id = articles_fts.rowid
             JOIN legal_texts lt ON lt.id = a.legal_text_id
             JOIN categories c ON c.id = lt.category_id
             JOIN legal_domains d ON d.id = lt.domain_id
-            WHERE {where_clause}
-            ORDER BY rank
+            WHERE articles_fts MATCH ? AND {filter_clause}
+            
+            UNION ALL
+            
+            -- LIKE على عناوين وأوصاف النصوص القانونية (تغطية شاملة)
+            SELECT 
+                NULL, lt.description, lt.source_note, NULL,
+                lt.id, lt.title, lt.type, lt.official_ref, lt.enacted_date,
+                lt.last_amended, lt.domain_id, lt.category_id,
+                c.name, c.slug,
+                d.name_ar, d.name_fr, d.slug, d.color, d.icon,
+                999999.0 AS rank, 2 AS source_priority
+            FROM legal_texts lt
+            JOIN categories c ON c.id = lt.category_id
+            JOIN legal_domains d ON d.id = lt.domain_id
+            WHERE (lt.title LIKE ? OR lt.description LIKE ? OR lt.source_note LIKE ?) AND {filter_clause}
+            AND lt.id NOT IN (
+                SELECT lt2.id FROM legal_texts lt2
+                JOIN articles a2 ON a2.legal_text_id = lt2.id
+                JOIN articles_fts ON articles_fts.rowid = a2.id
+                WHERE articles_fts MATCH ? AND {filter_clause.replace("lt.", "lt2.")}
+            )
+            
+            UNION ALL
+            
+            -- LIKE على محتوى المواد (للنصوص التي لها مواد ولكن لم تطابق FTS)
+            SELECT 
+                a2.id, a2.label, a2.content, a2.plain_explanation,
+                lt2.id, lt2.title, lt2.type, lt2.official_ref, lt2.enacted_date,
+                lt2.last_amended, lt2.domain_id, lt2.category_id,
+                c2.name, c2.slug,
+                d2.name_ar, d2.name_fr, d2.slug, d2.color, d2.icon,
+                999999.0, 3
+            FROM articles a2
+            JOIN legal_texts lt2 ON lt2.id = a2.legal_text_id
+            JOIN categories c2 ON c2.id = lt2.category_id
+            JOIN legal_domains d2 ON d2.id = lt2.domain_id
+            WHERE a2.content LIKE ? AND {filter_clause.replace("lt.", "lt2.")}
+            AND lt2.id NOT IN (
+                SELECT lt3.id FROM legal_texts lt3
+                JOIN articles a3 ON a3.legal_text_id = lt3.id
+                JOIN articles_fts ON articles_fts.rowid = a3.id
+                WHERE articles_fts MATCH ? AND {filter_clause.replace("lt.", "lt3.")}
+            )
+            
+            ORDER BY source_priority, rank
             LIMIT ?
         """
-        params.append(limit)
-        rows = conn.execute(base_query, params).fetchall()
-
-        # Fallback: إن لم تُجد نتائج بـ FTS، ابحث في العناوين (title search) مع محتوى أول مادة
-        if not rows:
-            like_q = f"%{arabic_text.normalize_arabic(query_text.strip())}%"
-            where_fallback = where_clause.replace("articles_fts MATCH ?", "lt.title LIKE ?")
-            params_fallback = [like_q] + params[1:-1] + [limit]  # replace fts_query with like_q, remove limit
-            fallback_query = f"""
-                SELECT lt.id AS legal_text_id, lt.title AS legal_text_title,
-                     lt.type AS text_type, lt.official_ref, lt.enacted_date,
-                     lt.last_amended, lt.domain_id, lt.category_id,
-                     c.name AS category_name, c.slug AS category_slug,
-                     d.name_ar AS domain_name_ar, d.name_fr AS domain_name_fr,
-                     d.slug AS domain_slug, d.color AS domain_color, d.icon AS domain_icon,
-                     a.content AS article_content, a.label AS article_label,
-                     0 AS rank
-                FROM legal_texts lt
-                JOIN categories c ON c.id = lt.category_id
-                JOIN legal_domains d ON d.id = lt.domain_id
-                LEFT JOIN articles a ON a.legal_text_id = lt.id
-                WHERE {where_fallback}
-                GROUP BY lt.id
-                ORDER BY lt.title
-                LIMIT ?
-            """
-            rows = conn.execute(fallback_query, params_fallback).fetchall()
-            # تحديث total للـ fallback
-            total_fallback_q = f"""
-                SELECT COUNT(*) FROM legal_texts lt
-                JOIN categories c ON c.id = lt.category_id
-                JOIN legal_domains d ON d.id = lt.domain_id
-                WHERE {where_fallback}
-            """
-            total = conn.execute(total_fallback_q, params_fallback[:-1]).fetchone()[0]
+        
+        # المعاملات: fts_query, like_q, like_q, like_q, fts_query, like_q, fts_query, limit
+        exec_params = [fts_query] + filter_params + [like_q, like_q, like_q] + filter_params + [fts_query] + filter_params + [like_q] + filter_params + [fts_query] + filter_params + [limit]
+        
+        rows = conn.execute(unified_query, exec_params).fetchall()
 
         # نتائج مع تمييز
         results = []
         for row in rows:
             r = row_to_dict(row)
-            # استخدام article_content كـ fallback للمحتوى
-            content = r.get("content") or r.get("article_content")
+            content = r.get("content") or r.get("description") or r.get("source_note")
             if highlight and content:
-                # تمييز بسيط: نحيط بمصطلحات البحث بـ <mark>
                 for term in highlight_terms:
                     if len(term) > 2:
                         norm_term = arabic_text.normalize_arabic(term)
                         norm_content = arabic_text.normalize_arabic(content)
                         if norm_term in norm_content:
-                            # استبدال بسيط (يحافظ على النص الأصلي)
                             import re
                             pattern = re.compile(re.escape(term), re.IGNORECASE)
                             content = pattern.sub(f'<mark>{term}</mark>', content)
                 r["highlighted_content"] = content[:300] + ("..." if len(content) > 300 else "")
             results.append(r)
 
-        # وجوهات (Facets) للفلترة الجانبية
-        facet_data = {}
-        if facets:
-            # توزيع حسب النطاق
-            domain_facet = conn.execute(f"""
-                SELECT d.id, d.name_ar, d.name_fr, d.slug, d.color, d.icon, COUNT(DISTINCT a.id) as count
-                FROM articles_fts
-                JOIN articles a ON a.id = articles_fts.rowid
-                JOIN legal_texts lt ON lt.id = a.legal_text_id
-                JOIN legal_domains d ON d.id = lt.domain_id
-                WHERE {where_clause}
-                GROUP BY d.id
-                ORDER BY count DESC
-            """, params[:-1]).fetchall()  # exclude limit param
-            facet_data["domains"] = [row_to_dict(r) for r in domain_facet]
-
-            # توزيع حسب الفئة
-            cat_facet = conn.execute(f"""
-                SELECT c.id, c.name, c.slug, COUNT(DISTINCT a.id) as count
-                FROM articles_fts
-                JOIN articles a ON a.id = articles_fts.rowid
-                JOIN legal_texts lt ON lt.id = a.legal_text_id
-                JOIN categories c ON c.id = lt.category_id
-                WHERE {where_clause}
-                GROUP BY c.id
-                ORDER BY count DESC
-            """, params[:-1]).fetchall()
-            facet_data["categories"] = [row_to_dict(r) for r in cat_facet]
-
-            # توزيع حسب النوع
-            type_facet = conn.execute(f"""
-                SELECT lt.type, COUNT(DISTINCT a.id) as count
-                FROM articles_fts
-                JOIN articles a ON a.id = articles_fts.rowid
-                JOIN legal_texts lt ON lt.id = a.legal_text_id
-                WHERE {where_clause}
-                GROUP BY lt.type
-                ORDER BY count DESC
-            """, params[:-1]).fetchall()
-            facet_data["types"] = [row_to_dict(r) for r in type_facet]
-
-        # إجمالي النتائج (للترقيم)
+        # إجمالي النتائج (للتقسيط) - حساب تقريبي
         total_query = f"""
-            SELECT COUNT(DISTINCT a.id)
-            FROM articles_fts
-            JOIN articles a ON a.id = articles_fts.rowid
-            JOIN legal_texts lt ON lt.id = a.legal_text_id
-            WHERE {where_clause}
+            SELECT COUNT(DISTINCT lt.id) FROM legal_texts lt
+            JOIN categories c ON c.id = lt.category_id
+            JOIN legal_domains d ON d.id = lt.domain_id
+            WHERE {filter_clause}
+            AND (lt.title LIKE ? OR lt.description LIKE ? OR lt.source_note LIKE ? 
+                 OR EXISTS (SELECT 1 FROM articles a WHERE a.legal_text_id = lt.id AND a.content LIKE ?)
+                 OR EXISTS (SELECT 1 FROM articles_fts JOIN articles a ON a.id = articles_fts.rowid WHERE a.legal_text_id = lt.id AND articles_fts MATCH ?))
         """
-        total = conn.execute(total_query, params[:-1]).fetchone()[0]
+        total_params = [like_q, like_q, like_q, like_q, fts_query] + filter_params * 4
+        total = conn.execute(total_query, total_params).fetchone()[0]
+
+        # وجوهات (Facets) - مبنية على النتائج الفعلية
+        facet_data = {}
+        if facets and results:
+            # نطاقات من النتائج
+            domain_counts = {}
+            cat_counts = {}
+            type_counts = {}
+            for r in results:
+                dn = r.get("domain_name_ar")
+                if dn:
+                    domain_counts[dn] = domain_counts.get(dn, 0) + 1
+                cn = r.get("category_name")
+                if cn:
+                    cat_counts[cn] = cat_counts.get(cn, 0) + 1
+                tt = r.get("text_type")
+                if tt:
+                    type_counts[tt] = type_counts.get(tt, 0) + 1
+            
+            facet_data["domains"] = [{"name_ar": k, "count": v} for k, v in sorted(domain_counts.items(), key=lambda x: -x[1])]
+            facet_data["categories"] = [{"name": k, "count": v} for k, v in sorted(cat_counts.items(), key=lambda x: -x[1])]
+            facet_data["types"] = [{"type": k, "count": v} for k, v in sorted(type_counts.items(), key=lambda x: -x[1])]
 
     return {
         "query": query_text,
         "total": total,
-        "results": results,
+        "results": results[:limit],
         "facets": facet_data,
         "highlight_terms": highlight_terms
     }
