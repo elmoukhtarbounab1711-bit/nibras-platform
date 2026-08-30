@@ -20,14 +20,15 @@ def _check_db(db):
         from app.database import get_connection
         conn = get_connection()
         try:
-            conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
-            ).fetchone()
+            # التحقق من وجود الجداول الأساسية + الجداول الجديدة (legal_domains)
+            row = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('users', 'legal_domains')"
+            ).fetchall()
+            return len(row) == 2
         finally:
             conn.close()
     except Exception:
         return False
-    return True
 
 
 def ensure_db():
