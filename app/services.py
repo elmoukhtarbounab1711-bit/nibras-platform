@@ -610,6 +610,36 @@ def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_ty
         params.append(limit)
         rows = conn.execute(base_query, params).fetchall()
 
+        # Fallback: إن لم تُجد نتائج بـ FTS، ابحث في العناوين (title search)
+        if not rows:
+            like_q = f"%{arabic_text.normalize_arabic(query_text.strip())}%"
+            where_fallback = where_clause.replace("articles_fts MATCH ?", "lt.title LIKE ?")
+            params_fallback = [like_q] + params[1:-1] + [limit]  # replace fts_query with like_q, remove limit
+            fallback_query = f"""
+                SELECT lt.id AS legal_text_id, lt.title AS legal_text_title,
+                     lt.type AS text_type, lt.official_ref, lt.enacted_date,
+                     lt.last_amended, lt.domain_id, lt.category_id,
+                     c.name AS category_name, c.slug AS category_slug,
+                     d.name_ar AS domain_name_ar, d.name_fr AS domain_name_fr,
+                     d.slug AS domain_slug, d.color AS domain_color, d.icon AS domain_icon,
+                     0 AS rank
+                FROM legal_texts lt
+                JOIN categories c ON c.id = lt.category_id
+                JOIN legal_domains d ON d.id = lt.domain_id
+                WHERE {where_fallback}
+                ORDER BY lt.title
+                LIMIT ?
+            """
+            rows = conn.execute(fallback_query, params_fallback).fetchall()
+            # تحديث total للـ fallback
+            total_fallback_q = f"""
+                SELECT COUNT(*) FROM legal_texts lt
+                JOIN categories c ON c.id = lt.category_id
+                JOIN legal_domains d ON d.id = lt.domain_id
+                WHERE {where_fallback}
+            """
+            total = conn.execute(total_fallback_q, params_fallback[:-1]).fetchone()[0]
+
         # نتائج مع تمييز
         results = []
         for row in rows:
