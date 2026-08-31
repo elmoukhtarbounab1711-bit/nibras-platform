@@ -788,10 +788,13 @@ def get_domain_categories(domain_id):
         return [row_to_dict(r) for r in rows]
 
 
-def get_legal_texts_by_domain(domain_id, limit=20, offset=0, text_type=None):
+def get_legal_texts_by_domain(domain_id, limit=20, offset=0, text_type=None, category_id=None):
     """جلب النصوص القانونية ضمن نطاق معين مع ترقيم."""
     where = "WHERE lt.domain_id = ? AND lt.jurisdiction_id IS NULL"
     params = [domain_id]
+    if category_id:
+        where += " AND lt.category_id = ?"
+        params.append(category_id)
     if text_type:
         where += " AND lt.type = ?"
         params.append(text_type)
@@ -809,10 +812,13 @@ def get_legal_texts_by_domain(domain_id, limit=20, offset=0, text_type=None):
         return [row_to_dict(r) for r in rows]
 
 
-def count_legal_texts_by_domain(domain_id, text_type=None):
+def count_legal_texts_by_domain(domain_id, text_type=None, category_id=None):
     """عدد النصوص في نطاق معين."""
     where = "WHERE lt.domain_id = ? AND lt.jurisdiction_id IS NULL"
     params = [domain_id]
+    if category_id:
+        where += " AND lt.category_id = ?"
+        params.append(category_id)
     if text_type:
         where += " AND lt.type = ?"
         params.append(text_type)

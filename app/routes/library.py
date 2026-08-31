@@ -132,8 +132,9 @@ def get_domain_texts(domain_id):
     limit = min(int(request.args.get("limit", 20)), 100)
     offset = max(int(request.args.get("offset", 0)), 0)
     text_type = request.args.get("type")
-    texts = services.get_legal_texts_by_domain(domain_id, limit, offset, text_type)
-    total = services.count_legal_texts_by_domain(domain_id, text_type)
+    category_id = request.args.get("category_id", type=int)
+    texts = services.get_legal_texts_by_domain(domain_id, limit, offset, text_type, category_id)
+    total = services.count_legal_texts_by_domain(domain_id, text_type, category_id)
     return jsonify({"total": total, "texts": texts})
 
 

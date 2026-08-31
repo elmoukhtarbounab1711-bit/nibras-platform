@@ -488,12 +488,13 @@ export async function domainView(params) {
   if (!domainId) return navigate("/library");
 
   const page = Math.max(1, parseInt(params.page || "1", 10) || 1);
+  const activeCat = params.category ? parseInt(params.category, 10) : null;
   const PER_PAGE = 12;
 
   const [domain, categories, textsData] = await Promise.all([
     api.get(`/api/domains/${domainId}`),
     api.get(`/api/domains/${domainId}/categories`),
-    api.get(`/api/domains/${domainId}/texts?limit=${PER_PAGE}&offset=${(page - 1) * PER_PAGE}`),
+    api.get(`/api/domains/${domainId}/texts?limit=${PER_PAGE}&offset=${(page - 1) * PER_PAGE}${activeCat ? `&category_id=${activeCat}` : ""}`),
   ]);
 
   if (!domain) return navigate("/library");
@@ -543,12 +544,19 @@ export async function domainView(params) {
   // فئات النطاق في الشريط الجانبي
   const catList = categories.length ? el("div", { class: "side-card" }, [
     el("h3", {}, [icon("folder", 16), tr("categories")]),
-    el("div", { class: "flex-col", style: "gap:8px" }, categories.map((c) =>
-      el("a", { class: "side-link", href: `#/library/cat/${c.slug}`, onclick: () => navigate(`/library/cat/${c.slug}`) }, [
-        el("span", { class: "sl-dot" }, [icon("file", 14)]),
-        el("span", {}, [c.name, el("span", { class: "small muted", text: `(${c.text_count ?? 0})` })]),
-      ])
-    )),
+    el("div", { class: "flex-col", style: "gap:8px" }, [
+      ...(activeCat ? [el("a", { class: "side-link", href: `#/library/domain/${domainId}`, onclick: () => navigate(`/library/domain/${domainId}`) }, [
+        el("span", { class: "sl-dot" }, [icon("list", 14)]),
+        el("span", {}, [tr("all")]),
+      ])] : []),
+      ...categories.map((c) => {
+        const active = activeCat === c.id;
+        return el("a", { class: `side-link${active ? " active" : ""}`, href: `#/library/domain/${domainId}/category/${c.id}`, onclick: () => navigate(`/library/domain/${domainId}/category/${c.id}`) }, [
+          el("span", { class: "sl-dot" }, [icon("file", 14)]),
+          el("span", {}, [c.name, el("span", { class: "small muted", text: `(${c.text_count ?? 0})` })]),
+        ]);
+      }),
+    ]),
   ]) : null;
 
   const sidebar = el("aside", { class: "lib-side" }, [
@@ -561,9 +569,9 @@ export async function domainView(params) {
     searchBox,
     el("div", { class: "lib-layout" }, [
       el("div", { class: "lib-main" }, [
-        el("div", { class: "lib-section-title" }, [el("span", { class: "lst-rule" }), domain.name_ar]),
+        el("div", { class: "lib-section-title" }, [el("span", { class: "lst-rule" }), activeCat ? (categories.find(c => c.id === activeCat)?.name || tr("filters")) : domain.name_ar]),
         grid,
-        pagination(total, page, PER_PAGE, (p) => navigate(`/library/domain/${domainId}${p > 1 ? `/page/${p}` : ""}`)),
+        pagination(total, page, PER_PAGE, (p) => navigate(`/library/domain/${domainId}${activeCat ? `/category/${activeCat}` : ""}${p > 1 ? `/page/${p}` : ""}`)),
       ]),
       sidebar,
     ]),
