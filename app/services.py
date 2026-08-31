@@ -616,7 +616,7 @@ def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_ty
             AND (lt.title LIKE ? OR lt.description LIKE ? OR lt.source_note LIKE ?
                  OR EXISTS (SELECT 1 FROM articles a WHERE a.legal_text_id = lt.id AND a.content LIKE ?))
             LIMIT ?
-        """, [like_q] * 4 + filter_params + [limit * 3]).fetchall()
+        """, filter_params + [like_q] * 4 + [limit * 3]).fetchall()
         like_ids = {row[0] for row in like_id_rows}
 
         # دمج IDs مع أولوية FTS
@@ -672,7 +672,7 @@ def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_ty
                  OR EXISTS (SELECT 1 FROM articles a WHERE a.legal_text_id = lt.id AND a.content LIKE ?)
                  OR EXISTS (SELECT 1 FROM articles_fts JOIN articles a ON a.id = articles_fts.rowid WHERE a.legal_text_id = lt.id AND articles_fts MATCH ?))
         """
-        total_params = [like_q, like_q, like_q, like_q, fts_query] + filter_params * 4
+        total_params = filter_params + [like_q, like_q, like_q, like_q, fts_query]
         total = conn.execute(total_query, total_params).fetchone()[0]
 
         # وجوهات (Facets) - مبنية على النتائج الفعلية
