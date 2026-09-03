@@ -45,6 +45,7 @@ function setJsonLd(scriptId, obj) {
 
 // قاعدة عامة لكل مسار: { base, desc, jsonLd? }
 const ROUTE_META = [
+  { re: /^\/laws\/(\d+)/, base: "نص قانوني", desc: "نص قانوني مغربي — الاطلاع على المادة القانونية كاملة في مكتبة نبراس القانونية." },
   { re: /^\/text\/(\d+)/, base: "نص قانوني", desc: "نص قانوني مغربي — الاطلاع على المادة القانونية كاملة في مكتبة نبراس القانونية." },
   { re: /^\/pdf\/(\d+)/, base: "ملف PDF", desc: "الملف الرسمي للنص القانوني في مكتبة نبراس." },
   { re: /^\/jurisprudence\/(\d+)/, base: "اجتهاد قضائي", desc: "قرار واجتهاد قضائي من المحاكم المغربية — عرض المبدأ والنص في منصة نبراس." },
@@ -94,7 +95,7 @@ export function applySeo(path, params) {
   const cleanPath = (path || "/").split("?")[0];
   const base = cleanPath.split("/").filter(Boolean)[0] || "home";
   const h1 = extractH1();
-  const url = SITE + "/#" + cleanPath.replace(/^\//, "");
+  const url = SITE + (cleanPath === "/home" ? "/" : cleanPath);
 
   // العنوان
   let title = "";
@@ -150,7 +151,7 @@ export function applySeo(path, params) {
     parts.forEach((p, i) => {
       acc += "/" + p;
       const label = i === 0 && sectionLabel(p) ? sectionLabel(p) : (p === parts.at(-1) && h1 ? h1 : decodeURIComponent(p));
-      crumbs.push({ name: typeof label === "string" ? label : "نبراس", path: SITE + "/#" + acc });
+      crumbs.push({ name: typeof label === "string" ? label : "نبراس", path: SITE + acc });
     });
     setJsonLd("seo-breadcrumb", {
       "@context": "https://schema.org",
@@ -165,6 +166,7 @@ export function applySeo(path, params) {
 export function sectionLabel(base) {
   const m = {
     library: "المكتبة القانونية",
+    laws: "المكتبة القانونية",
     jurisprudence: "الاجتهادات القضائية",
     research: "مكتبة الباحث",
     procedures: "المساطر",

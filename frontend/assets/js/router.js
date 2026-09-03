@@ -18,8 +18,21 @@ export function register(path, handler, { auth = false, admin = false } = {}) {
 export function setNotFound(h) { notFound = h; }
 export function setAfterRender(h) { afterRender = h; }
 
+// المسار الحقيقي الحالي (pathname) إن كان يعبّر عن مسار تطبيق معروف، وإلا يعود للـ hash.
+function hashPath() {
+  return decodeURIComponent((window.location.hash || "#/home").replace(/^#/, "") || "/home");
+}
+
 export function navigate(path) {
-  window.location.hash = "#" + (path.startsWith("#") ? path.slice(1) : path);
+  const p = path.startsWith("#") ? path.slice(1) : path;
+  const normalized = (p.startsWith("/") ? p : "/" + p) || "/home";
+  if (window.location.pathname === normalized && window.location.hash === "") {
+    render();
+    return;
+  }
+  // التوجيه عبر الروابط الحقيقية (History API) مع توحيد canonical للروابط القديمة.
+  window.history.pushState({}, "", normalized);
+  render();
 }
 
 export function matchHash(hash) {
@@ -39,6 +52,32 @@ export function matchHash(hash) {
     if (ok) return { route, params };
   }
   return { route: { handler: notFound }, params: {} };
+}
+
+// يحددُ المسار الحالي:
+//  - إذا وُجد hash (#/...) فهو الوجهة الصريحة الأخيرة للمستخدم (روابط قديمة #/...)
+//    وتُنقَّل إلى روابط حقيقية عبر pushState.
+//  - وإلا يفضّل pathname (روابط حقيقية /laws/:id …) ثم يعود للمنزل.
+export function matchCurrent() {
+  if (window.location.hash && window.location.hash.length > 0) {
+    const m = matchHash(window.location.hash);
+    // نقل الروابط القديمة #/... إلى روابط حقيقية قابلة للفهرسة
+    if (m.route.handler && m.route.handler !== notFound && window.location.pathname.replace(/^\/+/, "") === "") {
+      const target = (window.location.hash || "#/home").replace(/^#/, "");
+      try {
+        window.history.replaceState({}, "", (target || "/home"));
+      } catch (_e) { /* تجاهل */ }
+    }
+    return m;
+  }
+  const pathname = window.location.pathname.replace(/^\/+/, "");
+  if (pathname && pathname !== "index.html") {
+    const m = matchHash("/" + pathname);
+    if (m.route && m.route.handler && m.route.handler !== notFound) {
+      return m;
+    }
+  }
+  return matchHash("/home");
 }
 
 function prefersReducedMotion() {
@@ -62,7 +101,7 @@ function showSkeleton(view) {
 }
 
 export function render() {
-  const { route, params } = matchHash(location.hash);
+  const { route, params } = matchCurrent();
   const view = document.getElementById("view");
 
   if (route.admin && !session.isAdmin) {
@@ -82,7 +121,18 @@ export function render() {
     return;
   }
 
-  const rawPath = decodeURIComponent((location.hash || "#/home").replace(/^#/, "") || "/home");
+  // تحديد القسم النشط من المسار الحالي (pathname أو hash)
+  let rawPath;
+  if (window.location.hash && window.location.hash.length > 0) {
+    rawPath = decodeURIComponent((location.hash || "#/home").replace(/^#/, "") || "/home");
+  } else {
+    const pathname = window.location.pathname.replace(/^\/+/, "");
+    if (pathname && pathname !== "index.html") {
+      rawPath = "/" + pathname;
+    } else {
+      rawPath = decodeURIComponent((location.hash || "#/home").replace(/^#/, "") || "/home");
+    }
+  }
   const base = rawPath.split("/").filter(Boolean)[0] || "home";
   document.querySelectorAll("[data-route]").forEach((a) => {
     const r = a.dataset.route === "home" ? "home" : a.dataset.route;
@@ -115,4 +165,5 @@ export function render() {
 
 export function initRouter() {
   window.addEventListener("hashchange", render);
+  window.addEventListener("popstate", render);
 }

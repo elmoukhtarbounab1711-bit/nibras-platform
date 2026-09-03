@@ -1,5 +1,13 @@
 User-agent: *
 Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /admin/
+Disallow: /account
+Disallow: /profile
+Disallow: /billing
+Disallow: /notifications
+Disallow: /api/
 
-# المنصة قائمة على SPA (hash-routing) — الصفحة الرئيسية قابلة للفهرسة.
+# المنصة تقدم صفحات SSR قابلة للفهرسة عبر URLs حقيقية (بدون hash).
 Sitemap: https://nibras-law-platforme.vercel.app/sitemap.xml

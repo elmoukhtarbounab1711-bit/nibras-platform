@@ -1,5 +1,5 @@
 // نبراس — Service Worker v15: stale-while-revalidate للثوابت، network-first للـ API
-const CACHE_NAME = "nibras-v15";
+const CACHE_NAME = "nibras-v16";
 
 self.addEventListener("install", (e) => {
   self.skipWaiting();

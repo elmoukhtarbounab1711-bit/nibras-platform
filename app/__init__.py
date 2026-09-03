@@ -10,7 +10,7 @@ import os
 import sqlite3
 from pathlib import Path
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Response
 
 from . import config, tenant_scope
 from . import logging_utils as nibras_logging
@@ -335,6 +335,63 @@ def create_app():
     @app.route("/vendor/<path:filename>")
     def frontend_vendor(filename):
         return send_from_directory(str(_vendor_dir), filename)
+
+    # ------------------------------------------------------------------
+    # خدمة صفحات SEO عبر تقديم الخادم (SSR) — مرحلة URLs الحقيقية.
+    # تُسجَّل قبل spa_catch_all لتسبقها. أي مسار لا يطابق محتوى SEO
+    # (مثل معرف غير موجود) يقع إلى ترويسة SPA فيبقى سلوك التطبيق كما هو.
+    # ------------------------------------------------------------------
+    from . import seo as _seo
+
+    def _ssr_or_spa(path, frontend_dir=None):
+        html = _seo.render_seo(path)
+        if html is None:
+            return send_from_directory(str(frontend_dir), "index.html")
+        return Response(html, mimetype="text/html")
+
+    @app.route("/laws/<int:law_id>")
+    def seo_law_page(law_id):
+        return _ssr_or_spa(f"/laws/{law_id}", frontend_dir)
+
+    @app.route("/jurisprudence/<int:decision_id>")
+    def seo_jurisprudence_page(decision_id):
+        return _ssr_or_spa(f"/jurisprudence/{decision_id}", frontend_dir)
+
+    @app.route("/procedures/<path:procedures_slug>")
+    def seo_procedure_page(procedures_slug):
+        return _ssr_or_spa(f"/procedures/{procedures_slug}", frontend_dir)
+
+    @app.route("/laws")
+    def seo_laws_list():
+        return _ssr_or_spa("/laws", frontend_dir)
+
+    @app.route("/jurisprudence")
+    def seo_jurisprudence_list():
+        return _ssr_or_spa("/jurisprudence", frontend_dir)
+
+    @app.route("/procedures")
+    def seo_procedures_list():
+        return _ssr_or_spa("/procedures", frontend_dir)
+
+    @app.route("/domains/<path:domain_slug>")
+    def seo_domain_page(domain_slug):
+        return _ssr_or_spa(f"/domains/{domain_slug}", frontend_dir)
+
+    @app.route("/sitemaps/laws.xml")
+    def seo_sitemap_laws():
+        return Response(_seo.sitemap_laws(), mimetype="application/xml")
+
+    @app.route("/sitemaps/jurisprudence.xml")
+    def seo_sitemap_jurisprudence():
+        return Response(_seo.sitemap_jurisprudence(), mimetype="application/xml")
+
+    @app.route("/sitemaps/procedures.xml")
+    def seo_sitemap_procedures():
+        return Response(_seo.sitemap_procedures(), mimetype="application/xml")
+
+    @app.route("/sitemap.xml")
+    def seo_sitemap_index():
+        return Response(_seo.sitemap_index(), mimetype="application/xml")
 
     @app.route("/<path:path>")
     def spa_catch_all(path):

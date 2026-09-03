@@ -28,6 +28,9 @@ register("/library/domain/:id", lazy("./views/library.js", "domainView"));
 register("/library/domain/:id/page/:page", lazy("./views/library.js", "domainView"));
 register("/library/domain/:id/category/:category", lazy("./views/library.js", "domainView"));
 register("/library/domain/:id/category/:category/page/:page", lazy("./views/library.js", "domainView"));
+// روابط حقيقية للمكتبة والقوانين (SEO) — تحافظ على نفس عارضي SPA
+register("/laws", lazy("./views/library.js", "libraryView"));
+register("/laws/:id", lazy("./views/library.js", "textView"));
 register("/text/:id", lazy("./views/library.js", "textView"));
 register("/pdf/:id", lazy("./views/library.js", "pdfView"));
 
@@ -233,7 +236,8 @@ setAfterRender((route, params) => {
   resetAdObserver();
   setTimeout(initAdSlots, 100);
   updateAppMode();
-  const path = (location.hash || "#/home").replace(/^#/, "") || "/home";
+  const pn = window.location.pathname.replace(/^\/+/, "");
+  const path = (pn && pn !== "index.html" ? "/" + pn : (location.hash || "#/home").replace(/^#/, "") || "/home");
   applySeo(path, params || {});
 });
 
