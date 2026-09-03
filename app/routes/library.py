@@ -20,6 +20,7 @@ def get_categories():
 @library_bp.route("/api/texts", methods=["GET"])
 def get_texts():
     category = request.args.get("category")
+    category_id = request.args.get("category_id", type=int)
     text_type = request.args.get("type")
     jurisdiction_id = request.args.get("jurisdiction_id")
     limit = request.args.get("limit")
@@ -27,7 +28,7 @@ def get_texts():
     if limit is not None:
         limit = max(1, min(int(limit), 100))
     return jsonify(services.list_texts(
-        category_slug=category, text_type=text_type,
+        category_slug=category, category_id=category_id, text_type=text_type,
         jurisdiction_id=jurisdiction_id,
         limit=limit, offset=int(offset or 0),
     ))

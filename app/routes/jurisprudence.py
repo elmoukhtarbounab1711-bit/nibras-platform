@@ -55,11 +55,13 @@ def search_decisions():
     q = request.args.get("q", "")
     if not q.strip():
         return jsonify({"error": "أدخل كلمة للبحث في الاجتهادات."}), 400
-    limit = min(max(int(request.args.get("limit", 20)), 1), 50)
-    results = services_jurisprudence.search_decisions(
-        q, category_slug=request.args.get("category"), limit=limit
+    limit = min(max(int(request.args.get("limit", 12)), 1), 50)
+    offset = max(int(request.args.get("offset", 0)), 0)
+    data = services_jurisprudence.search_decisions(
+        q, category_slug=request.args.get("category"), limit=limit, offset=offset,
+        highlight=True
     )
-    return jsonify({"query": q, "count": len(results), "results": results})
+    return jsonify({"query": q, "count": data["total"], "total": data["total"], "results": data["results"]})
 
 
 @jurisprudence_bp.route("/api/jurisprudence/stats", methods=["GET"])

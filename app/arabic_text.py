@@ -149,7 +149,9 @@ def article_variants(term: str) -> list:
                 next_term = current[len(prefix):]
                 if len(next_term) >= 2 and next_term not in stripped:
                     stripped.append(next_term)
-        for conj in _CONJUNCTIONS + ("ل",):
+        # لا نزيل حروف العطف/الجر المفردة (و/ف/ب/ك/ل) من بداية الكلمة لأنها
+        # غامضة (مثل ك في «كراء» = ك+راء) وتولّد شظايا كاذبة تلوّث نتائج البحث.
+        for conj in ("",):
             if current.startswith(conj) and len(current) > len(conj) + 2:
                 next_term = current[len(conj):]
                 if len(next_term) >= 3 and next_term not in stripped:

@@ -34,7 +34,7 @@ def list_categories():
         return [row_to_dict(r) for r in rows]
 
 
-def list_texts(category_slug=None, text_type=None, jurisdiction_id=None,
+def list_texts(category_slug=None, category_id=None, text_type=None, jurisdiction_id=None,
                limit=None, offset=0):
     # عدد مواد النص يُعد ضمن مستأجر النص نفسه (لا يختلط عبر المستأجرين)
     sub_count = "SELECT COUNT(*) FROM articles a WHERE a.legal_text_id = lt.id"
@@ -58,6 +58,9 @@ def list_texts(category_slug=None, text_type=None, jurisdiction_id=None,
     if category_slug:
         query += " AND c.slug = ?"
         params.append(category_slug)
+    if category_id:
+        query += " AND lt.category_id = ?"
+        params.append(category_id)
     if text_type:
         query += " AND lt.type = ?"
         params.append(text_type)
@@ -86,6 +89,9 @@ def list_texts(category_slug=None, text_type=None, jurisdiction_id=None,
     if category_slug:
         count_q += " AND c.slug = ?"
         count_params.append(category_slug)
+    if category_id:
+        count_q += " AND lt.category_id = ?"
+        count_params.append(category_id)
     if text_type:
         count_q += " AND lt.type = ?"
         count_params.append(text_type)
@@ -585,7 +591,17 @@ def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_ty
 
         # === المرحلة 1: العثور على IDs النصوص المطابقة ===
         fts_query = arabic_text.build_fts_query(term_groups)
-        like_q = f"%{arabic_text.normalize_arabic(query_text.strip())}%"
+        raw_query = query_text.strip()
+
+        # متجر لجميع المتغيّرات للتطبيع على جانب JSQL — نستخدم صيغ FTS المتعددة
+        like_variants = sorted(
+            {v for g in term_groups for v in g if len(v) >= 2}
+        )
+        like_conds = " OR ".join(
+            "nbr_normalize(COALESCE(lt.title,'') || ' ' || COALESCE(lt.description,'') || ' ' || COALESCE(lt.source_note,'')) LIKE ?"
+            for _ in like_variants
+        )
+        like_params = [f"%{v}%" for v in like_variants]
 
         # الحصول على IDs من FTS (أولوية عالية)
         fts_ids = set()
@@ -604,25 +620,74 @@ def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_ty
         except sqlite3.OperationalError:
             fts_ids = set()
 
-        # الحصول على IDs من LIKE على العناوين/الأوصاف/المصادر
+        # الحصول على IDs من LIKE على العناوين/الأوصاف/المصادر (يغطي كل المتغيّرات)
         like_ids = set()
-        like_q = f"%{arabic_text.normalize_arabic(query_text.strip())}%"
         like_id_rows = conn.execute(f"""
             SELECT DISTINCT lt.id
             FROM legal_texts lt
             JOIN categories c ON c.id = lt.category_id
             JOIN legal_domains d ON d.id = lt.domain_id
             WHERE {filter_clause}
-            AND (lt.title LIKE ? OR lt.description LIKE ? OR lt.source_note LIKE ?
-                 OR EXISTS (SELECT 1 FROM articles a WHERE a.legal_text_id = lt.id AND a.content LIKE ?))
+            AND ({like_conds})
             LIMIT ?
-        """, filter_params + [like_q] * 4 + [limit * 3]).fetchall()
+        """, filter_params + like_params + [limit * 100]).fetchall()
         like_ids = {row[0] for row in like_id_rows}
 
         # دمج IDs مع أولوية FTS
         all_ids = list(fts_ids) + [id for id in like_ids if id not in fts_ids]
+        all_ids_set = set(all_ids)
+
+        # ترتيب الدقة: نُسجّل لكل كلمة (مجموعة مصطلحات) قائمة المطابقة داخل
+        # العنوان/الوصف، ثم نُقيّم كل وثيقة حسب عدد المجموعات المطابقة
+        # (الوثيقة المطابقة لكل كلمات الاستعلام تتصدّر حتمًا)، مع ترجيح
+        # المطابقة الدقيقة في بداية العنوان.
+        if all_ids_set:
+            score_map = {}          # id -> (score, order_index)
+            found_ids = []
+            for gi, group in enumerate(term_groups):
+                g_vars = [v for v in group if len(v) >= 3]
+                if not g_vars:
+                    continue
+                g_conds_title = " OR ".join(
+                    "nbr_normalize(COALESCE(lt.title,'')) LIKE ?" for _ in g_vars
+                )
+                g_conds_desc = " OR ".join(
+                    "nbr_normalize(COALESCE(lt.description,'') || ' ' || COALESCE(lt.source_note,'')) LIKE ?"
+                    for _ in g_vars
+                )
+                g_params = [f"%{v}%" for v in g_vars]
+                title_rows = conn.execute(f"""
+                    SELECT DISTINCT lt.id, lt.title
+                    FROM legal_texts lt
+                    WHERE lt.id IN ({','.join(['?'] * len(all_ids))}) AND ({g_conds_title})
+                """, all_ids + g_params).fetchall()
+                title_hits = {r[0] for r in title_rows}
+                title_start = {r[0] for r in title_rows if (r[1] or '').strip().startswith(tuple(g_vars))}
+                desc_rows = conn.execute(f"""
+                    SELECT DISTINCT lt.id
+                    FROM legal_texts lt
+                    WHERE lt.id IN ({','.join(['?'] * len(all_ids))}) AND ({g_conds_desc})
+                """, all_ids + g_params).fetchall()
+                desc_hits = {r[0] for r in desc_rows}
+                for i, tid in enumerate(all_ids):
+                    if tid in title_hits:
+                        s, _ = score_map.get(tid, (0, 0))
+                        score_map[tid] = (s + (3 if tid in title_start else 2), 0)
+                    elif tid in desc_hits:
+                        s, _ = score_map.get(tid, (0, 0))
+                        score_map[tid] = (s + 1, 0)
+                    else:
+                        score_map.setdefault(tid, (0, 0))
+
+            # ترتيب: النقاط تنازليًا، ثم استقرار الترتيب الأصلي (FTS/دايركت)
+            ordered_ids = [tid for tid, _ in sorted(
+                score_map.items(),
+                key=lambda kv: (-kv[1][0], all_ids.index(kv[0]))
+            )]
+            all_ids = ordered_ids
+
         all_ids = all_ids[:limit]
-        
+
         if not all_ids:
             return {"query": query_text, "total": 0, "results": [], "facets": {}, "highlight_terms": highlight_terms}
 
@@ -646,20 +711,18 @@ def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_ty
 
         # نتائج مع تمييز
         results = []
+        import re
         for row in rows:
             r = row_to_dict(row)
-            # استخدام title كمصدر أساسي للتمييز (لأن الوصف/المحتوى غالباً فارغ)
-            content = r.get("content") or r.get("description") or r.get("source_note") or r.get("legal_text_title") or ""
+            # مصدر التمييز: المادة ثم الوصف ثم العنوان (للنتائج الدقيقة من العنوان)
+            content = r.get("description") or r.get("article_content") or r.get("title") or ""
             if highlight and content:
-                for term in highlight_terms:
-                    if len(term) > 2:
-                        norm_term = arabic_text.normalize_arabic(term)
-                        norm_content = arabic_text.normalize_arabic(content)
-                        if norm_term in norm_content:
-                            import re
-                            pattern = re.compile(re.escape(term), re.IGNORECASE)
-                            content = pattern.sub(f'<mark>{term}</mark>', content)
-                r["highlighted_content"] = content[:300] + ("..." if len(content) > 300 else "")
+                terms = [t for t in highlight_terms if len(t) > 2]
+                if terms:
+                    combined = "|".join(re.escape(t) for t in sorted(set(terms), key=len, reverse=True))
+                    pattern = re.compile(f"({combined})", re.IGNORECASE)
+                    marked = pattern.sub(r'<mark>\1</mark>', content)
+                    r["highlighted_content"] = marked[:400] + ("..." if len(marked) > 400 else "")
             results.append(r)
 
         # إجمالي النتائج (للتقسيط) - عدد تقريبي
@@ -668,34 +731,42 @@ def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_ty
             JOIN categories c ON c.id = lt.category_id
             JOIN legal_domains d ON d.id = lt.domain_id
             WHERE {filter_clause}
-            AND (lt.title LIKE ? OR lt.description LIKE ? OR lt.source_note LIKE ? 
-                 OR EXISTS (SELECT 1 FROM articles a WHERE a.legal_text_id = lt.id AND a.content LIKE ?)
+            AND (({like_conds})
                  OR EXISTS (SELECT 1 FROM articles_fts JOIN articles a ON a.id = articles_fts.rowid WHERE a.legal_text_id = lt.id AND articles_fts MATCH ?))
         """
-        total_params = filter_params + [like_q, like_q, like_q, like_q, fts_query]
+        total_params = filter_params + like_params + [fts_query]
         total = conn.execute(total_query, total_params).fetchone()[0]
 
         # وجوهات (Facets) - مبنية على النتائج الفعلية
         facet_data = {}
         if facets and results:
-            # نطاقات من النتائج
-            domain_counts = {}
-            cat_counts = {}
+            domain_map = {}   # name -> [id, count, color]
+            cat_map = {}      # name -> [id, count]
             type_counts = {}
             for r in results:
                 dn = r.get("domain_name_ar")
                 if dn:
-                    domain_counts[dn] = domain_counts.get(dn, 0) + 1
+                    cur = domain_map.setdefault(dn, [r.get("domain_id"), 0, r.get("domain_color") or "#1f3a93"])
+                    cur[1] += 1
                 cn = r.get("category_name")
                 if cn:
-                    cat_counts[cn] = cat_counts.get(cn, 0) + 1
+                    cur = cat_map.setdefault(cn, [r.get("category_id"), 0])
+                    cur[1] += 1
                 tt = r.get("text_type")
                 if tt:
                     type_counts[tt] = type_counts.get(tt, 0) + 1
-            
-            facet_data["domains"] = [{"name_ar": k, "count": v} for k, v in sorted(domain_counts.items(), key=lambda x: -x[1])]
-            facet_data["categories"] = [{"name": k, "count": v} for k, v in sorted(cat_counts.items(), key=lambda x: -x[1])]
-            facet_data["types"] = [{"type": k, "count": v} for k, v in sorted(type_counts.items(), key=lambda x: -x[1])]
+
+            facet_data["domains"] = [
+                {"id": v[0], "name_ar": k, "count": v[1], "color": v[2]}
+                for k, v in sorted(domain_map.items(), key=lambda x: -x[1][1])
+            ]
+            facet_data["categories"] = [
+                {"id": v[0], "name": k, "count": v[1]}
+                for k, v in sorted(cat_map.items(), key=lambda x: -x[1][1])
+            ]
+            facet_data["types"] = [
+                {"type": k, "count": v} for k, v in sorted(type_counts.items(), key=lambda x: -x[1])
+            ]
 
     return {
         "query": query_text,

@@ -54,10 +54,14 @@ let suggestionsDebounce = null;
 
 export async function libraryView(params) {
   const page = Math.max(1, parseInt(params.page || "1", 10) || 1);
-  const activeCat = params.category || "";
-  const q = params.q || "";
-  const domainId = params.domain ? parseInt(params.domain, 10) : null;
-  const textType = params.type || "";
+  // الفلاتر: نقرأها من مسار الهاش (params) وما يعادلها في استعلام الهاش (؟...) 
+  // لتتكامل حقول وجوهات البحث (facets) مع روابط المسارات.
+  const hashQuery = new URLSearchParams((location.hash.split("?")[1] || ""));
+  const activeCat = params.category || hashQuery.get("category") || "";
+  const q = params.q || hashQuery.get("q") || "";
+  const domainIdRaw = params.domain || hashQuery.get("domain");
+  const domainId = domainIdRaw ? parseInt(domainIdRaw, 10) : null;
+  const textType = params.type || hashQuery.get("type") || "";
   const PER_PAGE = 12;
 
   // المسار الأساسي (/library) → لوحة التصميم الجديدة
@@ -67,6 +71,19 @@ export async function libraryView(params) {
 
   // استدعاء API البحث المحسّن
   let searchResult, cats;
+  // نحمّل الفئات أولًا لنتمكن من ترجمة slug→id عند الحاجة
+  cats = await api.get("/api/categories");
+
+  // الفئة الرقمية (من الوجوهات) أم slug (من /cat/:slug)؟
+  let catId = null;
+  if (activeCat) {
+    if (/^\d+$/.test(String(activeCat))) catId = activeCat;
+    else {
+      const co = (cats || []).find((c) => c.slug === activeCat);
+      if (co) catId = co.id;
+    }
+  }
+
   if (q) {
     const searchParams = new URLSearchParams({
       q,
@@ -76,27 +93,21 @@ export async function libraryView(params) {
       facets: "true"
     });
     if (domainId) searchParams.set("domain_id", domainId);
-    if (activeCat) searchParams.set("category_id", activeCat);
+    if (catId) searchParams.set("category_id", catId);
     if (textType) searchParams.set("type", textType);
     
-    [cats, searchResult] = await Promise.all([
-      api.get("/api/categories"),
-      api.get(`/api/search?${searchParams.toString()}`)
-    ]);
+    searchResult = await api.get(`/api/search?${searchParams.toString()}`);
   } else {
     // تصفح حسب الفئة/النطاق
     const textsParams = new URLSearchParams({
       limit: PER_PAGE,
       offset: (page - 1) * PER_PAGE
     });
-    if (activeCat) textsParams.set("category", activeCat);
+    if (catId) textsParams.set("category_id", catId);
     if (domainId) textsParams.set("domain", domainId);
     if (textType) textsParams.set("type", textType);
     
-    [cats, searchResult] = await Promise.all([
-      api.get("/api/categories"),
-      api.get(`/api/texts?${textsParams.toString()}`)
-    ]);
+    searchResult = await api.get(`/api/texts?${textsParams.toString()}`);
   }
 
   let texts = [], total = 0, facets = {}, highlightTerms = [];
@@ -124,8 +135,8 @@ export async function libraryView(params) {
     total = searchResult.count ?? searchResult.total ?? (Array.isArray(texts) ? texts.length : 0);
   }
 
-  const cat = cats.find((c) => c.slug === activeCat);
-  const [ic] = cat ? catMeta(activeCat) : (domainId ? ["folder"] : ["search"]);
+  const cat = (cats || []).find((c) => c.slug === activeCat || String(c.id) === String(activeCat));
+  const [ic] = cat ? catMeta(cat.slug) : (domainId ? ["folder"] : ["search"]);
 
   // بنر احترافي للفئة / البحث
   const banner = el("section", { class: "lib-cat-banner" }, [
@@ -288,13 +299,13 @@ export async function libraryView(params) {
       sections.push(el("div", { class: "facet-section" }, [
         el("h4", { class: "facet-title" }, [icon("book", 14), tr("categoryFilter")]),
         el("div", { class: "facet-options" }, facets.categories.slice(0, 10).map((c) =>
-          el("label", { class: `facet-option${active.activeCat == c.slug ? " active" : ""}` }, [
+          el("label", { class: `facet-option${active.activeCat == c.id ? " active" : ""}` }, [
             el("input", { 
               type: "checkbox", 
-              checked: active.activeCat == c.slug,
+              checked: active.activeCat == c.id,
               onchange: (e) => {
                 const url = new URL(location.href);
-                if (e.target.checked) url.searchParams.set("category", c.slug);
+                if (e.target.checked) url.searchParams.set("category", c.id);
                 else url.searchParams.delete("category");
                 url.searchParams.set("page", "1");
                 navigate(url.hash.slice(1));

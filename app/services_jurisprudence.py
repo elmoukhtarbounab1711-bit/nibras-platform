@@ -184,12 +184,13 @@ def get_decision(decision_id: int):
         return decision
 
 
-def search_decisions(query_text: str, category_slug=None, limit: int = 20):
+def search_decisions(query_text: str, category_slug=None, limit: int = 20,
+                     offset: int = 0, highlight: bool = False):
     """بحث نصي بالكلمة عبر FTS5 في الاجتهادات (نمط search_articles من المكتبة).
 
     يستخدم نفس مسار التطبيع (nbr_normalize) وبناء المصطلحات
     (build_search_terms / build_fts_query) الخاص ببحث المواد — يطابق فقط
-    الاجتهادات المنشورة.
+    الاجتهادات المنشورة. يعيد قائمة (لتوافق المستدعين مثل مساعد الذكاء).
     """
     if not query_text or not query_text.strip():
         return []
@@ -197,6 +198,8 @@ def search_decisions(query_text: str, category_slug=None, limit: int = 20):
     term_groups = arabic_text.build_search_terms(query_text)
     if not term_groups:
         return []
+
+    highlight_terms = [v for g in term_groups for v in g if len(v) >= 3]
 
     with db_session() as conn:
         try:
@@ -245,10 +248,18 @@ def search_decisions(query_text: str, category_slug=None, limit: int = 20):
             if category_slug:
                 base += " AND c.slug = ?"
                 params.append(category_slug)
-            base += " ORDER BY rank LIMIT ?"
-            params.append(limit)
+            base += " ORDER BY rank LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
             rows = conn.execute(base, params).fetchall()
+            # إن لم يُصب AND شيئًا لكلمات متعددة، نعيد إلى OR مع تقييم
             if not rows and len(term_groups) >= 2:
+                fts_or = " OR ".join(
+                    f"({arabic_text.group_fts_or(g)})" for g in term_groups
+                )
+                or_params = [fts_or] + params[1:-2] + [limit, offset]
+                or_rows = conn.execute(
+                    base, or_params
+                ).fetchall()
                 group_scores = []
                 for g in term_groups:
                     cnt = conn.execute(
@@ -257,12 +268,6 @@ def search_decisions(query_text: str, category_slug=None, limit: int = 20):
                         (arabic_text.group_fts_or(g),),
                     ).fetchone()[0]
                     group_scores.append((g, 1.0 / (1.0 + cnt)))
-                fts_or = " OR ".join(
-                    f"({arabic_text.group_fts_or(g)})" for g in term_groups
-                )
-                or_rows = conn.execute(
-                    base, [fts_or] + params[1:-1] + [limit * 20]
-                ).fetchall()
                 scored = []
                 for row in or_rows:
                     score = 0.0
@@ -277,19 +282,22 @@ def search_decisions(query_text: str, category_slug=None, limit: int = 20):
                     if score:
                         scored.append((score, row))
                 scored.sort(key=lambda x: x[0], reverse=True)
-                rows = [r for _, r in scored][:limit] or rows
+                rows = scored[:limit] and [r for _, r in scored][:limit] or rows
         except sqlite3.OperationalError:
-            like_q = f"%{arabic_text.normalize_arabic(query_text.strip())}%"
-            base = """SELECT j.id, j.title, j.principles, j.content, j.court,
+            like_variants = sorted({v for g in term_groups for v in g if len(v) >= 3})
+            like_conds = " OR ".join(
+                "nbr_normalize(COALESCE(j.title,'') || ' ' || COALESCE(j.principles,'') || ' ' || COALESCE(j.content,'') || ' ' || COALESCE(j.source_note,'')) LIKE ?"
+                for _ in like_variants
+            )
+            like_params = [f"%{v}%" for v in like_variants]
+            base = f"""SELECT j.id, j.title, j.principles, j.content, j.court,
                              j.decision_number, j.decision_date, j.source_note,
                              j.pdf_url, j.views, c.name AS category_name,
                              c.slug AS category_slug, 0 AS rank
                       FROM jurisprudence j
                       JOIN jurisprudence_categories c ON c.id = j.category_id
-                      WHERE j.published = 1 AND (
-                          j.title LIKE ? OR j.principles LIKE ?
-                          OR j.content LIKE ? OR j.source_note LIKE ?)"""
-            params = [like_q, like_q, like_q, like_q]
+                      WHERE j.published = 1 AND ({like_conds})"""
+            params = like_params
             for alias in ("j", "c"):
                 cond, vals = tenant_scope.tenant_eq(alias)
                 if cond:
@@ -299,10 +307,114 @@ def search_decisions(query_text: str, category_slug=None, limit: int = 20):
             if category_slug:
                 base += " AND c.slug = ?"
                 params.append(category_slug)
-            base += " ORDER BY j.views DESC LIMIT ?"
-            params.append(limit)
-            rows = conn.execute(base, params).fetchall()
-        return [dict(r) for r in rows]
+            base += " ORDER BY j.views DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+            try:
+                rows = conn.execute(base, params).fetchall()
+            except sqlite3.OperationalError:
+                # إذا تعذّر nbr_normalize (بنية قديمة) نعود إلى LIKE خام
+                base = """SELECT j.id, j.title, j.principles, j.content, j.court,
+                                 j.decision_number, j.decision_date, j.source_note,
+                                 j.pdf_url, j.views, c.name AS category_name,
+                                 c.slug AS category_slug, 0 AS rank
+                          FROM jurisprudence j
+                          JOIN jurisprudence_categories c ON c.id = j.category_id
+                          WHERE j.published = 1 AND (
+                              j.title LIKE ? OR j.principles LIKE ?
+                              OR j.content LIKE ? OR j.source_note LIKE ?)"""
+                like_q = f"%{arabic_text.normalize_arabic(query_text.strip())}%"
+                params = [like_q, like_q, like_q, like_q]
+                for alias in ("j", "c"):
+                    cond, vals = tenant_scope.tenant_eq(alias)
+                    if cond:
+                        base += " AND " + cond
+                        params.extend(vals)
+                base += " AND j.jurisdiction_id IS NULL"
+                if category_slug:
+                    base += " AND c.slug = ?"
+                    params.append(category_slug)
+                base += " ORDER BY j.views DESC LIMIT ? OFFSET ?"
+                params.extend([limit, offset])
+                rows = conn.execute(base, params).fetchall()
+
+        results = []
+        for r in rows:
+            d = dict(r)
+            if highlight and highlight_terms and (d.get("principles") or d.get("content")):
+                import re
+                src = d.get("principles") or d.get("content") or ""
+                combined = "|".join(re.escape(t) for t in sorted(set(highlight_terms), key=len, reverse=True))
+                marked = re.sub(f"({combined})", r'<mark>\1</mark>', src, flags=re.IGNORECASE)
+                d["highlighted"] = marked[:400] + ("..." if len(marked) > 400 else "")
+            results.append(d)
+        return results
+
+
+def count_search_decisions(query_text: str, category_slug=None) -> int:
+    """إجمالي الاجتهادات المطابقة للبحث (للتقسيط)."""
+    if not query_text or not query_text.strip():
+        return 0
+    term_groups = arabic_text.build_search_terms(query_text)
+    if not term_groups:
+        return 0
+    with db_session() as conn:
+        try:
+            fts_query = arabic_text.build_fts_query(term_groups)
+            base = """SELECT COUNT(*) FROM jurisprudence_fts
+                      JOIN jurisprudence j ON j.id = jurisprudence_fts.rowid
+                      JOIN jurisprudence_categories c ON c.id = j.category_id
+                      WHERE jurisprudence_fts MATCH ? AND j.published = 1"""
+            params = [fts_query]
+            for alias in ("j", "c"):
+                cond, vals = tenant_scope.tenant_eq(alias)
+                if cond:
+                    base += " AND " + cond
+                    params.extend(vals)
+            base += " AND j.jurisdiction_id IS NULL"
+            if category_slug:
+                base += " AND c.slug = ?"
+                params.append(category_slug)
+            return conn.execute(base, params).fetchone()[0]
+        except sqlite3.OperationalError:
+            like_variants = sorted({v for g in term_groups for v in g if len(v) >= 3})
+            like_conds = " OR ".join(
+                "nbr_normalize(COALESCE(j.title,'') || ' ' || COALESCE(j.principles,'') || ' ' || COALESCE(j.content,'') || ' ' || COALESCE(j.source_note,'')) LIKE ?"
+                for _ in like_variants
+            )
+            like_params = [f"%{v}%" for v in like_variants]
+            base = f"""SELECT COUNT(*) FROM jurisprudence j
+                       JOIN jurisprudence_categories c ON c.id = j.category_id
+                       WHERE j.published = 1 AND ({like_conds})"""
+            params = like_params
+            for alias in ("j", "c"):
+                cond, vals = tenant_scope.tenant_eq(alias)
+                if cond:
+                    base += " AND " + cond
+                    params.extend(vals)
+            base += " AND j.jurisdiction_id IS NULL"
+            if category_slug:
+                base += " AND c.slug = ?"
+                params.append(category_slug)
+            try:
+                return conn.execute(base, params).fetchone()[0]
+            except sqlite3.OperationalError:
+                like_q = f"%{arabic_text.normalize_arabic(query_text.strip())}%"
+                base = """SELECT COUNT(*) FROM jurisprudence j
+                          JOIN jurisprudence_categories c ON c.id = j.category_id
+                          WHERE j.published = 1 AND (
+                              j.title LIKE ? OR j.principles LIKE ?
+                              OR j.content LIKE ? OR j.source_note LIKE ?)"""
+                params = [like_q, like_q, like_q, like_q]
+                for alias in ("j", "c"):
+                    cond, vals = tenant_scope.tenant_eq(alias)
+                    if cond:
+                        base += " AND " + cond
+                        params.extend(vals)
+                base += " AND j.jurisdiction_id IS NULL"
+                if category_slug:
+                    base += " AND c.slug = ?"
+                    params.append(category_slug)
+                return conn.execute(base, params).fetchone()[0]
 
 
 def jurisprudence_stats():

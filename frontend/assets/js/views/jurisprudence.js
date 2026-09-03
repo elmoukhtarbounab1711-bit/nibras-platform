@@ -33,7 +33,7 @@ export async function jurisprudenceView(params) {
   const [cats, data, stats] = await Promise.all([
     api.get("/api/jurisprudence/categories"),
     q
-      ? api.get(`/api/jurisprudence/search?q=${encodeURIComponent(q)}${activeCat ? `&category=${encodeURIComponent(activeCat)}` : ""}`)
+      ? api.get(`/api/jurisprudence/search?q=${encodeURIComponent(q)}${activeCat ? `&category=${encodeURIComponent(activeCat)}` : ""}&limit=${PER_PAGE}&offset=${(page - 1) * PER_PAGE}`)
       : api.get(`/api/jurisprudence?limit=${PER_PAGE}&offset=${(page - 1) * PER_PAGE}${activeCat ? `&category=${encodeURIComponent(activeCat)}` : ""}`),
     api.get("/api/jurisprudence/stats"),
   ]);
@@ -41,7 +41,7 @@ export async function jurisprudenceView(params) {
   let decisions = [], total = 0;
   if (q) {
     decisions = Array.isArray(data) ? data : (data.results || []);
-    total = decisions.length;
+    total = (Array.isArray(data) ? decisions.length : (data.total ?? data.count ?? 0));
   } else {
     decisions = Array.isArray(data) ? data : (data.decisions || []);
     total = Array.isArray(data) ? decisions.length : (data.count ?? 0);
@@ -115,6 +115,8 @@ export async function jurisprudenceView(params) {
       decisions.length
         ? el("div", { class: "juris-list" }, decisions.map(decisionCard))
         : emptyState(tr("noResults"), "scale"),
+      pagination(total, page, PER_PAGE, (p) =>
+        navigate(`/jurisprudence/q/${encodeURIComponent(q)}${p > 1 ? `/page/${p}` : ""}`)),
     ]);
   } else if (activeCat) {
     main = el("div", { class: "lib-main" }, [
@@ -165,7 +167,9 @@ function decisionCard(d) {
       ]),
       el("h3", { class: "card-title" },
         el("a", { href: `#/jurisprudence/${d.id}`, text: d.title || tr("jurisUntitled") })),
-      d.principles ? el("p", { class: "small muted", text: esc(truncate(d.principles, 110)) }) : null,
+      d.highlighted
+        ? el("p", { class: "small muted srch-sum", html: d.highlighted })
+        : (d.principles ? el("p", { class: "small muted", text: esc(truncate(d.principles, 110)) }) : null),
       el("div", { class: "flex-between mt-8" }, [
         el("div", { class: "flex", style: "gap:8px" }, [
           d.court ? el("span", { class: "small muted", text: d.court }) : null,
