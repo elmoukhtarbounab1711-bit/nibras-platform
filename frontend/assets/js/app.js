@@ -3,7 +3,8 @@ import { applyLang, setLang, tr, preloadFr } from "./i18n.js";
 import { api, session, setUnauthorizedHandler } from "./api.js";
 import { el, toast } from "./ui.js";
 import { icon } from "./icons.js";
-import { register, setNotFound, initRouter, render, navigate } from "./router.js";
+import { register, setNotFound, initRouter, render, navigate, setAfterRender } from "./router.js";
+import { applySeo } from "./seo.js";
 import { openAuth, logout } from "./views/auth.js";
 import { initAppMode, updateAppMode } from "./components/app-mode.js";
 import "./components/download-app.js";
@@ -225,13 +226,15 @@ requestAnimationFrame(() => {
   });
 });
 
-// تهيئة الإعلانات بعد كل تغيير مسار
+// تهيئة الإعلانات بعد كل تغيير مسار + تحسين SEO (عنوان/وصف/بيانات مهيكلة)
 import { setAfterRender } from "./router.js";
 import { initAdSlots, resetAdObserver } from "./components/ads.js";
-setAfterRender(() => {
+setAfterRender((route, params) => {
   resetAdObserver();
   setTimeout(initAdSlots, 100);
   updateAppMode();
+  const path = (location.hash || "#/home").replace(/^#/, "") || "/home";
+  applySeo(path, params || {});
 });
 
 setInterval(() => { if (session.token) refreshNotifBadge(); }, 60000);

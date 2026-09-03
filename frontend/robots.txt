@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# المنصة قائمة على SPA (hash-routing) — الصفحة الرئيسية قابلة للفهرسة.
+Sitemap: https://nibras-law-platforme.vercel.app/sitemap.xml
