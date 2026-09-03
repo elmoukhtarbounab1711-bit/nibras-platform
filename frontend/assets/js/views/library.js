@@ -121,6 +121,7 @@ export async function libraryView(params) {
       category_name: r.category_name || "", 
       official_ref: r.official_ref || "",
       description: r.highlighted_content || r.content || "", 
+      hl: !!r.highlighted_content,
       article_count: null,
       domain_name: r.domain_name_ar,
       domain_color: r.domain_color,
@@ -256,7 +257,7 @@ export async function libraryView(params) {
           t.category_name ? el("span", { class: "small muted", text: t.category_name }) : null,
         ]),
         el("h3", { class: "card-title" }, el("a", { href: `#/text/${t.id}`, text: t.title })),
-        t.description ? el("p", { class: "small muted", innerHTML: esc(truncate(t.description, 120)) }) : null,
+        t.description ? (t.hl ? el("p", { class: "small muted srch-sum", html: t.description }) : el("p", { class: "small muted", text: truncate(t.description, 120) })) : null,
         el("div", { class: "flex-between mt-8" }, [
           el("span", { class: "small muted", text: t.official_ref || fmtDate(t.enacted_date, currentLang()) }),
           el("div", { class: "flex", style: "gap:8px" }, [

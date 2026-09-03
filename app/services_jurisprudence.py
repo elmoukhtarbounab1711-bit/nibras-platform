@@ -341,10 +341,10 @@ def search_decisions(query_text: str, category_slug=None, limit: int = 20,
         for r in rows:
             d = dict(r)
             if highlight and highlight_terms and (d.get("principles") or d.get("content")):
-                import re
+                import re, html as _html
                 src = d.get("principles") or d.get("content") or ""
                 combined = "|".join(re.escape(t) for t in sorted(set(highlight_terms), key=len, reverse=True))
-                marked = re.sub(f"({combined})", r'<mark>\1</mark>', src, flags=re.IGNORECASE)
+                marked = re.sub(f"({combined})", r'<mark>\1</mark>', _html.escape(src), flags=re.IGNORECASE)
                 d["highlighted"] = marked[:400] + ("..." if len(marked) > 400 else "")
             results.append(d)
         return results

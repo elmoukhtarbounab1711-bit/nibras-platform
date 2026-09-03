@@ -719,9 +719,10 @@ def search_legal(query_text, limit=20, domain_id=None, category_id=None, text_ty
             if highlight and content:
                 terms = [t for t in highlight_terms if len(t) > 2]
                 if terms:
+                    import html as _html
                     combined = "|".join(re.escape(t) for t in sorted(set(terms), key=len, reverse=True))
                     pattern = re.compile(f"({combined})", re.IGNORECASE)
-                    marked = pattern.sub(r'<mark>\1</mark>', content)
+                    marked = pattern.sub(r'<mark>\1</mark>', _html.escape(content))
                     r["highlighted_content"] = marked[:400] + ("..." if len(marked) > 400 else "")
             results.append(r)
 
