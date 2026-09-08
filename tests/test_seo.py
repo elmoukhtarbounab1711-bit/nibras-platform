@@ -8,7 +8,8 @@
   * الروابط الداخلية في الصفحة روابط حقيقية (ليست #).
   * خريطة الموقع index + المقسمات صالحة XML وتشمل الكيانات.
   * /robots.txt يمنع المنطقة الخاصة ويشير لخريطة الموقع.
-  * المعرف غير الموجود يقع إلى SPA (index.html) كما كان السلوك.
+  * المعرف غير الموجود يعيد 404 حقيقي (لا soft-404 بغلاف SPA)
+    مع <meta name='robots' content='noindex'> حتى لا تفهرس محركات البحث صفحات فارغة.
 """
 import json
 import re
@@ -33,12 +34,12 @@ def ids(fresh_db):
 
 
 def _ld_blocks(html):
-    return re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+    return re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.DOTALL)
 
 
 def _assert_ssr_html(html, expect_path):
     assert "<html" in html
-    title = re.search(r"<title>(.*?)</title>", html, re.S)
+    title = re.search(r"<title>(.*?)</title>", html, re.DOTALL)
     assert title and title.group(1).strip(), "title فارغ"
     canon = re.search(r'rel="canonical" href="([^"]+)"', html)
     assert canon, "لا يوجد canonical"
@@ -48,7 +49,7 @@ def _assert_ssr_html(html, expect_path):
     assert re.search(r"<h1>", html), "لا يوجد H1"
     assert 'id="view"' in html, "لا يوجد غلاف #view"
     # لا يترك skeleton فارغًا: يجب أن يكون المحتوى الحقيقي داخل #view
-    view_match = re.search(r'id="view"[^>]*>(.*?)</main>', html, re.S)
+    view_match = re.search(r'id="view"[^>]*>(.*?)</main>', html, re.DOTALL)
     assert view_match and view_match.group(1).strip(), "محتوى #view فارغ (لم يُقدَّم SSR فعليًا)"
     # بيانات مهيكلة صالحة
     for blk in _ld_blocks(html):
@@ -134,9 +135,37 @@ def test_seo_robots_txt(client):
         assert "Disallow: " + disallow in text, f"robots.txt لا يمنع {disallow}"
 
 
-def test_seo_missing_id_falls_back_to_spa(client):
-    r = client.get("/jurisprudence/999999999")
+def test_seo_domain_page_ssr(client, fresh_db):
+    from app.database import db_session
+    with db_session() as conn:
+        has_domains = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='legal_domains'"
+        ).fetchone()
+    if not has_domains:
+        pytest.skip("قاعدة بيانات الاختبار لا تحتوي جدول legal_domains")
+    with db_session() as conn:
+        row = conn.execute("SELECT slug FROM legal_domains LIMIT 1").fetchone()
+    if not row:
+        pytest.skip("لا توجد نطاقات قانونية في بيانات الاختبار")
+    slug = row["slug"]
+    r = client.get(f"/domains/{slug}")
     assert r.status_code == 200
     html = r.get_data(as_text=True)
-    # يقع إلى غلاف SPA (index.html) — لا يخطئ ولا يكشف تفاصيل
-    assert 'id="view"' in html
+    _assert_ssr_html(html, f"/domains/{slug}")
+    assert len(re.findall(r"<h1>", html)) == 1, "يجب أن يكون هناك H1 واحد فقط"
+
+
+@pytest.mark.parametrize("url", [
+    "/laws/999999999",
+    "/jurisprudence/999999999",
+    "/procedures/missing-slug-xyz",
+    "/domains/missing-domain-xyz",
+    "/laws/abc",
+])
+def test_seo_missing_returns_real_404(client, url):
+    r = client.get(url)
+    assert r.status_code == 404, f"{url} يجب أن يعيد 404 (لا soft-404): {r.status_code}"
+    html = r.get_data(as_text=True)
+    assert "text/html" in r.content_type
+    assert "robots" in html and "noindex" in html, "صفحة 404 يجب أن تكون noindex"
+    assert "<h1>" in html, "صفحة 404 يجب أن تحتوي عنوانًا"

@@ -338,44 +338,56 @@ def create_app():
 
     # ------------------------------------------------------------------
     # خدمة صفحات SEO عبر تقديم الخادم (SSR) — مرحلة URLs الحقيقية.
-    # تُسجَّل قبل spa_catch_all لتسبقها. أي مسار لا يطابق محتوى SEO
-    # (مثل معرف غير موجود) يقع إلى ترويسة SPA فيبقى سلوك التطبيق كما هو.
+    # تُسجَّل قبل spa_catch_all لتسبقها.
+    # أي مسار SEO غير موجود (معرف غير معروف في قاعدة البيانات) يعيد 404
+    # حقيقي (لا soft-404 بغلاف SPA) حتى تفهرس محركات البحث المحتوى فقط.
+    # أخرى (مسارات SPA العامة) تبقى كما هي عبر spa_catch_all.
     # ------------------------------------------------------------------
     from . import seo as _seo
 
-    def _ssr_or_spa(path, frontend_dir=None):
+    def _seo_404():
+        body = (
+            "<!DOCTYPE html><html lang='ar' dir='rtl'><head><meta charset='utf-8'>"
+            "<meta name='robots' content='noindex'><title>غير موجود — نبراس</title>"
+            "</head><body><h1>الصفحة غير موجودة</h1>"
+            "<p>تعذر العثور على المحتوى المطلوب.</p>"
+            "<p><a href='/'>العودة إلى الرئيسية</a></p></body></html>"
+        )
+        return Response(body, status=404, mimetype="text/html")
+
+    def _ssr_or_404(path):
         html = _seo.render_seo(path)
         if html is None:
-            return send_from_directory(str(frontend_dir), "index.html")
+            return _seo_404()
         return Response(html, mimetype="text/html")
 
-    @app.route("/laws/<int:law_id>")
-    def seo_law_page(law_id):
-        return _ssr_or_spa(f"/laws/{law_id}", frontend_dir)
+    @app.route("/laws/<path:law_ident>")
+    def seo_law_page(law_ident):
+        return _ssr_or_404(f"/laws/{law_ident}")
 
-    @app.route("/jurisprudence/<int:decision_id>")
-    def seo_jurisprudence_page(decision_id):
-        return _ssr_or_spa(f"/jurisprudence/{decision_id}", frontend_dir)
+    @app.route("/jurisprudence/<path:decision_ident>")
+    def seo_jurisprudence_page(decision_ident):
+        return _ssr_or_404(f"/jurisprudence/{decision_ident}")
 
     @app.route("/procedures/<path:procedures_slug>")
     def seo_procedure_page(procedures_slug):
-        return _ssr_or_spa(f"/procedures/{procedures_slug}", frontend_dir)
+        return _ssr_or_404(f"/procedures/{procedures_slug}")
 
     @app.route("/laws")
     def seo_laws_list():
-        return _ssr_or_spa("/laws", frontend_dir)
+        return _ssr_or_404("/laws")
 
     @app.route("/jurisprudence")
     def seo_jurisprudence_list():
-        return _ssr_or_spa("/jurisprudence", frontend_dir)
+        return _ssr_or_404("/jurisprudence")
 
     @app.route("/procedures")
     def seo_procedures_list():
-        return _ssr_or_spa("/procedures", frontend_dir)
+        return _ssr_or_404("/procedures")
 
     @app.route("/domains/<path:domain_slug>")
     def seo_domain_page(domain_slug):
-        return _ssr_or_spa(f"/domains/{domain_slug}", frontend_dir)
+        return _ssr_or_404(f"/domains/{domain_slug}")
 
     @app.route("/sitemaps/laws.xml")
     def seo_sitemap_laws():

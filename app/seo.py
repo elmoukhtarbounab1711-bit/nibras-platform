@@ -75,13 +75,13 @@ def _inject(title, description, path, content_html, jsonld_blocks=(), schema_typ
     canonical = SITE + clean_path
 
     # عنوان/وصف
-    tpl = re.sub(r"<title>.*?</title>", _esc(title) and f"<title>{_esc(title)}</title>", tpl, count=1, flags=re.S)
+    tpl = re.sub(r"<title>.*?</title>", _esc(title) and f"<title>{_esc(title)}</title>", tpl, count=1, flags=re.DOTALL)
 
     # إزالة وسوم meta السابقة التي قد تتعارض (وصف/OG/Twitter/canonical)
-    tpl = re.sub(r'<meta\s+name="description"[^>]*>', "", tpl, flags=re.I)
-    tpl = re.sub(r'<meta\s+property="og:[^"]*"[^>]*>', "", tpl, flags=re.I)
-    tpl = re.sub(r'<meta\s+name="twitter:[^"]*"[^>]*>', "", tpl, flags=re.I)
-    tpl = re.sub(r'<link\s+rel="canonical"[^>]*>', "", tpl, flags=re.I)
+    tpl = re.sub(r'<meta\s+name="description"[^>]*>', "", tpl, flags=re.IGNORECASE)
+    tpl = re.sub(r'<meta\s+property="og:[^"]*"[^>]*>', "", tpl, flags=re.IGNORECASE)
+    tpl = re.sub(r'<meta\s+name="twitter:[^"]*"[^>]*>', "", tpl, flags=re.IGNORECASE)
+    tpl = re.sub(r'<link\s+rel="canonical"[^>]*>', "", tpl, flags=re.IGNORECASE)
 
     head_block = f"""
 <meta name="description" content="{_esc(description)}">
@@ -124,7 +124,7 @@ def _inject(title, description, path, content_html, jsonld_blocks=(), schema_typ
             lambda m: m.group(1) + content_html + "</main>",
             tpl,
             count=1,
-            flags=re.S,
+            flags=re.DOTALL,
         )
     elif "id=\"view\"" in tpl:
         tpl = re.sub(
@@ -132,7 +132,7 @@ def _inject(title, description, path, content_html, jsonld_blocks=(), schema_typ
             lambda m: m.group(1) + content_html + m.group(3),
             tpl,
             count=1,
-            flags=re.S,
+            flags=re.DOTALL,
         )
     return tpl
 
@@ -382,8 +382,8 @@ def _list_laws():
             "SELECT lt.id, lt.title, lt.official_ref, c.name AS category_name "
             "FROM legal_texts lt LEFT JOIN categories c ON c.id=lt.category_id "
             "ORDER BY lt.title LIMIT 200").fetchall()
-    bits = ['<nav aria-label="Breadcrumb" class="seo-breadcrumb"><ol>'
-            '<li><a href="/">الرئيسية</a></li><li aria-current="page">المكتبة</li></ol></nav>',
+    bits = [('<nav aria-label="Breadcrumb" class="seo-breadcrumb"><ol>'
+             '<li><a href="/">الرئيسية</a></li><li aria-current="page">المكتبة</li></ol></nav>'),
             "<h1>المكتبة القانونية المغربية</h1>",
             "<p>مكتبة نصوص قانونية مغربية: قوانين وظهائر ومراسيم وقرارات.</p>",
             '<ul class="seo-links">']
@@ -400,8 +400,8 @@ def _list_jurisprudence():
             "SELECT j.id, j.title, j.court, c.name AS category_name "
             "FROM jurisprudence j LEFT JOIN jurisprudence_categories c ON c.id=j.category_id "
             "WHERE j.published=1 ORDER BY j.id DESC LIMIT 200").fetchall()
-    bits = ['<nav aria-label="Breadcrumb" class="seo-breadcrumb"><ol>'
-            '<li><a href="/">الرئيسية</a></li><li aria-current="page">الاجتهادات</li></ol></nav>',
+    bits = [('<nav aria-label="Breadcrumb" class="seo-breadcrumb"><ol>'
+             '<li><a href="/">الرئيسية</a></li><li aria-current="page">الاجتهادات</li></ol></nav>'),
             "<h1>الاجتهادات القضائية المغربية</h1>",
             "<p>قرارات ومبادئ قضائية من المحاكم المغربية.</p>",
             '<ul class="seo-links">']
@@ -418,8 +418,8 @@ def _list_procedures():
             "SELECT p.slug, p.title, p.category, c.name AS category_name "
             "FROM procedures p LEFT JOIN jurisprudence_categories c ON 1=0 "
             "ORDER BY p.title").fetchall()
-    bits = ['<nav aria-label="Breadcrumb" class="seo-breadcrumb"><ol>'
-            '<li><a href="/">الرئيسية</a></li><li aria-current="page">المساطر</li></ol></nav>',
+    bits = [('<nav aria-label="Breadcrumb" class="seo-breadcrumb"><ol>'
+             '<li><a href="/">الرئيسية</a></li><li aria-current="page">المساطر</li></ol></nav>'),
             "<h1>المساطر والإجراءات</h1>",
             "<p>دليل عملي خطوة بخطوة للمساطر الإدارية والقانونية في المغرب.</p>",
             '<ul class="seo-links">']
@@ -432,18 +432,20 @@ def _list_procedures():
 
 def _domain_page(slug):
     with db_session() as conn:
+        if not _has_table(conn, "legal_domains"):
+            return None
         d = conn.execute("SELECT * FROM legal_domains WHERE slug=?", (slug,)).fetchone()
         if not d:
-            return _list_laws()
+            return None
         d = dict(d)
         rows = conn.execute(
             "SELECT lt.id, lt.title FROM legal_texts lt LEFT JOIN categories c ON c.id=lt.category_id "
             "WHERE lt.domain_id=? ORDER BY lt.title LIMIT 200", (d["id"],)).fetchall()
     title = d.get("name_ar") or "المكتبة"
     desc = d.get("description_ar") or f"نصوص قانونية ضمن مجال {title}."
-    bits = ['<nav aria-label="Breadcrumb" class="seo-breadcrumb"><ol>'
-            f'<li><a href="/">الرئيسية</a></li><li><a href="/laws">المكتبة</a></li>'
-            f'<li aria-current="page">{_esc(title)}</li></ol></nav>',
+    bits = [('<nav aria-label="Breadcrumb" class="seo-breadcrumb"><ol>'
+             f'<li><a href="/">الرئيسية</a></li><li><a href="/laws">المكتبة</a></li>'
+             f'<li aria-current="page">{_esc(title)}</li></ol></nav>'),
             f"<h1>{_esc(title)}</h1>", f"<p>{_esc(desc)}</p>",
             '<ul class="seo-links">']
     for r in rows:
@@ -499,7 +501,10 @@ def render_seo(path):
 
     m = re.match(r"^/domains/([^/]+)$", path)
     if m:
-        content, title, meta = _domain_page(m.group(1))
+        page = _domain_page(m.group(1))
+        if page is None:
+            return None
+        content, title, meta = page
         return _inject(title, meta["description"], path, content)
 
     return None
