@@ -42,3 +42,9 @@ nibras_prod.db
 nibras_prod.db.gz
 nibras.db.gz
 check_db.py
+
+# Legal docs library (contract generator): bulk files are re-seeded via
+# scripts/ingest_legal_docs.py; only the small catalog JSONs are committed.
+data/legal_docs/**
+!data/legal_docs/index.json
+!data/legal_docs/templates.json

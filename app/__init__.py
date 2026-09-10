@@ -10,7 +10,7 @@ import os
 import sqlite3
 from pathlib import Path
 
-from flask import Flask, jsonify, request, Response
+from flask import Flask, Response, jsonify, request
 
 from . import config, tenant_scope
 from . import logging_utils as nibras_logging
@@ -70,9 +70,7 @@ def _add_cache_control(response):
     sw.js لا يجب تخزينه أبدًا — المتصفح يتحقق منه_PERIODICALLY للكشف عن التحديثات.
     """
     path = request.path
-    if path == "/sw.js" or path.endswith("/sw.js"):
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-    elif any(path.startswith(p) for p in _SENSITIVE_PATHS):
+    if path == "/sw.js" or path.endswith("/sw.js") or any(path.startswith(p) for p in _SENSITIVE_PATHS):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     elif any(path.endswith(ext) for ext in (".css", ".js", ".woff2", ".png", ".svg", ".ico")):
         # max-age=0 للمتصفح (دع SW يتحكم)، s-maxage للـ CDN edge
@@ -87,6 +85,7 @@ def _ensure_database():
     import gzip
     import shutil
     import urllib.request as _urlreq
+
     from .database import DB_PATH
 
     if DB_PATH.exists() and DB_PATH.stat().st_size > 1000:
@@ -101,9 +100,8 @@ def _ensure_database():
     try:
         logging.getLogger("nibras.startup").info("Downloading DB from %s", url)
         req = _urlreq.Request(url, headers={"User-Agent": "nibras/1.0"})
-        with _urlreq.urlopen(req, timeout=300) as resp:
-            with open(tmp, "wb") as f:
-                shutil.copyfileobj(resp, f)
+        with _urlreq.urlopen(req, timeout=300) as resp, open(tmp, "wb") as f:
+            shutil.copyfileobj(resp, f)
         with gzip.open(tmp, "rb") as f_in, open(DB_PATH, "wb") as f_out:
             shutil.copyfileobj(f_in, f_out)
         tmp.unlink(missing_ok=True)
@@ -264,16 +262,17 @@ def create_app():
     from .routes.comp import comp_bp
     from .routes.comparative import comparative_bp
     from .routes.documents import documents_bp
+    from .routes.generator import generator_bp
     from .routes.jurisprudence import jurisprudence_bp
     from .routes.legal_french import legal_french_bp
     from .routes.library import library_bp
     from .routes.marketplace import marketplace_bp
     from .routes.notifications import notifications_bp
+    from .routes.official import bp as official_bp
     from .routes.procedures import procedures_bp
     from .routes.professionals import professionals_bp
     from .routes.research import research_bp
     from .routes.treaties import treaties_bp
-    from .routes.official import bp as official_bp
     from .routes.visitors import visitors_bp
 
     app.register_blueprint(ads_bp)
@@ -284,6 +283,7 @@ def create_app():
     app.register_blueprint(calculators_bp)
     app.register_blueprint(procedures_bp)
     app.register_blueprint(documents_bp)
+    app.register_blueprint(generator_bp)
     app.register_blueprint(professionals_bp)
     app.register_blueprint(jurisprudence_bp)
     app.register_blueprint(legal_french_bp)
@@ -385,6 +385,10 @@ def create_app():
     def seo_procedures_list():
         return _ssr_or_404("/procedures")
 
+    @app.route("/generator")
+    def seo_generator():
+        return _ssr_or_404("/generator")
+
     @app.route("/domains/<path:domain_slug>")
     def seo_domain_page(domain_slug):
         return _ssr_or_404(f"/domains/{domain_slug}")
@@ -400,6 +404,10 @@ def create_app():
     @app.route("/sitemaps/procedures.xml")
     def seo_sitemap_procedures():
         return Response(_seo.sitemap_procedures(), mimetype="application/xml")
+
+    @app.route("/sitemaps/main.xml")
+    def seo_sitemap_main():
+        return Response(_seo.sitemap_main(), mimetype="application/xml")
 
     @app.route("/sitemap.xml")
     def seo_sitemap_index():

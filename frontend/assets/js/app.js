@@ -65,6 +65,10 @@ register("/documents", lazy("./views/documents.js", "documentsView"));
 register("/documents/:slug", lazy("./views/documents.js", "documentDetailView"));
 register("/my-documents", lazy("./views/documents.js", "myDocumentsView"), { auth: true });
 
+register("/generator", lazy("./views/generator.js", "generatorView"));
+register("/generator/template", lazy("./views/generator.js", "generatorTemplateView"));
+register("/generator/doc", lazy("./views/generator.js", "generatorDocView"));
+
 register("/legal-french", lazy("./views/legal_french.js", "legalFrenchView"));
 register("/legal-french/treaties", lazy("./views/legal_french.js", "legalFrenchTreatiesView"));
 register("/legal-french/treaty/:id", lazy("./views/legal_french.js", "legalFrenchTreatyDetailView"));

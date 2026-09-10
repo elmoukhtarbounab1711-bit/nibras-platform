@@ -174,6 +174,18 @@ PDF_FONT_PATH = os.environ.get("NIBRAS_PDF_FONT", "")
 DOC_RATE_LIMIT_MAX_REQUESTS = _env_int("NIBRAS_DOC_RATE_LIMIT_MAX_REQUESTS", 10)
 DOC_RATE_LIMIT_WINDOW_SECONDS = _env_int("NIBRAS_DOC_RATE_LIMIT_WINDOW_SECONDS", 3600)
 
+# مكتبة الوثائق (مولّد العقود): مجلد المستندات الأصلية + مؤشر الفهرسة.
+# تُرسَب الملفات عبر scripts/ingest_legal_docs.py (مستخرج: مكتبة عامة
+# لأكثر من 1900 قالب وثيقة مغربية). الملفات كبيرة فتُستَثنى من git —
+# المنتدب/app.قراءة index.json تعمل حتى لو غابت الملفات نفسها.
+LEGAL_DOCS_DIR = os.environ.get(
+    "NIBRAS_LEGAL_DOCS_DIR",
+    str(Path(__file__).resolve().parent.parent / "data" / "legal_docs"),
+)
+
+# أقصى عدد حقول يُكتشف تلقائيًا لمستند واحد (مكتبة/قالب حر)
+GENERATOR_MAX_FIELDS = _env_int("NIBRAS_GENERATOR_MAX_FIELDS", 30)
+
 # ---------------------------------------------------------------------------
 # النظام البيئي المهني (المرحلة 5) — وفق وثيقة 17 وقرار D-023
 # ---------------------------------------------------------------------------

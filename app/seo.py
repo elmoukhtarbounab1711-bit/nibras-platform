@@ -454,6 +454,35 @@ def _domain_page(slug):
     return "".join(bits), title, {"description": desc}
 
 
+def _list_generator():
+    """صفحة مولد العقود (SSR): القوالب الموصى بها + الأصناف من مكتبة الوثائق."""
+    from . import generator as _gen
+
+    templates = _gen.recommended_templates()
+    cats = _gen.categories()
+    total = _gen.read_index().get("total_files", 0)
+    title = "مولد الوثائق والعقود — قوالب معبأة جاهزة"
+    desc = (f"مولّد وثائق وعقود مغربية: عبّئ قالبًا قانونيًا (وكالة، عقد كراء، "
+            f"تنازل، إشهاد...) واحصل على مستند Word جاهز. مكتبة تضم {total} قالبًا.")
+    bits = [('<nav aria-label="Breadcrumb" class="seo-breadcrumb"><ol>'
+             '<li><a href="/">الرئيسية</a></li>'
+             '<li aria-current="page">مولد العقود</li></ol></nav>'),
+            "<h1>مولد الوثائق والعقود</h1>",
+            f"<p>{_esc(desc)}</p>"]
+    if templates:
+        bits.append("<h2>قوالب موصى بها</h2><ul class='seo-links'>")
+        for t in templates[:30]:
+            bits.append(f'<li><a href="/generator">{_esc(t["title"])}</a>'
+                        f' <span class="seo-small">({_esc(t["category"])})</span></li>')
+        bits.append("</ul>")
+    if cats:
+        bits.append("<h2>أصناف الوثائق</h2><ul class='seo-links'>")
+        for c in cats:
+            bits.append(f'<li><strong>{_esc(c["name"])}</strong> — {_esc(c["count"])} قالب</li>')
+        bits.append("</ul>")
+    return "".join(bits), title, {"description": desc}
+
+
 # ---------------------------------------------------------------------------
 # الراوتر الداخلي لصفحات SEO
 # ---------------------------------------------------------------------------
@@ -499,6 +528,10 @@ def render_seo(path):
         content, title, meta = _list_procedures()
         return _inject(title, meta["description"], "/procedures", content)
 
+    if path == "/generator":
+        content, title, meta = _list_generator()
+        return _inject(title, meta["description"], "/generator", content)
+
     m = re.match(r"^/domains/([^/]+)$", path)
     if m:
         page = _domain_page(m.group(1))
@@ -523,6 +556,7 @@ def _sitemap_urls(rows, base):
 
 def sitemap_index():
     urls = [
+        {"loc": f"{SITE}/sitemaps/main.xml", "changefreq": "daily"},
         {"loc": f"{SITE}/sitemaps/laws.xml", "changefreq": "weekly"},
         {"loc": f"{SITE}/sitemaps/jurisprudence.xml", "changefreq": "weekly"},
         {"loc": f"{SITE}/sitemaps/procedures.xml", "changefreq": "monthly"},
@@ -535,6 +569,17 @@ def sitemap_index():
         index.append(f"<sitemap><loc>{_esc(u['loc'])}</loc><changefreq>{u['changefreq']}</changefreq></sitemap>")
     index.append("</sitemapindex>")
     return "".join(index)
+
+
+def sitemap_main():
+    """الصفحات الثابتة الرئيسية (الرئيسية + مولد الوثائق)."""
+    body = ["<?xml version='1.0' encoding='UTF-8'?>",
+            "<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>"]
+    for path in ("/", "/generator"):
+        body.append(f"<url><loc>{SITE}{path}</loc><changefreq>daily</changefreq>"
+                    "<priority>0.8</priority></url>")
+    body.append("</urlset>")
+    return "".join(body)
 
 
 def sitemap_laws():

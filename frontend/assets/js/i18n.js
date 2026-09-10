@@ -9,6 +9,7 @@ const AR = {
   navJurisprudence: "الاجتهادات",
   navResearch: "مكتبة الباحث",
   navProcedures: "المساطر", navDocuments: "الوثائق",
+  navGenerator: "مولد العقود",
   navMarketplace: "السوق", navCommunity: "المجتمع", navCalculators: "الحاسبات",
   navNotifications: "الإشعارات",   navLegalFrench: "اللغة القانونية",
   navTreaties: "النصوص والاتفاقيات",

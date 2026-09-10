@@ -6,6 +6,7 @@ export const FR = {
   tabHome: "Accueil", tabLibrary: "Bibliothèque", tabProcedures: "Procédures",
   tabAssistant: "Assistant", tabProfile: "Compte",
   navJurisprudence: "Jurisprudence",
+  navGenerator: "Générateur de documents",
   navResearch: "Bibliothèque du chercheur",
   navProcedures: "Procédures", navDocuments: "Documents",
   navMarketplace: "Boutique", navCommunity: "Communauté", navCalculators: "Calculateurs",
