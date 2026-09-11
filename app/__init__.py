@@ -86,31 +86,36 @@ def _ensure_database():
     import shutil
     import urllib.request as _urlreq
 
-    from .database import DB_PATH
+    from .database import DB_PATH, load_bundled_db
 
     if DB_PATH.exists() and DB_PATH.stat().st_size > 1000:
         return
 
     url = os.environ.get("NIBRAS_DB_URL", "").strip()
-    if not url:
-        return
+    if url:
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = Path(str(DB_PATH) + ".gz.tmp")
+        try:
+            logging.getLogger("nibras.startup").info("Downloading DB from %s", url)
+            req = _urlreq.Request(url, headers={"User-Agent": "nibras/1.0"})
+            with _urlreq.urlopen(req, timeout=300) as resp, open(tmp, "wb") as f:
+                shutil.copyfileobj(resp, f)
+            with gzip.open(tmp, "rb") as f_in, open(DB_PATH, "wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+            tmp.unlink(missing_ok=True)
+            logging.getLogger("nibras.startup").info(
+                "DB ready: %.1f MB", DB_PATH.stat().st_size / 1024 / 1024
+            )
+            return
+        except Exception:
+            logging.getLogger("nibras.startup").exception("DB download failed")
+            tmp.unlink(missing_ok=True)
 
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = Path(str(DB_PATH) + ".gz.tmp")
-    try:
-        logging.getLogger("nibras.startup").info("Downloading DB from %s", url)
-        req = _urlreq.Request(url, headers={"User-Agent": "nibras/1.0"})
-        with _urlreq.urlopen(req, timeout=300) as resp, open(tmp, "wb") as f:
-            shutil.copyfileobj(resp, f)
-        with gzip.open(tmp, "rb") as f_in, open(DB_PATH, "wb") as f_out:
-            shutil.copyfileobj(f_in, f_out)
-        tmp.unlink(missing_ok=True)
+    if load_bundled_db():
         logging.getLogger("nibras.startup").info(
-            "DB ready: %.1f MB", DB_PATH.stat().st_size / 1024 / 1024
+            "DB restored from bundled nibras_prod.db.gz (%.1f MB)",
+            DB_PATH.stat().st_size / 1024 / 1024,
         )
-    except Exception:
-        logging.getLogger("nibras.startup").exception("DB download failed")
-        tmp.unlink(missing_ok=True)
 
 
 def create_app():

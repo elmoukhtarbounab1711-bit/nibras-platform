@@ -1683,3 +1683,37 @@ def init_db(reset: bool = False):
     services_tenants.backfill_isolated_tables()
     # مزوّد الذكاء الاصطناعي الافتراضي (OpenRouter المجاني)
     _ensure_default_ai_provider()
+
+
+# =============================================================================
+# النسخة المضمّنة من قاعدة البيانات (النشر العابر للقرص — Vercel)
+# -----------------------------------------------------------------------------
+# تُصدَّر قاعدة البيانات محليًا إلى nibras_prod.db.gz (scripts/export_db.py)
+# ويُرافقها المستودع. عند غياب NIBRAS_DB_URL أو فشل التحميل، تُفكَّك الضغطة
+# إلى DB_PATH أثناء الإقلاع (wsgi.py / create_app) بدل قاعدة فارغة. ملاحظة:
+# القرص عابر (ephemeral) فتُعاد المادة عند كل برودة (cold start) — القراءة
+# موثوقة، بينما الكتابة (تتبع الزوار، الاجتهادات، الطلبات...) لكل مثيل ثم
+# تُفقد عند إعادة التدوير كما هو وضع النشر المجاني (انظر docs/paas).
+# =============================================================================
+
+
+def bundled_db_path() -> "Path":
+    """مسار نسخة DB المضغوطة المضمّنة في جذر المستودع."""
+    return Path(__file__).resolve().parents[1] / "nibras_prod.db.gz"
+
+
+def load_bundled_db() -> bool:
+    """يفك ضغط nibras_prod.db.gz المضمّنة إلى DB_PATH. يعيد True عند النجاح."""
+    import gzip
+    import shutil
+
+    src = bundled_db_path()
+    if not src.exists():
+        return False
+    try:
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with gzip.open(src, "rb") as f_in, open(DB_PATH, "wb") as f_out:
+            shutil.copyfileobj(f_in, f_out)
+        return DB_PATH.exists() and DB_PATH.stat().st_size > 1000
+    except Exception:  # noqa: BLE001 — لا نُعطّل الإقلاع بسبب فشل الفك
+        return False
