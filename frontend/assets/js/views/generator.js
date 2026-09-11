@@ -123,7 +123,7 @@ export async function generatorView() {
       ]));
     });
     tGrid.append(el("div", { class: "section-head mt-24" }, [
-      el("h3", { text: tr("templates") }),
+      el("h3", { text: "قوالب موصى بها" }),
       el("span", { class: "small muted", text: `من أصل ${total} وثيقة في المكتبة` }),
     ]));
     tGrid.append(cards);
