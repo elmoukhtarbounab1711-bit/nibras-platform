@@ -234,7 +234,6 @@ requestAnimationFrame(() => {
 });
 
 // تهيئة الإعلانات بعد كل تغيير مسار + تحسين SEO (عنوان/وصف/بيانات مهيكلة)
-import { setAfterRender } from "./router.js";
 import { initAdSlots, resetAdObserver } from "./components/ads.js";
 setAfterRender((route, params) => {
   resetAdObserver();
