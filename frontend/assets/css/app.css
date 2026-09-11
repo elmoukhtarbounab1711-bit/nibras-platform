@@ -3433,3 +3433,17 @@ mark {
   }
   .search-facets-toggle svg { width: 18px; height: 18px; }
 }
+
+/* ---------- مولد الوثائق والعقود ---------- */
+.gen-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 4px 0 6px; }
+.gen-step { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.gen-step-num { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 14px; color: #fff; background: var(--navy-grad, var(--navy)); }
+.gen-preview-wrap { margin-top: 20px; }
+.gen-preview { width: 100%; height: 62vh; min-height: 420px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; }
+.gen-required::after { content: " *"; color: var(--danger); }
+.gen-opt { font-size: 11px; color: var(--ink-3); font-weight: 700; }
+.field-invalid label { color: var(--danger); }
+.field-invalid input, .field-invalid textarea, .field-invalid select { border-color: var(--danger); }
+.gen-card { cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
+.gen-card:hover { border-color: var(--gold); box-shadow: var(--shadow-soft); }
+@media (max-width: 700px) { .gen-steps { grid-template-columns: 1fr; } }

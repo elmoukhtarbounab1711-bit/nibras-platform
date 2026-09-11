@@ -16,6 +16,7 @@ import json
 import os
 import re
 from functools import lru_cache
+from html import escape
 from pathlib import Path
 
 from . import config
@@ -308,7 +309,7 @@ def _render_paragraph_html(paragraph, new_texts):
     parts = []
     for run, text in zip(paragraph.runs, new_texts):
         if text:
-            t = text
+            t = escape(text)
             if _is_bold(run):
                 t = f"<b>{t}</b>"
             if _is_underline(run):
@@ -335,7 +336,7 @@ def preview_html(file: str, fields: list, answers: dict) -> tuple:
         if text.strip():
             lines.append(f'<p class="{_alignment_class(paragraph)}">{text}</p>')
     body = "\n".join(lines)
-    return _html_shell(name, body), name
+    return _html_shell(escape(name), body), name
 
 
 def _html_shell(title: str, body: str) -> str:
@@ -382,7 +383,8 @@ def _load_templates():
 def recommended_templates() -> list:
     return [
         {"id": t.get("id"), "title": t.get("title"), "category": t.get("category"),
-         "file": t.get("file"), "description": t.get("description") or ""}
+         "file": t.get("file"), "description": t.get("description") or "",
+         "field_count": len(t.get("fields") or []) or None}
         for t in _load_templates() if t.get("file")
     ]
 
