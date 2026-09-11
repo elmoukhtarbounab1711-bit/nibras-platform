@@ -208,6 +208,7 @@ export const FR = {
   subscribe: "S'abonner", newsletterPh: "Votre e-mail",
   fNav: "Explorer", fServices: "Services", fAbout: "À propos",
   fAbout1: "Actualités", fAbout2: "Rejoindre en tant que pro", fAbout3: "Mon compte", fAbout4: "Guide d'utilisation",
+  navAbout: "À propos", navContact: "Contactez-nous",
   footerDisclaimer: "Contenu informatif — ne remplace pas la consultation d'un professionnel certifié.",
   trustOfficial: "Sources officielles", trustSecure: "Sécurisé", trustFast: "Recherche instantanée", trustFree: "Gratuit",
   fLegal: "Juridique",

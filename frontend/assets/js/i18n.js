@@ -211,6 +211,7 @@ const AR = {
   subscribe: "اشترك", newsletterPh: "بريدك الإلكتروني",
   fNav: "تصفح المنصة", fServices: "الخدمات", fAbout: "عن المنصة",
   fAbout1: "آخر المستجدات", fAbout2: "انضم كمنشور مهني", fAbout3: "حسابي", fAbout4: "دليل الاستخدام",
+  navAbout: "من نحن", navContact: "اتصل بنا",
   footerDisclaimer: "المحتوى لأغراض توعوية ولا يغني عن استشارة مهني معتمد.",
   trustOfficial: "مصادر رسمية", trustSecure: "آمن وموثوق", trustFast: "بحث فوري", trustFree: "مجاني بالكامل",
   fLegal: "قانوني",

@@ -398,6 +398,14 @@ def create_app():
     def seo_domain_page(domain_slug):
         return _ssr_or_404(f"/domains/{domain_slug}")
 
+    @app.route("/about")
+    def seo_about():
+        return _ssr_or_404("/about")
+
+    @app.route("/contact")
+    def seo_contact():
+        return _ssr_or_404("/contact")
+
     @app.route("/sitemaps/laws.xml")
     def seo_sitemap_laws():
         return Response(_seo.sitemap_laws(), mimetype="application/xml")

@@ -105,6 +105,8 @@ register("/terms", lazy("./views/legal.js", "termsView"));
 register("/cookie-policy", lazy("./views/legal.js", "cookiePolicyView"));
 register("/disclaimer", lazy("./views/legal.js", "disclaimerView"));
 register("/guide", lazy("./views/legal.js", "guideView"));
+register("/about", lazy("./views/legal.js", "aboutView"));
+register("/contact", lazy("./views/legal.js", "contactView"));
 
 // ---------- مسارات مكتبة/مدونة متعددة الأجزاء ----------
 function regMulti(base, mod, fn, opts = {}) {

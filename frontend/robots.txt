@@ -9,5 +9,12 @@ Disallow: /billing
 Disallow: /notifications
 Disallow: /api/
 
+# زاحف إعلانات AdSense (يجب ألا يُحظر للتحقق من توفُّر كود الإعلان)
+User-agent: Mediapartners-Google
+Allow: /
+
+User-agent: Google-Display-Ads-Bot
+Allow: /
+
 # المنصة تقدم صفحات SSR قابلة للفهرسة عبر URLs حقيقية (بدون hash).
 Sitemap: https://nibras-law-platform.vercel.app/sitemap.xml

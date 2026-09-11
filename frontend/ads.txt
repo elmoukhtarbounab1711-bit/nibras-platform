@@ -1,0 +1,2 @@
+# ads.txt — علاقة الإعلان المُعلَنة (Google AdSense)
+google.com, pub-2496849032956610, DIRECT, f08c47fec0942fa0

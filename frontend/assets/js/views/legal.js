@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { el, emptyState } from "../ui.js";
 import { icon } from "../icons.js";
 import { navigate } from "../router.js";
+import { showCookieManager } from "../components/cookie-consent.js";
 
 /* ─────────────── مكوّن مشترك ─────────────── */
 
@@ -164,8 +165,13 @@ export async function privacyView() {
           content: "Vos données ne sont pas transférées en dehors du Maroc. Tout transfert international, le cas échéant, sera soumis aux garanties prévues par la Loi 09-08.",
         },
         {
-          title: "9. Cookies",
-          content: "Voir notre Politique de Cookies dédiée pour plus d'informations sur l'utilisation des cookies et traceurs.",
+          title: "9. Cookies et publicité",
+          lead: "En plus des cookies techniques, des réseaux publicitaires tiers peuvent déposer des cookies et utiliser des technologies de mesure lorsqu'ils affichent des publicités sur la Plateforme.",
+          items: [
+            "<strong>Google AdSense et Google</strong> : Google et ses partenaires qualifiés peuvent diffuser des annonces en utilisant des cookies, des balises Web et des adresses IP, pour mesurer la visibilité des publicités et leur fréquence, prévenir la fraude et (avec votre consentement) personnaliser les messages publicitaires. Voir la page « Comment Google utilise les données » : <a href='https://policies.google.com/technologies/partner-sites' target='_blank' rel='noopener'>https://policies.google.com/technologies/partner-sites</a>.",
+            "La personne concernée peut désactiver la publicité personnalisée de Google via les <a href='https://adssettings.google.com' target='_blank' rel='noopener'>paramètres de Google</a>, et refuser les cookies publicitaires de certaines entreprises via <a href='https://optout.aboutads.info' target='_blank' rel='noopener'>https://optout.aboutads.info</a>.",
+            "Cela ne s'applique que si vous avez accepté les cookies publicitaires ; en cas de refus, aucune publicité personnalisée ni cookie publicitaire tiers ne sera déposé.",
+          ],
         },
         {
           title: "10. Réclamation",
@@ -245,8 +251,13 @@ export async function privacyView() {
         content: "لا تُنقل معطياتك خارج المغرب. أي نقل دولي، إن وُجد، будетخضع للضمانات المنصوص عليها في القانون 09-08.",
       },
       {
-        title: "٩. ملفات تعريف الارتباط (Cookies)",
-        content: "راجع سياسة ملفات تعريف الارتباط الخاصة بنا لمزيد من المعلومات حول استخدام ملفات تعريف الارتباط.",
+        title: "٩. ملفات تعريف الارتباط والإعلانات",
+        lead: "إضافة إلى الملفات التقنية، قد تضع شبكات إعلانية تابعة لجهات أخرى ملفات تعريف الارتباط وتستخدم تقنيات قياس عند عرض إعلاناتها على المنصة.",
+        items: [
+          "<strong>Google AdSense وGoogle</strong>: قد تعرض Google وشركاؤها المؤهلون إعلانات باستخدام ملفات تعريف الارتباط والوسوم الويب وعناوين IP لقياس ظهور الإعلانات وتواترها ومنع الاحتيال، وتخصيص الرسائل الإعلانية (بعد موافقتك). راجع صفحة «كيف تستخدم Google البيانات»: <a href='https://policies.google.com/technologies/partner-sites' target='_blank' rel='noopener'>https://policies.google.com/technologies/partner-sites</a>.",
+          "يمكن للمعني بالأمر تعطيل الإعلانات المخصصة عبر <a href='https://adssettings.google.com' target='_blank' rel='noopener'>إعدادات إعلانات Google</a>، ورفض ملفات الإعلانات من بعض الشركات عبر <a href='https://optout.aboutads.info' target='_blank' rel='noopener'>https://optout.aboutads.info</a>.",
+          "يُطبَّق ذلك فقط عند قبول ملفات الإعلان؛ وفي حالة الرفض لن تُعرض إعلانات مخصصة ولن تُوضع ملفات إعلانية تابعة.",
+        ],
       },
       {
         title: "١٠. الشكوى",
@@ -402,8 +413,18 @@ export async function termsView() {
 export async function cookiePolicyView() {
   const isFr = currentLang() === "fr";
 
+  function prefsBtn() {
+    return el("div", { class: "content-section" }, [
+      el("button", {
+        class: "btn btn-primary",
+        text: isFr ? "Gérer mes préférences de cookies" : "تخصيص تفضيلات ملفات تعريف الارتباط",
+        onclick: () => showCookieManager(),
+      }),
+    ]);
+  }
+
   if (isFr) {
-    return legalPage(
+    const page = legalPage(
       "Politique de Cookies",
       "Comment nous utilisons les cookies et traceurs",
       [
@@ -418,8 +439,8 @@ export async function cookiePolicyView() {
             rows: [
               ["Cookies strictement nécessaires", "Authentification, session utilisateur, préférences linguistiques, thème.", "Session / 30 jours"],
               ["Cookies de fonctionnalité", "Mémorisation des préférences d'affichage et de navigation.", "30 jours"],
-              ["Cookies analytiques (non utilisés actuellement)", "Mesure d'audience et amélioration du service.", "—"],
-              ["Cookies publicitaires (non utilisés actuellement)", "Personnalisation des publicités.", "—"],
+              ["Cookies analytiques (sous réserve de consentement)", "Mesure d'audience et amélioration du service.", "—"],
+              ["Cookies publicitaires (Google AdSense, sous réserve de consentement)", "Affichage et mesure des annonces, prévention de la fraude ; personnalisation selon le consentement.", "Variable"],
             ],
           },
         },
@@ -448,18 +469,24 @@ export async function cookiePolicyView() {
         },
         {
           title: "5. Cookies tiers",
-          content: "La Plateforme n'utilise actuellement aucun cookie tiers (Google Analytics, Facebook Pixel, etc.). Si des cookies tiers sont ajoutés dans le futur, cette politique sera mise à jour en conséquence et votre consentement sera sollicité.",
+          content: "Lorsque vous acceptez les cookies publicitaires et/ou analytiques, des services tiers peuvent être utilisés : Google AdSense (publicité) et d'éventuels outils de mesure d'audience. Ces services peuvent déposer des cookies, utiliser des balises Web et traiter des adresses IP. Google et ses partenaires peuvent diffuser de la publicité personnalisée uniquement avec votre consentement ; vous pouvez la désactiver via les paramètres de Google (<a href='https://adssettings.google.com' target='_blank' rel='noopener'>adssettings.google.com</a>) et via <a href='https://optout.aboutads.info' target='_blank' rel='noopener'>optout.aboutads.info</a>. En cas de refus des cookies, aucun cookie tiers de publicité ou de mesure n'est déposé.",
         },
         {
-          title: "6. Droit applicable",
+          title: "6. Gestion des préférences",
+          content: "Vous pouvez à tout moment revoir vos choix via le bouton « Gérer » du bandeau et la page Préférences de cookies, ou configurer votre navigateur pour refuser ces cookies.",
+        },
+        {
+          title: "7. Droit applicable",
           content: "Cette politique de cookies est régie par la Loi 09-08 relative à la protection des données personnelles et la réglementation marocaine applicable.",
         },
       ],
       "01 janvier 2025"
     );
+    page.append(prefsBtn());
+    return page;
   }
 
-  return legalPage(
+  const page = legalPage(
     "سياسة ملفات تعريف الارتباط (Cookies)",
     "كيفية استخدامنا لملفات تعريف الارتباط والتعقب",
     [
@@ -474,8 +501,8 @@ export async function cookiePolicyView() {
           rows: [
             ["ملفات ضرورية", "المصادقة، جلسة المستخدم، التفضيلات اللغوية، السمة.", "الجلسة / 30 يوماً"],
             ["ملفات وظيفية", "تذكّر تفضيلات العرض والتنقل.", "30 يوماً"],
-            ["ملفات تحليلية (غير مُستخدمة حالياً)", "قياس الجمهور وتحسين الخدمة.", "—"],
-            ["ملفات إعلانية (غير مُستخدمة حالياً)", "تخصيص الإعلانات.", "—"],
+            ["ملفات تحليلية (بعد الموافقة)", "قياس الجمهور وتحسين الخدمة.", "—"],
+            ["ملفات إعلانية (Google AdSense، بعد الموافقة)", "عرض الإعلانات وقياسها ومنع الاحتيال؛ التخصيص حسب الموافقة.", "متغيرة"],
           ],
         },
       },
@@ -503,16 +530,22 @@ export async function cookiePolicyView() {
         content: "يمكنك إدارة تفضيلات ملفات تعريف الارتباط في أي وقت عبر زر « إدارة ملفات تعريف الارتباط » في أسفل الصفحة. يمكنك أيضاً تكوين متصفحك لرفض ملفات تعريف الارتباط.",
       },
       {
-        title: "٥. ملفات تعريف الارتباط التابعة",
-        content: "لا تُستخدم المنصة حالياً أي ملفات تعريف ارتباط تابعة (Google Analytics، Facebook Pixel، إلخ). إذا أُضيفت ملفات تعريف ارتباط تابعة في المستقبل، ستُحدَّث هذه السياسة وستُطلَب موافقتك.",
+        title: "٥. ملفات تعريف الارتباط التابعة (الأطراف الثالثة)",
+        content: "عند قبول ملفات الإعلان و/أو التحليل، قد تُستخدم خدمات تابعة: Google AdSense (الإعلان) وأدوات قياس جمهور محتملة. قد تضع هذه الخدمات ملفات تعريف الارتباط، وتستخدم الوسوم الويب، وتعالج عناوين IP. يمكن لـ Google وشركائها عرض إعلانات مخصصة بموافقتك فقط؛ يمكنك تعطيلها عبر <a href='https://adssettings.google.com' target='_blank' rel='noopener'>إعدادات إعلانات Google</a> ومنصة <a href='https://optout.aboutads.info' target='_blank' rel='noopener'>optout.aboutads.info</a>. في حالة رفض الملفات، لا تُوضع أي ملفات إعلانية أو تحليلية تابعة.",
       },
       {
-        title: "٦. القانون الحاكم",
+        title: "٦. إدارة التفضيلات",
+        content: "يمكنك في أي وقت مراجعة اختياراتك عبر زر «إدارة» في الشريط ومن خلال صفحة تفضيلات ملفات تعريف الارتباط، أو ضبط متصفحك لرفض هذه الملفات.",
+      },
+      {
+        title: "٧. القانون الحاكم",
         content: "تخضع سياسة ملفات تعريف الارتباط هذه للقانون 09-08 المتعلق بحماية المعطيات الشخصية والتنظيمات المغربية المعمول بها.",
       },
     ],
     "01 يناير 2025"
   );
+  page.append(prefsBtn());
+  return page;
 }
 
 
@@ -577,6 +610,7 @@ export async function disclaimerView() {
 export function guideView() {
   return legalPage(
     "دليل الاستخدام",
+    "دليل شامل لاستخدام منصة نبراس القانونية",
     "دليل شامل لاستخدام منصة نبراس القانونية",
     [
       {
@@ -648,5 +682,154 @@ export function guideView() {
       },
     ],
     "01 يناير 2025"
+  );
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   من نحن — تعريف المنصة ورسالتها ومنهجية التحرير
+   ═══════════════════════════════════════════════════════════════════ */
+
+export async function aboutView() {
+  const isFr = currentLang() === "fr";
+
+  const blocks = isFr ? [
+    {
+      title: "1. Qui sommes-nous ?",
+      content: "Nibras est une plateforme numérique d'information juridique marocaine, créée pour rendre le droit accessible, compréhensible et exploitable. Nous rassemblons dans un seul espace : la bibliothèque des textes légaux marocains, la jurisprudence, les procédures, des calculateurs juridiques, des modèles de documents et le générateur de contrats, ainsi qu'un assistant par intelligence artificielle.",
+    },
+    {
+      title: "2. Notre mission",
+      content: "Faciliter l'accès à l'information juridique au Maroc : rechercher un texte de loi, lire un principe jurisprudentiel ou préparer un document en quelques clics, sans connaissance préalable du droit.",
+    },
+    {
+      title: "3. Que couvre la Plateforme ?",
+      items: [
+        "Bibliothèque de textes légaux marocains organisés par domaine et catégorie, avec recherche plein texte.",
+        "Jurisprudence : décisions et principes issus de la jurisprudence marocaine, classés par domaine.",
+        "Procédures : démarches administratives et judiciaires expliquées étape par étape.",
+        "Générateur de documents et de contrats : plus de 1 900 documents à remplir en ligne.",
+        "Calculateurs juridiques et apprentissage du vocabulaire juridique.",
+      ],
+    },
+    {
+      title: "4. Notre approche éditoriale",
+      content: "Le contenu est préparé à partir de sources officielles (Bulletin Officiel, publications judiciaires) et organisé sous supervision éditoriale. Chaque contenu passe par une vérification des sources avant publication. Les documents officiels sont reproduits à titre d'information ; en cas de divergence, la version publiée au Bulletin Officiel prévaut.",
+    },
+    {
+      title: "5. Un usage responsable",
+      content: "Nibras est une plateforme d'information et de sensibilisation juridique. Les informations fournies ne constituent pas un avis juridique et ne remplacent pas la consultation d'un professionnel habilité (avocat, notaire, adoul, huissier). Voir notre avertissement juridique pour plus de détails.",
+    },
+    {
+      title: "6. Contact",
+      content: "Pour toute question, suggestion ou correction de contenu, nous vous invitons à utiliser la page Contact.",
+    },
+    {
+      title: "7. Transparence sur l'information publiée",
+      lead: "Nous nous engageons à :",
+      items: [
+        "Citer les sources officielles pour chaque texte juridique.",
+        "Corriger rapidement toute erreur signalée par les utilisateurs ou les institutions.",
+        "Indiquer clairement que le contenu est à titre informatif et pédagogique.",
+      ],
+    },
+  ] : [
+    {
+      title: "١. من نحن؟",
+      content: "نبراس منصة رقمية للمعلومات القانونية المغربية، أُنشئت لجعل القانون في المتناول: مفهوماً وقابلاً للاستعمال. نجمع في فضاء واحد: مكتبة النصوص القانونية المغربية، الاجتهادات القضائية، المساطر، حاسبات قانونية، نماذج وثائق، مولد العقود، ومساعداً ذكياً قانونياً.",
+    },
+    {
+      title: "٢. رسالتنا",
+      content: "تيسير الوصول إلى المعلومات القانونية في المغرب: البحث عن نص قانوني، أو قراءة مبدأ قضائي، أو إعداد وثيقة في نقرة، دون حاجة لخلفية قانونية مسبقة.",
+    },
+    {
+      title: "٣. ما الذي تقدمه المنصة؟",
+      items: [
+        "مكتبة النصوص القانونية المغربية منظمة حسب مجالات وفئات مع بحث نصي كامل.",
+        "الاجتهادات: قررات ومبادئ مستمدة من القضاء المغربي مصنفة حسب المجال.",
+        "المساطر: إجراءات إدارية وقضائية مشروحة خطوة بخطوة.",
+        "مولد الوثائق والعقود: أكثر من 1900 وثيقة تُعبّأ عبر الخط.",
+        "حاسبات قانونية ومساعدة لتعلّم المصطلحات القانونية.",
+      ],
+    },
+    {
+      title: "٤. منهجية التحرير",
+      content: "يُعد المحتوى انطلاقاً من مصادر رسمية (الجريدة الرسمية، المنشورات القضائية) ويُنظم تحت إشراف تحريري. يمر كل محتوى عبر تدقيق المصادر قبل النشر. الوثائق الرسمية تُعاد لأغراض إعلامية؛ وعند أي اختلاف تعتمد النسخة المنشورة بالجريدة الرسمية.",
+    },
+    {
+      title: "٥. استخدام مسؤول",
+      content: "نبراس منصة معلومات وتوعية قانونية. المعلومات المقدمة ليست رأياً قانونياً ولا تغني عن استشارة مهني معتمد (محامٍ، موثق، عدل، مفوض قضائي). راجع إخلاء المسؤولية للمزيد.",
+    },
+    {
+      title: "٦. الاتصال",
+      content: "لأي سؤال أو اقتراح أو تصحيح محتوى، نرجو استخدام صفحة «اتصل بنا».",
+    },
+    {
+      title: "٧. الشفافية في المعلومات المنشورة",
+      lead: "نتعهد بـ:",
+      items: [
+        "الاستشهاد بالمصادر الرسمية لكل نص قانوني.",
+        "تصحيح أي خطأ يُبلَّغ عنه بسرعة من المستخدمين أو المؤسسات.",
+        "توضيح أن المحتوى لأغراض إعلامية وتعليمية.",
+      ],
+    },
+  ];
+
+  return legalPage(
+    isFr ? "À propos de Nibras" : "من نحن",
+    isFr ? "Notre mission, notre contenu et notre démarche éditoriale" : "رسالتنا، محتوى المنصة ومنهجيتنا التحريرية",
+    blocks,
+    isFr ? "01 janvier 2026" : "01 يناير 2026"
+  );
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   اتصل بنا — قناة تواصل فعّالة وفق متطلبات AdSense/الشفافية
+   ═══════════════════════════════════════════════════════════════════ */
+
+export async function contactView() {
+  const isFr = currentLang() === "fr";
+
+  const email = "contact@nibras.ma";
+
+  return legalPage(
+    isFr ? "Contactez-nous" : "اتصل بنا",
+    isFr ? "Une question, une remarque, un signalement d'erreur ? Écrivez-nous." : "سؤال، ملاحظة، أو تبليغ عن خطأ؟ راسلنا.",
+    [
+      {
+        title: isFr ? "1. Adresse e-mail" : "١. البريد الإلكتروني",
+        content: isFr
+          ? `Notre adresse de contact est : ${email}. Nous répondons en général sous 48 heures ouvrables.`
+          : `عنوان التواصل لدينا هو: ${email}. نرد عادةً خلال 48 ساعة عمل.`,
+      },
+      {
+        title: isFr ? "2. Objet du message" : "٢. موضوع الرسالة",
+        items: isFr ? [
+          "Signaler une erreur ou une correction apportée à un texte ou à une décision.",
+          "Demander la suppression d'un contenu (droits d'auteur, données personnelles).",
+          "Suggestion d'amélioration de la Plateforme (fonctionnalités, contenu).",
+          "Presse : demandes d'interviews ou de partenariats.",
+        ] : [
+          "التبليغ عن خطأ أو طلب تصحيح في نص أو قرار.",
+          "طلب حذف محتوى (حقوق المؤلف، معطيات شخصية).",
+          "اقتراح تحسين المنصة (وظائف، محتوى).",
+          "الصحافة: طلبات الحوار أو الشراكات.",
+        ],
+      },
+      {
+        title: isFr ? "3. Droits et confidentialité" : "٣. الحقوق والخصوصية",
+        content: isFr
+          ? "Nous ne transmettons jamais votre adresse e-mail à des tiers. Les messages sont traités conformément à notre politique de confidentialité (Loi 09-08)."
+          : "لا نشارك بريدك الإلكتروني أبداً مع أي طرف ثالث. تُعالج الرسائل وفق سياسة الخصوصية (القانون 09-08).",
+      },
+      {
+        title: isFr ? "4. Réponse" : "٤. الرد",
+        content: isFr
+          ? "Pour toute demande liée à vos données personnelles (accès, rectification, effacement), veuillez écrire à l'adresse ci-dessus en précisant « Données personnelles » dans l'objet."
+          : "لأي طلب يتعلق بمعطياتك الشخصية (الوصول، التصحيح، المحو)، اكتب إلى العنوان أعلاه مع تحديد «معطيات شخصية» في موضوع الرسالة.",
+      },
+    ],
+    isFr ? "01 janvier 2026" : "01 يناير 2026"
   );
 }

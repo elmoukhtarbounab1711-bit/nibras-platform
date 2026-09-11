@@ -1,6 +1,7 @@
-// نبراس — مكوّن الإعلانات مع التحميل الكسول (Security §7)
+// نبراس — مكوّن الإعلانات مع التحميل الكسول وموافقة ملفات الارتباط (Security §7)
 import { session } from "../api.js";
 import { el } from "../ui.js";
+import { hasAdvertisingConsent, onCookieConsent } from "./cookie-consent.js";
 
 const AD_SLOTS_CACHE = new Map();
 const LOADED_SCRIPTS = new Set();
@@ -144,6 +145,9 @@ export function initAdSlots() {
   const slots = document.querySelectorAll(".nibras-ad-slot:not([data-loaded])");
   if (!slots.length) return;
 
+  // لا تُحمَّل الشبكات المعلنِية التابعة إلا بعد موافقة ملفات الإعلان (الموافقة النشطة).
+  if (!hasAdvertisingConsent()) return;
+
   const observer = getObserver();
   for (const slot of slots) {
     if (!OBSERVED_SLOTS.has(slot)) {
@@ -152,6 +156,15 @@ export function initAdSlots() {
     }
   }
 }
+
+// عند منح الموافقة لاحقًا (لوحة التفضيلات) تُحمَّل المواقع المرئية مجددًا.
+onCookieConsent((consent) => {
+  if (consent && consent.advertising) {
+    OBSERVED_SLOTS.clear();
+    resetAdObserver();
+    initAdSlots();
+  }
+});
 
 export function createAdPlaceholder(slotSlug) {
   return el("div", {
