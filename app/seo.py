@@ -20,7 +20,7 @@ from pathlib import Path
 from . import config
 from .database import db_session
 
-SITE = "https://nibras-law-platforme.vercel.app"
+SITE = config.SITE_URL
 _TEMPLATE = None
 
 # ---------------------------------------------------------------------------

@@ -20,6 +20,10 @@ def _env_bool(name: str, default: str = "0") -> bool:
 # (يجب أن يبقى مُعطَّلاً في أي نشر غير محلي).
 DEBUG = _env_bool("NIBRAS_DEBUG")
 
+# النطاق الرسمي للمنصة — يُستخدم في canonical وOpen Graph وsitemaps وJSON-LD
+# وrobots.txt. يُضبط صراحةً في الإنتاج عبر NIBRAS_SITE_URL.
+SITE_URL = os.environ.get("NIBRAS_SITE_URL", "https://nibras-law-platform.vercel.app").rstrip("/")
+
 # النطاقات المسموح لها بقراءة API (CORS). في الإنتاج تُضبط عبر
 # NIBRAS_CORS_ORIGINS بقائمة مفصولة بفواصل للنطاقات الفعلية فقط.
 # "null" يُدرج افتراضيًا لأنه أصل المتصفح عند فتح nibras.html محليًا من ملف.

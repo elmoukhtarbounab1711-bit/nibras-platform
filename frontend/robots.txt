@@ -10,4 +10,4 @@ Disallow: /notifications
 Disallow: /api/
 
 # المنصة تقدم صفحات SSR قابلة للفهرسة عبر URLs حقيقية (بدون hash).
-Sitemap: https://nibras-law-platforme.vercel.app/sitemap.xml
+Sitemap: https://nibras-law-platform.vercel.app/sitemap.xml
