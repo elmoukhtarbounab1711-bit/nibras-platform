@@ -39,7 +39,6 @@ Thumbs.db
 .env*
 
 nibras_prod.db
-nibras_prod.db.gz
 nibras.db.gz
 check_db.py
 
