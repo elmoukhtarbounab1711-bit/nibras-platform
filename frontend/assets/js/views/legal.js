@@ -800,8 +800,8 @@ export async function contactView() {
       {
         title: isFr ? "1. Adresse e-mail" : "١. البريد الإلكتروني",
         content: isFr
-          ? `Notre adresse de contact est : ${email}. Nous répondons en général sous 48 heures ouvrables.`
-          : `عنوان التواصل لدينا هو: ${email}. نرد عادةً خلال 48 ساعة عمل.`,
+          ? `Notre adresse de contact est : <a href="mailto:${email}" rel="noopener">${email}</a>. Nous répondons en général sous 48 heures ouvrables.`
+          : `عنوان التواصل لدينا هو: <a href="mailto:${email}" rel="noopener">${email}</a>. نرد عادةً خلال 48 ساعة عمل.`,
       },
       {
         title: isFr ? "2. Objet du message" : "٢. موضوع الرسالة",

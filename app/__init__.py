@@ -406,6 +406,12 @@ def create_app():
     def seo_contact():
         return _ssr_or_404("/contact")
 
+    for _slug in ("privacy", "terms", "cookie-policy", "disclaimer", "guide"):
+
+        @app.route(f"/{_slug}", endpoint=f"_seo_{_slug}")
+        def seo_legal(_slug=_slug):
+            return _ssr_or_404(f"/{_slug}")
+
     @app.route("/sitemaps/laws.xml")
     def seo_sitemap_laws():
         return Response(_seo.sitemap_laws(), mimetype="application/xml")
