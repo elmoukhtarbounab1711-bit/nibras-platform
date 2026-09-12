@@ -2,7 +2,7 @@
 // الواجهة SPA قائمة على hash، لكن جوجل ينفّذ جافاسكربت ويقرأ DOM، لذا نقوم بضبط
 // الوسوم ديناميكيًا بعد كل رندر لنمنح كل "صفحة" عنوانًا ووصفًا وبيانات مهيكلة.
 
-const SITE = "https://nibras-law-platform.vercel.app";
+const SITE = (location && location.origin) || "https://nibras-law-platform.vercel.app";
 const OG_IMAGE = "/assets/img/og-cover.png";
 
 function ensureMeta(name) {

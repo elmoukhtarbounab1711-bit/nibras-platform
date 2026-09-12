@@ -432,6 +432,15 @@ def create_app():
     def seo_sitemap_index():
         return Response(_seo.sitemap_index(), mimetype="application/xml")
 
+    @app.route("/robots.txt")
+    def seo_robots():
+        _file = frontend_dir / "robots.txt"
+        body = _file.read_text(encoding="utf-8") if _file.exists() else ""
+        site = _seo._base_url().rstrip("/")
+        body = body.replace("https://nibras-law-platform.vercel.app/sitemap.xml",
+                            f"{site}/sitemap.xml")
+        return Response(body, mimetype="text/plain")
+
     @app.route("/<path:path>")
     def spa_catch_all(path):
         _api_prefixes = ("api/", "assets/", "vendor/")

@@ -17,11 +17,33 @@ import html as _html
 import re
 from pathlib import Path
 
+from flask import request
+
 from . import config
 from .database import db_session
 
 SITE = config.SITE_URL
 _TEMPLATE = None
+
+
+def _base_url() -> str:
+    """القاعدة (protocol+host) من طلب HTTP الفعلي، مع سقوط احتياطي على SITE.
+
+    يسمح بتحديث نطاق mخصص تلقائيًا دون تعديل الكود: عند ربط domain جديد
+    على Vercel تأتي قيمة X-Forwarded-Host باسمه فيستخدمه هنا فورًا."""
+    try:
+        host = (request.headers.get("X-Forwarded-Host") or request.headers.get("Host") or "").strip()
+    except RuntimeError:
+        return SITE
+    if not host:
+        return SITE
+    host = host.split(",")[0].strip()
+    proto = "https"
+    if request.headers.get("X-Forwarded-Proto"):
+        proto = request.headers["X-Forwarded-Proto"].split(",")[0].strip().lower()
+    elif request.scheme:
+        proto = request.scheme.lower()
+    return f"{proto}://{host}".rstrip("/")
 
 # ---------------------------------------------------------------------------
 # ملاحظة التطبيع: نستخرج فقط الحقول الموجودة فعلًا في قاعدة البيانات.
@@ -72,7 +94,8 @@ def _inject(title, description, path, content_html, jsonld_blocks=(), schema_typ
     clean_path = path.split("?")[0]
     if clean_path == "/home":
         clean_path = "/"
-    canonical = SITE + clean_path
+    site = _base_url()
+    canonical = site + clean_path
 
     # عنوان/وصف
     tpl = re.sub(r"<title>.*?</title>", _esc(title) and f"<title>{_esc(title)}</title>", tpl, count=1, flags=re.DOTALL)
@@ -91,13 +114,13 @@ def _inject(title, description, path, content_html, jsonld_blocks=(), schema_typ
 <meta property="og:title" content="{_esc(title)}">
 <meta property="og:description" content="{_esc(description)}">
 <meta property="og:url" content="{_esc(canonical)}">
-<meta property="og:image" content="{SITE}/assets/img/og-cover.png">
+<meta property="og:image" content="{site}/assets/img/og-cover.png">
 <meta property="og:image:alt" content="نبراس — منصة القانون المغربي">
 <meta property="og:locale" content="ar_MA">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{_esc(title)}">
 <meta name="twitter:description" content="{_esc(description)}">
-<meta name="twitter:image" content="{SITE}/assets/img/og-cover.png">
+<meta name="twitter:image" content="{site}/assets/img/og-cover.png">
 """
 
     blocks = []
@@ -108,7 +131,7 @@ def _inject(title, description, path, content_html, jsonld_blocks=(), schema_typ
         "url": canonical,
         "description": description,
         "inLanguage": "ar",
-        "isPartOf": {"@type": "WebSite", "url": SITE, "name": "نبراس"},
+        "isPartOf": {"@type": "WebSite", "url": site, "name": "نبراس"},
         "breadcrumb": {"@type": "BreadcrumbList", "itemListElement": []},
     })
     blocks.extend(jsonld_blocks)
@@ -799,19 +822,21 @@ def render_seo(path):
 # ---------------------------------------------------------------------------
 
 def _sitemap_urls(rows, base):
+    site = _base_url()
     out = []
     for r in rows:
-        out.append(f"    <url><loc>{_esc(SITE + base + str(r[0]))}</loc></url>")
+        out.append(f"    <url><loc>{_esc(site + base + str(r[0]))}</loc></url>")
     return "".join(out)
 
 
 def sitemap_index():
+    site = _base_url()
     urls = [
-        {"loc": f"{SITE}/sitemaps/main.xml", "changefreq": "daily"},
-        {"loc": f"{SITE}/sitemaps/laws.xml", "changefreq": "weekly"},
-        {"loc": f"{SITE}/sitemaps/jurisprudence.xml", "changefreq": "weekly"},
-        {"loc": f"{SITE}/sitemaps/procedures.xml", "changefreq": "monthly"},
-        {"loc": f"{SITE}/sitemap.xml", "changefreq": "daily"},
+        {"loc": f"{site}/sitemaps/main.xml", "changefreq": "daily"},
+        {"loc": f"{site}/sitemaps/laws.xml", "changefreq": "weekly"},
+        {"loc": f"{site}/sitemaps/jurisprudence.xml", "changefreq": "weekly"},
+        {"loc": f"{site}/sitemaps/procedures.xml", "changefreq": "monthly"},
+        {"loc": f"{site}/sitemap.xml", "changefreq": "daily"},
     ]
     # التقسيم عبر صفحات سايت ماب فرعية
     index = ["<?xml version='1.0' encoding='UTF-8'?>",
@@ -824,11 +849,12 @@ def sitemap_index():
 
 def sitemap_main():
     """الصفحات الثابتة الرئيسية + صفحات الثقة (الخصوصية/الشروط/من نحن/اتصل بنا...)."""
+    site = _base_url()
     body = ["<?xml version='1.0' encoding='UTF-8'?>",
             "<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>"]
     for path in ("/", "/about", "/contact", "/privacy", "/terms",
                  "/cookie-policy", "/disclaimer", "/guide", "/generator"):
-        body.append(f"<url><loc>{SITE}{path}</loc><lastmod>2026-09-12</lastmod>"
+        body.append(f"<url><loc>{site}{path}</loc><lastmod>2026-09-12</lastmod>"
                     "<changefreq>monthly</changefreq>"
                     "<priority>0.8</priority></url>")
     body.append("</urlset>")
@@ -836,34 +862,37 @@ def sitemap_main():
 
 
 def sitemap_laws():
+    site = _base_url()
     with db_session() as conn:
         ids = [r[0] for r in conn.execute("SELECT id FROM legal_texts ORDER BY id").fetchall()]
     body = ["<?xml version='1.0' encoding='UTF-8'?>",
             "<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>"]
     for i in ids:
-        body.append(f"<url><loc>{SITE}/laws/{i}</loc></url>")
+        body.append(f"<url><loc>{site}/laws/{i}</loc></url>")
     body.append("</urlset>")
     return "".join(body)
 
 
 def sitemap_jurisprudence():
+    site = _base_url()
     with db_session() as conn:
         ids = [r[0] for r in conn.execute(
             "SELECT id FROM jurisprudence WHERE published=1 ORDER BY id").fetchall()]
     body = ["<?xml version='1.0' encoding='UTF-8'?>",
             "<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>"]
     for i in ids:
-        body.append(f"<url><loc>{SITE}/jurisprudence/{i}</loc></url>")
+        body.append(f"<url><loc>{site}/jurisprudence/{i}</loc></url>")
     body.append("</urlset>")
     return "".join(body)
 
 
 def sitemap_procedures():
+    site = _base_url()
     with db_session() as conn:
         slugs = [r[0] for r in conn.execute("SELECT slug FROM procedures ORDER BY slug").fetchall()]
     body = ["<?xml version='1.0' encoding='UTF-8'?>",
             "<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>"]
     for s in slugs:
-        body.append(f"<url><loc>{SITE}/procedures/{_esc(s)}</loc></url>")
+        body.append(f"<url><loc>{site}/procedures/{_esc(s)}</loc></url>")
     body.append("</urlset>")
     return "".join(body)
