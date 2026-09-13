@@ -3447,3 +3447,54 @@ mark {
 .gen-card { cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
 .gen-card:hover { border-color: var(--gold); box-shadow: var(--shadow-soft); }
 @media (max-width: 700px) { .gen-steps { grid-template-columns: 1fr; } }
+
+/* ── المولد — النسخة الاحترافية ── */
+.gen-money {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2, #fafaf8);
+}
+.gen-money .gen-lang { width: 150px; }
+.gen-lang { width: 170px; }
+.money-live { color: var(--navy, #1b3a5c); font-weight: 700; }
+.field-error {
+  display: block;
+  margin-top: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--danger);
+}
+.field-invalid input, .field-invalid textarea, .field-invalid select {
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger, #d33) 12%, transparent);
+}
+.gen-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gen-section::before {
+  content: "";
+  flex: none;
+  width: 4px;
+  height: 18px;
+  border-radius: 3px;
+  background: var(--gold, #c9a227);
+}
+.gen-section-title {
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--navy, #1b3a5c);
+}
+.gen-draft-note {
+  color: var(--gold-dark, #8a6d1a);
+  background: color-mix(in srgb, var(--gold-soft, #fff6dd) 70%, transparent);
+  border: 1px dashed var(--gold, #c9a227);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.flex-wrap.gap-8, .flex-between.gap-8 { gap: 8px; }
+.flex.gap-8 { gap: 8px; }
+@media (max-width: 640px) {
+  .gen-lang, .gen-money .gen-lang { width: 100%; }
+}

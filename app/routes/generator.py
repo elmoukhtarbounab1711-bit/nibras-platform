@@ -4,6 +4,7 @@
 GET  /api/generator/catalog     — فهرس المكتبة كاملة (أصناف + وثائق)
 GET  /api/generator/templates   — القوالب الموصى بها (مُنتقاة)
 GET  /api/generator/fields      — حقول مستند (?file=... أو ?template=id)
+GET  /api/generator/amount      — تحويل المبلغ إلى كلمات (?value=...&lang=ar|fr)
 POST /api/generator/render      — معاينة HTML للطباعة بعد التعبئة
 POST /api/generator/download    — تنزيل DOCX معبّأ (تحميل مباشر)
 
@@ -12,7 +13,7 @@ POST /api/generator/download    — تنزيل DOCX معبّأ (تحميل مب�
 """
 from flask import Blueprint, jsonify, request, send_file
 
-from .. import config, generator
+from .. import amount_words, config, generator
 from ..generator import GeneratorError
 
 generator_bp = Blueprint("generator", __name__)
@@ -58,6 +59,33 @@ def fields():
                 "fields": flds})
 
 
+@generator_bp.route("/api/generator/amount", methods=["GET"])
+def amount():
+    """يحوّل مبلغًا ماليًا إلى كلمات (عربي/فرنسي) لاستعمال الواجهة."""
+    value = request.args.get("value", "").strip()
+    lang = (request.args.get("lang") or "ar").strip().lower()
+    if lang not in ("ar", "fr"):
+        lang = "ar"
+    if not value:
+        return _err(GeneratorError("القيمة غير محددة.", 400))
+    data = amount_words.amount_words(value, lang)
+    if data is None:
+        return _err(GeneratorError("أدخل المبلغ بالأرقام فقط "
+                                   "(مثال: 1500 أو 1.500 أو 1500.50).", 400))
+    return _ok(data)
+
+
+def _money_option(data: dict) -> dict | None:
+    """يستخرج خيار المبلغ كتابةً من جسم الطلب إن وُجد (آمن)."""
+    m = data.get("money")
+    if not isinstance(m, dict) or not m.get("add"):
+        return None
+    lang = str(m.get("lang") or "ar").strip().lower()
+    if lang not in ("ar", "fr"):
+        lang = "ar"
+    return {"add": True, "lang": lang}
+
+
 @generator_bp.route("/api/generator/render", methods=["POST"])
 def render():
     data = request.get_json(force=True, silent=True) or {}
@@ -70,10 +98,15 @@ def render():
         return _err(GeneratorError("هذه الوثيقة غير قابلة للتعبئة.", 400))
     try:
         fields = generator.resolve_fields(file, template)
-        html, _name = generator.preview_html(file, fields, data.get("values") or {})
+        money = _money_option(data)
+        original = bool(data.get("original"))
+        html, _name = generator.preview_html(
+            file, fields, data.get("values") or {},
+            money=money, original=original)
     except GeneratorError as exc:
         return _err(exc)
-    return _ok({"file": file, "title": doc["title"], "preview": html})
+    return _ok({"file": file, "title": doc["title"],
+                "preview": html, "original": original})
 
 
 @generator_bp.route("/api/generator/download", methods=["POST"])
@@ -89,7 +122,8 @@ def download():
     try:
         fields = generator.resolve_fields(file, template)
         data_bytes, name = generator.generate_docx_bytes(
-            file, fields, data.get("values") or {})
+            file, fields, data.get("values") or {},
+            money=_money_option(data))
     except GeneratorError as exc:
         return _err(exc)
     import io

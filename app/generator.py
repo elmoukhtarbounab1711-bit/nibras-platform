@@ -15,11 +15,12 @@ import io
 import json
 import os
 import re
+import unicodedata
 from functools import lru_cache
 from html import escape
 from pathlib import Path
 
-from . import config
+from . import amount_words, config
 
 DOCS_ROOT = Path(config.LEGAL_DOCS_DIR)
 INDEX_PATH = DOCS_ROOT / "index.json"
@@ -96,15 +97,46 @@ def _resolve_file(file: str) -> Path:
     if not file or not isinstance(file, str):
         raise GeneratorError("ملف الوثيقة غير محدد.", 400)
     base = DOCS_ROOT.resolve()
-    p = (base / file).resolve()
-    if str(p) != str(base) and not str(p).startswith(str(base) + os.sep):
-        raise GeneratorError("مسار وثيقة غير صالح.", 400)
-    if not p.is_file():
+    p = _locate_in_docs(base, file)
+    if p is None:
+        # يضمن أمان الحاوية حتى مع الاختلافات في صيغة يونيكود (NFC/NFD)
+        real = _norm_nfc(file)
+        if real.startswith("../") or real.startswith("..\\") or "/.." in real:
+            raise GeneratorError("مسار وثيقة غير صالح.", 400)
         raise GeneratorError("الوثيقة غير موجودة في المكتبة.", 404)
     suffix = Path(file).suffix.lower()
     if suffix not in _SUPPORTED_EXTS:
         raise GeneratorError("صيغة الوثيقة غير مدعومة.", 400)
     return p
+
+
+def _norm_nfc(path) -> str:
+    return unicodedata.normalize("NFC", str(path))
+
+
+@lru_cache(maxsize=2048)
+def _locate_in_docs(base: Path, file: str):
+    """يبحث عن الملف داخل المكتبة حاميًا من الخروج، مع التسامح مع NFD/NFC."""
+    if not file or not isinstance(file, str):
+        return None
+    if _norm_nfc(file).startswith("../") or "\\.." in file or "/.." in file:
+        return None
+    candidate = (base / file).resolve()
+    nfc_file = _norm_nfc(file)
+    nfc_base = _norm_nfc(base)
+    nfc_candidate = _norm_nfc(candidate)
+    if (nfc_candidate == nfc_base or not nfc_candidate.startswith(nfc_base + os.sep)):
+        return None
+    if candidate.is_file():
+        return candidate
+    # مسار الفهرس غالبًا به صيغة NFC والمستودع على القرص NFD (أنظمة يونيكس)
+    for dirpath, _dirs, names in os.walk(base):
+        for resolved in names:
+            rel = _norm_nfc(os.path.join(dirpath, resolved))
+            want = _norm_nfc(os.path.join(base, file))
+            if rel == want:
+                return Path(dirpath, resolved)
+    return None
 
 
 def _open_doc(file: str):
@@ -193,6 +225,90 @@ def _field_label(before: str) -> str:
     return last or "نص"
 
 
+# ---------------------------------------------------------------------------
+# تهذيب التسميات المكتشفة تلقائيًا (تطبق على جميع الحقول عند العرض)
+# ---------------------------------------------------------------------------
+
+_LABEL_FIXES = (
+    ("التعريف الوطنية", "رقم بطاقة التعريف الوطنية"),
+    ("الساكن(ة", "الساكنة"),
+    ("والساكن(ة", "الساكنة"),
+    ("حرر   بـ", "مكان التحرير"),
+    ("حسن نية بتاريخ", "تاريخ الإدلاء"),
+    ("المزداد(ة) بتاريخ", "تاريخ الازدياد"),
+    ("الإمضاء", "اسم الموثق / الإمضاء"),
+)
+
+_AR_NUMS = "٠١٢٣٤٥٦٧٨٩"
+
+
+def _ar_ordinal(n: int) -> str:
+    if n < 10:
+        return _AR_NUMS[n]
+    return "".join(_AR_NUMS[int(c)] for c in str(n))
+
+
+def _clean_label(label: str) -> str:
+    """ينظف التسمية من بقايا الفراغات والأقواس المعلقة."""
+    if not label:
+        return "نص"
+    label = re.sub(r"[\.…]{2,}|_{3,}", " ", label)
+    label = re.sub(r"\s+", " ", label).strip(" ()/؛،:-–")
+    for bad, good in _LABEL_FIXES:
+        if bad in label:
+            label = label.replace(bad, good)
+    if label.count("(") != label.count(")"):
+        label = re.sub(r"[\(（].{0,10}$", "", label).strip()
+    label = re.sub(r"\s+", " ", label).strip()
+    if len(label) > 45:
+        label = label[:45].rsplit(" ", 1)[0]
+    return label or "نص"
+
+
+def _dedupe_labels(fields: list) -> list:
+    """يضيف ترقيمًا للأسماء المتكررة (الاسم الكامل، الاسم الكامل ٢...)."""
+    counts: dict = {}
+    for f in fields:
+        counts[f.get("label") or ""] = counts.get(f.get("label") or "", 0) + 1
+    seen: dict = {}
+    out = []
+    for f in fields:
+        label = f.get("label") or ""
+        if counts[label] > 1:
+            seen[label] = seen.get(label, 0) + 1
+            if seen[label] > 1:
+                label = f"{label} {_ar_ordinal(seen[label])}"
+        out.append({**f, "label": label})
+    return out
+
+
+def _finalize_fields(fields: list) -> list:
+    """تطبق التهذيب وإزالة التكرار على أي قائمة حقول قبل عرضها."""
+    return _dedupe_labels([
+        {**f, "label": _clean_label(f.get("label") or "")}
+        for f in fields
+    ])
+
+
+# ---------------------------------------------------------------------------
+# المبالغ كتابةً (تحقن في DOCX والمعاينة عند تفعيل الخيار)
+# ---------------------------------------------------------------------------
+
+_MONEY_PREFIX = {"ar": "المبلغ كتابةً: ", "fr": "Le montant en lettres : "}
+
+
+def _money_line(value, lang: str) -> str | None:
+    data = amount_words.amount_words(value, lang)
+    if not data:
+        return None
+    if lang == "fr":
+        line = data["line_fr"]
+    else:
+        line = data["line_ar"]
+    prefix = _MONEY_PREFIX.get(lang, _MONEY_PREFIX["ar"])
+    return f"{prefix}{line}"
+
+
 def extract_fields(file: str) -> list:
     """يكتشف حقول المستند من فراغاته بترتيب التصدير الفعلي.
 
@@ -223,6 +339,7 @@ def extract_fields(file: str) -> list:
         )
     if len(_field_cache) > 500:
         _field_cache.clear()
+    fields = _finalize_fields(fields)
     _field_cache[file] = fields
     return fields
 
@@ -232,7 +349,11 @@ def extract_fields(file: str) -> list:
 # ---------------------------------------------------------------------------
 
 def _apply_values_to_texts(texts, spans, values):
-    """يعيد نصوص Runs معدَّلة بعد وضع القيم في الفراغات (بنفس الترتيب)."""
+    """يعيد نصوص Runs معدَّلة بعد وضع القيم في الفراغات (بنفس الترتيب).
+
+    يتعامل مع الفراغات الممتدة عبر أكثر من Run (نص منقسم): يحقن القيمة
+    في أول مقطع ويعيد أطراف بقية المقاطع للحفاظ على التنسيق المحيط.
+    """
     if not spans:
         return list(texts)
     result = list(texts)
@@ -241,30 +362,49 @@ def _apply_values_to_texts(texts, spans, values):
     for t in texts:
         offsets.append(pos)
         pos += len(t)
-    run_idx = 0
+    total = pos
     for idx, (s, e) in enumerate(spans):
         value = str(values[idx]).strip() if idx < len(values) else ""
         if not value:
             continue
-        while run_idx < len(texts) and offsets[run_idx] + len(result[run_idx]) < s:
-            run_idx += 1
-        # نبحث من run_idx عن الجزء الذي يحتوي الفراغ كاملًا
-        for i in range(run_idx, len(texts)):
-            if offsets[i] <= s and e <= offsets[i] + len(result[i]):
-                t = result[i]
-                start = s - offsets[i]
-                end = e - offsets[i]
-                result[i] = t[:start] + value + t[end:]
-                break
+        s = min(s, total - 1)
+        e = min(e, total)
+        if e <= s:
+            continue
+        start_run = end_run = None
+        for k in range(len(texts)):
+            o = offsets[k]
+            if o <= s < o + len(texts[k]):
+                start_run = k
+            if o < e <= o + len(texts[k]):
+                end_run = k
+        if start_run is None or end_run is None:
+            continue
+        start = s - offsets[start_run]
+        if start_run == end_run:
+            result[start_run] = (
+                texts[start_run][:start] + value + texts[start_run][e - offsets[start_run]:])
+        else:
+            result[start_run] = texts[start_run][:start] + value
+            for k in range(start_run + 1, end_run):
+                result[k] = ""
+            result[end_run] = texts[end_run][e - offsets[end_run]:]
     return result
 
 
-def generate_docx_bytes(file: str, fields: list, answers: dict) -> tuple:
-    """يبني DOCX معبّأً (في الذاكرة) انطلاقًا من القالب الأصلي. يعيد (بايتات، اسم)."""
+def generate_docx_bytes(file: str, fields: list, answers: dict,
+                        money: dict | None = None) -> tuple:
+    """يبني DOCX معبّأً (في الذاكرة) انطلاقًا من القالب الأصلي. يعيد (بايتات، اسم).
+
+    money={"add": True, "lang": "ar"|"fr"} يُدرج سطر «المبلغ كتابةً» تحت كل
+    حقل مالي معبأ، مع الحفاظ على موضعه وتنسيقه الأصلي.
+    """
     doc, name = _open_doc(file)
     values = [answers.get(f.get("key")) for f in fields]
+    paras = list(_iter_paragraphs(doc))  # لقطة قبل أي إدراج لاحق
     filled = 0
-    for paragraph in _iter_paragraphs(doc):
+    money_inserts: dict = {}  # id(_p) → [سطور]
+    for paragraph in paras:
         runs, texts, spans = _analyze_paragraph(paragraph)
         if not spans:
             continue
@@ -273,9 +413,41 @@ def generate_docx_bytes(file: str, fields: list, answers: dict) -> tuple:
         new_texts = _apply_values_to_texts(texts, spans, chunk)
         for run, text in zip(runs, new_texts):
             run.text = text
+        if not (money and money.get("add")):
+            continue
+        for i, span in enumerate(spans):
+            if i >= len(chunk):
+                break
+            fld = fields[filled - len(spans) + i] if 0 <= filled - len(spans) + i < len(fields) else None
+            if not fld or fld.get("type") != "money" or not chunk[i]:
+                continue
+            line = _money_line(chunk[i], money.get("lang") or "ar")
+            if line:
+                money_inserts.setdefault(id(paragraph._p), []).append(line)
+    if money_inserts:
+        for paragraph in paras:
+            lines = money_inserts.get(id(paragraph._p))
+            if not lines:
+                continue
+            for line in lines:
+                _insert_money_paragraph(doc, paragraph, line)
     buffer = io.BytesIO()
     doc.save(buffer)
     return buffer.getvalue(), name
+
+
+def _insert_money_paragraph(doc, anchor, text: str) -> None:
+    """يُدرج فقرة بعد فقرة المصدر (بعد نقلها من نهاية المستند)."""
+    try:
+        new_p = doc.add_paragraph()
+        try:
+            new_p.alignment = anchor.alignment
+        except (AttributeError, TypeError, ValueError):
+            pass
+        new_p.add_run(text)
+        anchor._p.addnext(new_p._p)
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -318,25 +490,88 @@ def _render_paragraph_html(paragraph, new_texts):
     return parts
 
 
-def preview_html(file: str, fields: list, answers: dict) -> tuple:
-    """يعيد معاينة HTML للمستند المعبّأ (فقرات + اتجاه RTL للطباعة)."""
+def preview_html(file: str, fields: list, answers: dict,
+                 money: dict | None = None, original: bool = False) -> tuple:
+    """يعيد معاينة HTML للمستند المعبّأ (جداول + فقرات + اتجاه RTL للطباعة).
+
+    original=True يعرض القالب قبل التعبئة (للتبديل بين شكل الأصلي والمعبأ).
+    """
     doc, name = _open_doc(file)
+    if original:
+        answers = {}
     values = [answers.get(f.get("key")) for f in fields]
     filled = 0
-    lines = []
-    for paragraph in _iter_paragraphs(doc):
+    body_parts: list = []
+
+    def _render_para(paragraph) -> list:
+        """يعيد شرائح HTML لحقول محددة (لا يعدّل filled)."""
+        nonlocal filled
         _runs, texts, spans = _analyze_paragraph(paragraph)
         new_texts = list(texts)
+        chunk = []
         if spans:
             chunk = values[filled:filled + len(spans)]
             filled += len(spans)
             new_texts = _apply_values_to_texts(texts, spans, chunk)
         parts = _render_paragraph_html(paragraph, new_texts)
         text = "".join(parts)
+        frags = []
         if text.strip():
-            lines.append(f'<p class="{_alignment_class(paragraph)}">{text}</p>')
-    body = "\n".join(lines)
+            frags.append(f'<p class="{_alignment_class(paragraph)}">{text}</p>')
+        if money and money.get("add"):
+            for i, _span in enumerate(spans):
+                if i >= len(chunk):
+                    break
+                fld = fields[filled - len(spans) + i] if 0 <= filled - len(spans) + i < len(fields) else None
+                if not fld or fld.get("type") != "money" or not chunk[i]:
+                    continue
+                line = _money_line(chunk[i], money.get("lang") or "ar")
+                if line:
+                    frags.append(f'<p class="money-words">{escape(line)}</p>')
+        return frags
+
+    def _render_table(tbl) -> str:
+        """يعيد جدول HTML كاملاً مع تعبئة خلاياه بالترتيب الصحيح."""
+        rows = []
+        for row in tbl.rows:
+            cells = []
+            for cell in row.cells:
+                cell_parts: list = []
+                for kind, paragraph, _t in _iter_blocks(cell._element):
+                    if kind == "p":
+                        cell_parts.extend(_render_para(paragraph))
+                cells.append("<td>" + "\n".join(cell_parts) + "</td>")
+            if cells:
+                rows.append("<tr>" + "".join(cells) + "</tr>")
+        return "<table>" + "\n".join(rows) + "</table>"
+
+    for kind, paragraph, tbl in _iter_blocks(doc.element.body):
+        if kind == "tbl":
+            body_parts.append(_render_table(tbl))
+        else:
+            body_parts.extend(_render_para(paragraph))
+
+    if original:
+        body_parts.insert(
+            0, ('<p class="note">أصل القالب قبل التعبئة — '
+                'الفراغات ظاهرة بنقاط.</p>'))
+    body = "\n".join(body_parts)
     return _html_shell(escape(name), body), name
+
+
+def _iter_blocks(element):
+    """يعيد وعاءين: ('p', paragraph, None) أو ('tbl', None, table)
+    لأي عنصر حاوية (body أو خلية جدول) بترتيب المستند الفعلي."""
+    from docx.oxml.table import CT_Tbl
+    from docx.oxml.text.paragraph import CT_P
+    from docx.table import Table
+    from docx.text.paragraph import Paragraph
+
+    for el in element.iterchildren():
+        if isinstance(el, CT_P):
+            yield "p", Paragraph(el, element), None
+        elif isinstance(el, CT_Tbl):
+            yield "tbl", None, Table(el, element)
 
 
 def _html_shell(title: str, body: str) -> str:
@@ -352,6 +587,9 @@ def _html_shell(title: str, body: str) -> str:
          direction: rtl; color: #1a1a1a; line-height: 2; margin: 2rem; }}
   p {{ margin: 0.35em 0; text-align: right; }}
   p.center {{ text-align: center; }}
+  p.money-words {{ font-weight: 700; margin-top: 0.1em; }}
+  p.note {{ color: #8a4b00; background: #fff4e0; border: 1px solid #e8c98a;
+           padding: 6px 10px; border-radius: 6px; }}
   table {{ border-collapse: collapse; width: 100%; margin: 0.8em 0; }}
   td, th {{ border: 1px solid #777; padding: 4px 8px; vertical-align: top; text-align: right; }}
   @media print {{ body {{ font-size: 12pt; margin: 0; }} }}
@@ -401,5 +639,5 @@ def resolve_fields(file: str, template: str | None = None) -> list:
     if template:
         t = get_recommended(template)
         if t and t.get("fields"):
-            return t["fields"]
+            return _finalize_fields(t["fields"])
     return extract_fields(file)

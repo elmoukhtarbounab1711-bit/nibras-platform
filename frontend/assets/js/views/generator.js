@@ -1,4 +1,5 @@
-// نبراس — مولد الوثائق والعقود: مكتبة قوالب + تعبئة + معاينة داخل الصفحة + تنزيل DOCX
+// نبراس — مولد الوثائق والعقود: مكتبة قوالب + تعبئة + معاينة + تنزيل DOCX
+// نسخة احترافية: مسودات محفوظة، المبلغ كتابةً، مجموعات، تحقق فوري، معاينة الأصل.
 import { tr } from "../i18n.js";
 import { api } from "../api.js";
 import { el, esc, emptyState, skeleton, toast } from "../ui.js";
@@ -33,13 +34,52 @@ const TYPE_LABELS = {
 };
 
 const TYPE_HINTS = {
-  money: "أدخل المبلغ بالأرقام فقط (مثال: 1500)",
+  money: "أدخل المبلغ بالأرقام فقط — يمكنك كتابة الفواصل: 15000 أو 15.000 أو 15000.50",
   number: "أدخل القيمة بالأرقام فقط",
   date: "اختر التاريخ، أو اتركه فارغًا إن لم يكن مطلوبًا",
 };
 
 function isRequired(f) {
+  if (f.required === true) return true;
+  if (f.required === false) return false;
   return f.type !== "date";
+}
+
+// ---------------------------------------------------------------------------
+// المسودات المحفوظة (localStorage لكل وثيقة)
+// ---------------------------------------------------------------------------
+
+const DRAFT_PREFIX = "gen:draft:";
+
+function draftKey(file) {
+  return DRAFT_PREFIX + file;
+}
+
+function loadDraft(file) {
+  try {
+    const raw = localStorage.getItem(draftKey(file));
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    return d && typeof d === "object" ? d : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+function saveDraft(file, payload) {
+  try {
+    localStorage.setItem(draftKey(file), JSON.stringify(payload));
+  } catch (_e) {
+    /* مساحة التخزين ممتلئة — نتجاهل */
+  }
+}
+
+function clearDraft(file) {
+  try {
+    localStorage.removeItem(draftKey(file));
+  } catch (_e) {
+    /* ignore */
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -69,14 +109,14 @@ export async function generatorView() {
       el("span", { class: "gen-step-num", text: "2" }),
       el("div", {}, [
         el("strong", { text: "عبِّئ البيانات" }),
-        el("p", { class: "small muted", text: "فقط الحقول المطلوبة في العقد — مع شرح لكل حقل" }),
+        el("p", { class: "small muted", text: "فقط الحقول المطلوبة في العقد — مع شرح لكل حقل، وتُحفظ المسودة تلقائيًا" }),
       ]),
     ]),
     el("div", { class: "gen-step" }, [
       el("span", { class: "gen-step-num", text: "3" }),
       el("div", {}, [
         el("strong", { text: "عاين، اطبع أو نزّل" }),
-        el("p", { class: "small muted", text: "راجع المعاينة ثم اطبع مباشرة أو نزّل نسخة Word" }),
+        el("p", { class: "small muted", text: "راجع المعاينة (المبلغ كتابةً تلقائيًا) ثم اطبع أو نزّل Word" }),
       ]),
     ]),
   ]));
@@ -222,6 +262,15 @@ export async function generatorView() {
 // نموذج التعبئة
 // ---------------------------------------------------------------------------
 
+const NUMERIC_RE = /^[\d\s.,]+$/;
+
+function numericError(raw) {
+  const v = String(raw || "").trim();
+  if (!v) return "";
+  if (!NUMERIC_RE.test(v)) return "أدخل رقماً فقط (بدون حروف أو رموز).";
+  return "";
+}
+
 function inputFor(field, value) {
   const set = (val) => { value[field.key] = val; };
   if (field.type === "textarea") {
@@ -230,8 +279,13 @@ function inputFor(field, value) {
   if (field.type === "date") {
     return el("input", { class: "input", type: "date", onchange: (e) => set(e.target.value) });
   }
-  if (field.type === "money" || field.type === "number") {
-    return el("input", { class: "input", type: "text", inputmode: "decimal", placeholder: "0", oninput: (e) => set(e.target.value) });
+  if (field.type === "money") {
+    return el("input", { class: "input", type: "text", inputmode: "decimal", dir: "ltr",
+      placeholder: "مثال: 15000", oninput: (e) => set(e.target.value) });
+  }
+  if (field.type === "number") {
+    return el("input", { class: "input", type: "text", inputmode: "numeric", dir: "ltr",
+      placeholder: "مثال: 12345", oninput: (e) => set(e.target.value) });
   }
   return el("input", { class: "input", type: "text", placeholder: "اكتب هنا...", oninput: (e) => set(e.target.value) });
 }
@@ -254,6 +308,22 @@ async function openTemplate(file, template, editable) {
   const fields = data.fields || [];
   const values = {};
 
+  // --- استرجاع المسودة المحفوظة (قيم + خيار المبلغ)
+  const draft = loadDraft(file);
+  const moneyState = {
+    add: draft && draft.money && draft.money.add === false ? false : true,
+    lang: draft && draft.money && draft.money.lang === "fr" ? "fr" : "ar",
+  };
+  const draftValues = (draft && draft.values) || {};
+
+  let saveTimer = null;
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      saveDraft(file, { values: collect(), money: moneyState });
+    }, 350);
+  }
+
   const titleRow = el("div", { class: "section-head" }, [
     el("div", {}, [
       el("button", { class: "btn btn-ghost btn-sm", onclick: () => navigate("/generator") }, [icon("arrowLeft", 16), " " + tr("back")]),
@@ -266,11 +336,26 @@ async function openTemplate(file, template, editable) {
       }),
     ]),
   ]);
+  if (draft) {
+    const draftNote = el("p", { class: "small gen-draft-note mt-4" }, [
+      icon("clipboard", 14),
+      " استُعيدت تعبئتك المحفوظة من جلسة سابقة — راجعها أو امسحها بخيار «محو المسودة».",
+    ]);
+    titleRow.querySelector(".section-head > div").append(draftNote);
+  }
 
   const form = el("div", { class: "card mt-8 flex-col" });
   const invalid = new Set();
+  const moneyLiveRefresh = [];
 
+  let currentGroup = "";
   fields.forEach((f) => {
+    if (f.group && f.group !== currentGroup) {
+      currentGroup = f.group;
+      form.append(el("div", { class: "gen-section mt-16" }, [
+        el("span", { class: "gen-section-title", text: f.group }),
+      ]));
+    }
     const labelRow = editable
       ? el("input", { class: "input", value: f.label || f.key, oninput: (e) => { f.label = e.target.value; } })
       : el("span", {}, [
@@ -278,30 +363,102 @@ async function openTemplate(file, template, editable) {
           ...(isRequired(f) ? [el("span", { class: "gen-required" })] : [el("span", { class: "gen-opt", text: " اختياري" })]),
         ]);
     const typeNode = editable
-      ? el("select", { class: "input", onchange: (e) => { f.type = e.target.value; } },
+      ? el("select", { class: "input gen-lang", onchange: (e) => { f.type = e.target.value; } },
           ["text", "textarea", "date", "money", "number"].map((t) =>
             el("option", { value: t, text: t, selected: f.type === t })))
       : null;
     const hint = !editable && TYPE_HINTS[f.type] ? el("span", { class: "field-help", text: TYPE_HINTS[f.type] }) : null;
     const row = el("div", { class: "field mb-8", "data-key": f.key }, [el("label", {}, [labelRow])]);
     if (typeNode) row.append(typeNode);
-    row.append(inputFor(f, values));
+
+    const input = inputFor(f, values);
+    const initVal = draftValues[f.key];
+    if (initVal != null) input.value = String(initVal);
+    row.append(input);
+
+    if (initVal != null) values[f.key] = String(initVal);
+    const errNode = el("span", { class: "field-error", text: "" });
+    row.append(errNode);
     if (hint) row.append(hint);
+
+    // المبلغ كتابةً حي (يُحدَّث مع كل إدخال/تغيير لغة)
+    if (f.type === "money" && !editable) {
+      const live = el("span", { class: "field-help money-live", text: "" });
+      row.append(live);
+      moneyLiveRefresh.push(refreshLive);
+      function refreshLive() {
+        const raw = String(values[f.key] || "").trim();
+        if (!raw || !/\d/.test(raw)) { live.textContent = ""; return; }
+        clearTimeout(pathTimer);
+        pathTimer = setTimeout(async () => {
+          try {
+            const res = await fetch(
+              `/api/generator/amount?value=${encodeURIComponent(raw)}&lang=${moneyState.lang}`);
+            const p = await res.json();
+            if (!res.ok || p.error) { live.textContent = ""; return; }
+            live.textContent = moneyState.lang === "fr" ? p.line_fr : p.line_ar;
+          } catch (_err) {
+            live.textContent = "";
+          }
+        }, 300);
+      }
+      let pathTimer = null;
+      input.addEventListener("input", refreshLive);
+    }
+
+    // حفظ تلقائي للمسودة مع كل تغيير
+    input.addEventListener("input", scheduleSave);
+    input.addEventListener("change", scheduleSave);
+    input.addEventListener("input", () => {
+      errNode.textContent = "";
+      row.classList.remove("field-invalid");
+    });
+
     form.append(row);
   });
+
+  // --- بطاقة خيار «المبلغ كتابةً»
+  const moneyToggle = el("input", { type: "checkbox", checked: moneyState.add });
+  const moneyLangSel = el("select", { class: "input gen-lang" }, [
+    el("option", { value: "ar", text: "عربية", selected: moneyState.lang === "ar" }),
+    el("option", { value: "fr", text: "Français", selected: moneyState.lang === "fr" }),
+  ]);
+  moneyToggle.onclick = () => { moneyState.add = moneyToggle.checked; scheduleSave(); };
+  moneyLangSel.onchange = () => {
+    moneyState.lang = moneyLangSel.value;
+    moneyLiveRefresh.forEach((fn) => fn());
+    scheduleSave();
+  };
+  const moneyCard = el("div", { class: "card mt-8 gen-money" }, [
+    el("div", { class: "flex-between flex-wrap gap-8" }, [
+      el("label", { class: "flex gap-8", style: "align-items:center" }, [
+        moneyToggle,
+        el("span", { text: "أضف «المبلغ كتابةً» (حروفًا ورقمًا) تلقائيًا بعد كل مبلغ" }),
+      ]),
+      moneyLangSel,
+    ]),
+    el("p", { class: "small muted mt-4", text: "مثال: 1500 ← تُدرج «المبلغ كتابةً: ألف وخمسمائة درهم» في الوثيقة والمعاينة." }),
+  ]);
 
   function validate() {
     invalid.clear();
     fields.forEach((f) => {
-      if (isRequired(f) && !String(values[f.key] || "").trim()) invalid.add(f.key);
-    });
-    form.querySelectorAll(".field-invalid").forEach((r) => r.classList.remove("field-invalid"));
-    if (invalid.size) {
-      fields.forEach((f) => {
-        if (!invalid.has(f.key)) return;
-        const row = form.querySelector(`[data-key="${f.key}"]`);
+      const raw = String(values[f.key] || "").trim();
+      const row = form.querySelector(`[data-key="${f.key}"]`);
+      const errNode = row ? row.querySelector(".field-error") : null;
+      let msg = "";
+      if (isRequired(f) && !raw) msg = "هذا الحقل مطلوب.";
+      else if ((f.type === "money" || f.type === "number") && raw) msg = numericError(raw);
+      if (msg) {
+        invalid.add(f.key);
+        if (errNode) errNode.textContent = msg;
         if (row) row.classList.add("field-invalid");
-      });
+      } else {
+        if (errNode) errNode.textContent = "";
+        if (row) row.classList.remove("field-invalid");
+      }
+    });
+    if (invalid.size) {
       const first = fields.find((f) => invalid.has(f.key));
       const firstRow = first ? form.querySelector(`[data-key="${first.key}"]`) : null;
       if (firstRow) firstRow.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -349,27 +506,36 @@ async function openTemplate(file, template, editable) {
     }
   }
 
-  async function doRender(btn) {
+  async function doRender(btn, opts) {
+    opts = opts || {};
     if (busy.on) return;
-    const missing = validate();
-    if (missing) {
-      toast(`أكمل الحقول الناقصة (${missing}) أولًا.`, "error");
-      return;
+    if (!opts.original) {
+      const missing = validate();
+      if (missing) {
+        toast(`أكمل الحقول الناقصة (${missing}) أولًا.`, "error");
+        return;
+      }
     }
     setBusy([[btns.render, "عاين الآن"]], true);
-    toast("جارٍ توليد المستند...", "info");
+    toast(opts.original ? "جارٍ عرض القالب الأصلي..." : "جارٍ توليد المستند...", "info");
     try {
       const res = await fetch("/api/generator/render", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file, template: template || null, values: collect() }),
+        body: JSON.stringify({
+          file,
+          template: template || null,
+          values: opts.original ? {} : collect(),
+          money: { add: moneyState.add, lang: moneyState.lang },
+          original: !!opts.original,
+        }),
       });
       const payload = await res.json();
       if (!res.ok) throw new Error(payload.error || "تعذر توليد المستند");
       previewIframe.setAttribute("srcdoc", payload.preview);
       previewBox.style.display = "";
       previewBox.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      toast("تم إنشاء المعاينة بنجاح.", "success");
+      toast(opts.original ? "عرض أصل القالب (قبل التعبئة)." : "تم إنشاء المعاينة بنجاح.", "success");
     } catch (e) {
       toast(e.message, "error");
     } finally {
@@ -390,7 +556,12 @@ async function openTemplate(file, template, editable) {
       const res = await fetch("/api/generator/download", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file, template: template || null, values: collect() }),
+        body: JSON.stringify({
+          file,
+          template: template || null,
+          values: collect(),
+          money: { add: moneyState.add, lang: moneyState.lang },
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -419,19 +590,25 @@ async function openTemplate(file, template, editable) {
     });
     fields.forEach((f) => { delete values[f.key]; });
     form.querySelectorAll(".field-invalid").forEach((r) => r.classList.remove("field-invalid"));
+    form.querySelectorAll(".field-error").forEach((n) => { n.textContent = ""; });
     previewBox.style.display = "none";
-    toast("تم مسح الحقول. يمكنك إعادة التعبئة.", "info");
+    clearDraft(file);
+    moneyLiveRefresh.forEach((fn) => fn());
+    toast("تم مسح الحقول والمسودة.", "info");
   }
 
   const btns = {};
   btns.render = el("button", { class: "btn btn-primary" }, [icon("eye", 16), " عاين الآن"]);
   btns.download = el("button", { class: "btn" }, [icon("download", 16), " نزّل Word"]);
-  const clearBtn = el("button", { class: "btn btn-ghost" }, [icon("trash", 15), " مسح الحقول"]);
+  const origBtn = el("button", { class: "btn btn-ghost" }, [icon("fileText", 15), " عاين الأصل"]);
+  const clearBtn = el("button", { class: "btn btn-ghost" }, [icon("trash", 15), " محو المسودة"]);
+  clearBtn.title = "يمسح الحقول والمسودة المحفوظة لهذه الوثيقة";
   btns.render.onclick = () => doRender(btns.render);
   btns.download.onclick = () => doDownload(btns.download);
+  origBtn.onclick = () => doRender(btns.render, { original: true });
   clearBtn.onclick = clearFields;
 
-  const actions = el("div", { class: "flex-between mt-16" }, [btns.render, btns.download, clearBtn]);
+  const actions = el("div", { class: "flex-between mt-16 flex-wrap gap-8" }, [btns.render, btns.download, origBtn, clearBtn]);
 
   previewBox.append(
     el("div", { class: "section-head" }, [
@@ -447,12 +624,16 @@ async function openTemplate(file, template, editable) {
 
   wrap.replaceChildren(titleRow);
   wrap.append(form);
+  wrap.append(moneyCard);
   wrap.append(actions);
   wrap.append(previewBox);
   wrap.append(el("p", {
     class: "small muted mt-24",
     html: esc("تنبيه قانوني: المحتوى يولّده الخادم من القالب الرسمي الأصلي. تحقق من بياناتك قبل اعتماد أي وثيقة، ولا توقّع إلا على نسخة مطابقة لأصلك. قد تحتاج بعض العقود إلى الختم الرسمي أو التوثيق."),
   }));
+
+  if (draft) toast("استُعيدت مسودتك المحفوظة لهذه الوثيقة.", "info");
+
   return wrap;
 }
 
