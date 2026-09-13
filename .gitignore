@@ -47,6 +47,7 @@ check_db.py
 data/legal_docs/**
 !data/legal_docs/index.json
 !data/legal_docs/templates.json
+!data/legal_docs/field_profiles.json
 
 # Android TWA build output (not committed); keystore + keystore.properties ARE committed during pre-launch phase
 android-app/build/

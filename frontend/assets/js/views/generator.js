@@ -367,7 +367,8 @@ async function openTemplate(file, template, editable) {
           ["text", "textarea", "date", "money", "number"].map((t) =>
             el("option", { value: t, text: t, selected: f.type === t })))
       : null;
-    const hint = !editable && TYPE_HINTS[f.type] ? el("span", { class: "field-help", text: TYPE_HINTS[f.type] }) : null;
+    const hint = !editable && (f.hint || TYPE_HINTS[f.type])
+      ? el("span", { class: "field-help", text: f.hint || TYPE_HINTS[f.type] }) : null;
     const row = el("div", { class: "field mb-8", "data-key": f.key }, [el("label", {}, [labelRow])]);
     if (typeNode) row.append(typeNode);
 

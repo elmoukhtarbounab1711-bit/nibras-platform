@@ -16,6 +16,7 @@ import json
 import os
 import re
 import unicodedata
+from copy import deepcopy
 from functools import lru_cache
 from html import escape
 from pathlib import Path
@@ -25,6 +26,7 @@ from . import amount_words, config
 DOCS_ROOT = Path(config.LEGAL_DOCS_DIR)
 INDEX_PATH = DOCS_ROOT / "index.json"
 TEMPLATES_PATH = DOCS_ROOT / "templates.json"
+PROFILES_PATH = DOCS_ROOT / "field_profiles.json"
 
 _BLANK_RE = re.compile(r"(?:\.{3,}|…+|_{3,})")
 _FILLABLE_EXTS = {".docx"}
@@ -249,13 +251,13 @@ def _ar_ordinal(n: int) -> str:
 
 
 def _clean_label(label: str) -> str:
-    """ينظف التسمية من بقايا الفراغات والأقواس المعلقة."""
+    """ينظف التسمية من بقايا الفراغات والأقواس المعلقة دون المساس بأزواجها."""
     if not label:
         return "نص"
     label = re.sub(r"[\.…]{2,}|_{3,}", " ", label)
-    label = re.sub(r"\s+", " ", label).strip(" ()/؛،:-–")
+    label = re.sub(r"\s+", " ", label).strip(" /؛،:-–")
     for bad, good in _LABEL_FIXES:
-        if bad in label:
+        if bad in label and good not in label:
             label = label.replace(bad, good)
     if label.count("(") != label.count(")"):
         label = re.sub(r"[\(（].{0,10}$", "", label).strip()
@@ -635,9 +637,40 @@ def get_recommended(template_id: str):
 
 
 def resolve_fields(file: str, template: str | None = None) -> list:
-    """حقول للعرض/التوليد: من القالب الموصى به إن حُدد وإلا اكتشاف تلقائي."""
+    """حقول للعرض/التوليد: من النخبة اليدوية إن وُجدت، ثم القالب الموصى به،
+    ثم الاستخراج التلقائي. النخبة تُعتبر صالحة فقط إذا طابق عددُ حقولها عددَ
+    الفراغات في المستند — وإلا نتراجع للاستخراج التلقائي (حماية من الانحراف)."""
     if template:
         t = get_recommended(template)
         if t and t.get("fields"):
             return _finalize_fields(t["fields"])
+    profile = _profile_for(file)
+    if profile is not None:
+        try:
+            if len(profile) == len(extract_fields(file)):
+                return _finalize_fields(profile)
+        except GeneratorError:
+            pass  # المستند غير قابل للتعبئة — يُترك للاستخراج التلقائي للرفع بالخطأ
     return extract_fields(file)
+
+
+@lru_cache(maxsize=1)
+def _profiles() -> list:
+    """نخبة الحقول اليدوية لكل عقد (data/legal_docs/field_profiles.json)."""
+    if not PROFILES_PATH.exists():
+        return []
+    try:
+        with open(PROFILES_PATH, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    return data.get("profiles") if isinstance(data, dict) else (data or [])
+
+
+def _profile_for(file: str):
+    """يعيد حقول النخبة لهذه الوثيقة (نسخة مطابقة غير مشتركة) أو None."""
+    want = _norm_nfc(file)
+    for p in _profiles():
+        if want == _norm_nfc(p.get("file") or ""):
+            return deepcopy(p.get("fields") or [])
+    return None

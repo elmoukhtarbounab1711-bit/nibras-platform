@@ -1,0 +1,297 @@
+{
+  "_comment": "نخبة الحقول اليدوية لكل عقد على حدة (مولّد الوثائق والعقود). كل حقل يتطابق مع فراغ في القالب بنفس الترتيب تمامًا — التسمية والنوع والمطلوب والمجموعة قابلة للتحرير، ولا يجوز تغيير عدد/ترتيب الحقول دون مراجعة القالب.",
+  "version": 1,
+  "profiles": [
+    {
+      "file": "وكالات/وكالة سياقة وبيع سيارة 1.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الموكل", "type": "text", "required": true, "hint": "الاسم الكامل لصاحب السيارة (الموكل) كما في بطاقة التعريف" },
+        { "key": "f002", "label": "اسم الوكيل (المفوض)", "type": "text", "required": true, "hint": "الاسم الكامل لمن فوّض إليه البيع والقيادة" },
+        { "key": "f003", "label": "مكان وتاريخ التحرير", "type": "date", "required": false, "hint": "تاريخ تحرير الوكالة (يمكن تركه فارغًا)" }
+      ]
+    },
+    {
+      "file": "عقود بيع كراء عمل تسيير/عقد كراء سكنى.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الطرف الأول (المالك)", "type": "text", "required": true, "group": "الطرف الأول", "hint": "الاسم الكامل للسيد(ة) المالك — يتم على أكثر من خانة" },
+        { "key": "f002", "label": "اسم الطرف الأول (المالك)", "type": "text", "required": true, "group": "الطرف الأول", "hint": "تتمة الاسم الكامل" },
+        { "key": "f003", "label": "اسم الطرف الأول (المالك)", "type": "text", "required": true, "group": "الطرف الأول", "hint": "تتمة الاسم الكامل" },
+        { "key": "f004", "label": "اسم الطرف الأول (المالك)", "type": "text", "required": true, "group": "الطرف الأول", "hint": "تتمة الاسم الكامل" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الأول", "hint": "مثال: AB123456" },
+        { "key": "f006", "label": "تاريخ الازدياد", "type": "date", "required": false, "group": "الطرف الأول" },
+        { "key": "f007", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f008", "label": "اسم الطرف الثاني (المكتري)", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f009", "label": "اسم الطرف الثاني (المكتري)", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f010", "label": "اسم الطرف الثاني (المكتري)", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f011", "label": "اسم الطرف الثاني (المكتري)", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f012", "label": "اسم الطرف الثاني (المكتري)", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f013", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f014", "label": "تاريخ الازدياد", "type": "date", "required": false, "group": "الطرف الثاني" },
+        { "key": "f015", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f016", "label": "العين المكتراة (الشقة/العقار)", "type": "text", "required": true, "group": "العين المكتراة", "hint": "عنوان الشقة أو العقار المكترى" },
+        { "key": "f017", "label": "عدد الغرف", "type": "number", "required": true, "group": "العين المكتراة" },
+        { "key": "f018", "label": "تاريخ بداية الكراء", "type": "date", "required": true, "group": "الأجرة والمدة", "hint": "ابتداءً من التاريخ الذي تُؤدى فيه الأجرة" },
+        { "key": "f019", "label": "مدة العقد (عدد السنوات)", "type": "number", "required": true, "group": "الأجرة والمدة" },
+        { "key": "f020", "label": "تاريخ بداية مدة العقد", "type": "date", "required": true, "group": "الأجرة والمدة" },
+        { "key": "f021", "label": "تاريخ نهاية مدة العقد", "type": "date", "required": true, "group": "الأجرة والمدة" },
+        { "key": "f022", "label": "مكان التحرير", "type": "text", "required": false, "group": "التحرير" },
+        { "key": "f023", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "عقود بيع كراء عمل تسيير/عقد كراء محل تجاري نموذج.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الطرف الأول (المالكة)", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f003", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f004", "label": "اسم الطرف الثاني (المكتري)", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f006", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f007", "label": "المحل التجاري المكترى", "type": "text", "required": true, "group": "المحل التجاري", "hint": "عنوان/موقع المحل التجاري" },
+        { "key": "f008", "label": "نشاط المستغل (الاستعمال المقصود)", "type": "text", "required": true, "group": "المحل التجاري" },
+        { "key": "f009", "label": "مبلغ الكراء الشهري (بالأرقام)", "type": "money", "required": true, "group": "الأجرة والمدة", "hint": "مثال: 1500 أو 1500.00" },
+        { "key": "f010", "label": "مبلغ الكراء الشهري (بالحروف)", "type": "text", "required": false, "group": "الأجرة والمدة" },
+        { "key": "f011", "label": "تاريخ بداية الكراء", "type": "date", "required": true, "group": "الأجرة والمدة" },
+        { "key": "f012", "label": "تاريخ نهاية الكراء", "type": "date", "required": true, "group": "الأجرة والمدة" },
+        { "key": "f013", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "عقود بيع كراء عمل تسيير/عقد بيع دراجة نارية.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم البائع", "type": "text", "required": true, "group": "الطرف الأول (البائع)" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الأول (البائع)" },
+        { "key": "f003", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الأول (البائع)" },
+        { "key": "f004", "label": "اسم المشتري", "type": "text", "required": true, "group": "الطرف الثاني (المشتري)" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الثاني (المشتري)" },
+        { "key": "f006", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الثاني (المشتري)" },
+        { "key": "f007", "label": "رقم المركبة", "type": "text", "required": true, "group": "الدراجة النارية", "hint": "رقم التسجيل الظاهر في البطاقة الرمادية" },
+        { "key": "f008", "label": "نوع الدراجة النارية", "type": "text", "required": true, "group": "الدراجة النارية" },
+        { "key": "f009", "label": "الصنف", "type": "text", "required": false, "group": "الدراجة النارية" },
+        { "key": "f010", "label": "رقم الإطار الحديدي", "type": "text", "required": true, "group": "الدراجة النارية" },
+        { "key": "f011", "label": "عدد الأسطوانات", "type": "number", "required": false, "group": "الدراجة النارية" },
+        { "key": "f012", "label": "مكان وتاريخ التحرير", "type": "date", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "عقود بيع كراء عمل تسيير/عقد وعد بالبيع.docx",
+      "fields": [
+        { "key": "f001", "label": "وصف القطعة الأرضية", "type": "text", "required": true, "group": "وصف العقار", "hint": "مثال: قطعة جاهزة للبناء" },
+        { "key": "f002", "label": "موقع القطعة (أ)", "type": "text", "required": true, "group": "وصف العقار" },
+        { "key": "f003", "label": "موقع القطعة (ب)", "type": "text", "required": true, "group": "وصف العقار", "hint": "تتمة موقع القطعة" },
+        { "key": "f004", "label": "طول القطعة (بالمتر)", "type": "number", "required": true, "group": "وصف العقار" },
+        { "key": "f005", "label": "عرض القطعة (بالمتر)", "type": "number", "required": true, "group": "وصف العقار" },
+        { "key": "f006", "label": "المساحة الإجمالية (متر مربع)", "type": "number", "required": true, "group": "وصف العقار" },
+        { "key": "f007", "label": "الحد: قبلة", "type": "text", "required": false, "group": "حدود القطعة" },
+        { "key": "f008", "label": "الحد: شرقًا", "type": "text", "required": false, "group": "حدود القطعة" },
+        { "key": "f009", "label": "الحد: مطلا (غربًا)", "type": "text", "required": false, "group": "حدود القطعة" },
+        { "key": "f010", "label": "الحد: بحرا (شمالًا)", "type": "text", "required": false, "group": "حدود القطعة" },
+        { "key": "f011", "label": "شهر آخر أجل لإبداء الرغبة", "type": "text", "required": false, "group": "أجل الشراء" },
+        { "key": "f012", "label": "السنة", "type": "number", "required": false, "group": "أجل الشراء" },
+        { "key": "f013", "label": "مبلغ غرامة التأخير (درهم/يوم)", "type": "money", "required": false, "group": "الثمن والغرامة" },
+        { "key": "f014", "label": "الثمن الإجمالي (درهم)", "type": "money", "required": true, "group": "الثمن والغرامة" },
+        { "key": "f015", "label": "المبلغ المدفوع عند التوقيع (درهم)", "type": "money", "required": false, "group": "الثمن والغرامة" },
+        { "key": "f016", "label": "مصدر ملكية الواعد (عقد)", "type": "text", "required": false, "group": "شروط أخرى" },
+        { "key": "f017", "label": "المحكمة المختصة", "type": "text", "required": false, "group": "شروط أخرى" }
+      ]
+    },
+    {
+      "file": "عقود بيع كراء عمل تسيير/عقد هبة نموذج 1.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الواهب", "type": "text", "required": true, "group": "الطرف الأول (الواهب)" },
+        { "key": "f002", "label": "المهنة", "type": "text", "required": false, "group": "الطرف الأول (الواهب)" },
+        { "key": "f003", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الأول (الواهب)" },
+        { "key": "f004", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الأول (الواهب)" },
+        { "key": "f005", "label": "اسم الموهوب له", "type": "text", "required": true, "group": "الطرف الثاني (الموهوب له)" },
+        { "key": "f006", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الثاني (الموهوب له)" },
+        { "key": "f007", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الثاني (الموهوب له)" },
+        { "key": "f008", "label": "اسم الطرف الأول (الواهب)", "type": "text", "required": true, "group": "موضوع الهبة" },
+        { "key": "f009", "label": "اسم الطرف الثاني (الموهوب له)", "type": "text", "required": true, "group": "موضوع الهبة" },
+        { "key": "f010", "label": "النسبة الموهوبة (%)", "type": "number", "required": true, "group": "موضوع الهبة" },
+        { "key": "f011", "label": "رقم القطعة الأرضية", "type": "number", "required": false, "group": "العقار الموهوب" },
+        { "key": "f012", "label": "موقع القطعة", "type": "text", "required": true, "group": "العقار الموهوب" },
+        { "key": "f013", "label": "الرسم العقاري (الجزء الأول)", "type": "text", "required": false, "group": "العقار الموهوب" },
+        { "key": "f014", "label": "الرسم العقاري (الجزء الثاني)", "type": "text", "required": false, "group": "العقار الموهوب" },
+        { "key": "f015", "label": "نسبة الاحتفاظ للواهب", "type": "number", "required": false, "group": "موضوع الهبة" },
+        { "key": "f016", "label": "اسم الموهوب له (أ)", "type": "text", "required": true, "group": "الإقرار بالقبول" },
+        { "key": "f017", "label": "اسم الموهوب له (ب)", "type": "text", "required": true, "group": "الإقرار بالقبول" },
+        { "key": "f018", "label": "النسبة التي قُبِلَت (%)", "type": "number", "required": true, "group": "الإقرار بالقبول" },
+        { "key": "f019", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "الغاء وفسخ/فسخ عقد كراء محل تجاري.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الطرف الأول (المالك)", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f003", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f004", "label": "اسم الطرف الثاني (المكتري)", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f006", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f007", "label": "عنوان المحل التجاري", "type": "text", "required": true, "group": "العقد المفسوخ" },
+        { "key": "f008", "label": "المصالح المختصة المصادِقة", "type": "text", "required": false, "group": "العقد المفسوخ" },
+        { "key": "f009", "label": "رقم عقد الكراء", "type": "text", "required": false, "group": "العقد المفسوخ" },
+        { "key": "f010", "label": "تاريخ تحرير عقد الكراء", "type": "date", "required": false, "group": "العقد المفسوخ" },
+        { "key": "f011", "label": "تاريخ خروج المكتري", "type": "date", "required": true, "group": "تفاصيل الفسخ" },
+        { "key": "f012", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "الغاء وفسخ/فسخ عقد كراء سكنى.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الطرف الأول (المالك)", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f003", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f004", "label": "اسم الطرف الثاني (المكتري)", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f006", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f007", "label": "عنوان السكنى", "type": "text", "required": true, "group": "العقد المفسوخ" },
+        { "key": "f008", "label": "المصالح المختصة المصادِقة", "type": "text", "required": false, "group": "العقد المفسوخ" },
+        { "key": "f009", "label": "رقم عقد الكراء", "type": "text", "required": false, "group": "العقد المفسوخ" },
+        { "key": "f010", "label": "تاريخ تحرير عقد الكراء", "type": "date", "required": false, "group": "العقد المفسوخ" },
+        { "key": "f011", "label": "تاريخ خروج المكتري", "type": "date", "required": true, "group": "تفاصيل الفسخ" },
+        { "key": "f012", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "الغاء وفسخ/الغاء وكالة.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الموكل", "type": "text", "required": true },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true },
+        { "key": "f003", "label": "العنوان", "type": "text", "required": true },
+        { "key": "f004", "label": "اسم الوكيل المُلغى", "type": "text", "required": true, "hint": "الاسم الكامل للوكيل الذي كانت الوكالة لصالحه" },
+        { "key": "f005", "label": "موضوع الوكالة", "type": "text", "required": true },
+        { "key": "f006", "label": "الملحقة الإدارية المصادِقة", "type": "text", "required": false },
+        { "key": "f007", "label": "تاريخ توثيق الوكالة", "type": "date", "required": false },
+        { "key": "f008", "label": "رقم الوكالة", "type": "text", "required": false },
+        { "key": "f009", "label": "مكان التحرير", "type": "text", "required": false },
+        { "key": "f010", "label": "الإمضاء", "type": "text", "required": false }
+      ]
+    },
+    {
+      "file": "اشهادات/اشهاد الشهود.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الشاهد الأول", "type": "text", "required": true, "group": "الشاهد الأول" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الشاهد الأول" },
+        { "key": "f003", "label": "العنوان", "type": "text", "required": true, "group": "الشاهد الأول" },
+        { "key": "f004", "label": "اسم الشاهد الثاني", "type": "text", "required": true, "group": "الشاهد الثاني" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الشاهد الثاني" },
+        { "key": "f006", "label": "العنوان", "type": "text", "required": true, "group": "الشاهد الثاني" },
+        { "key": "f007", "label": "مضمون الإشهاد (1)", "type": "textarea", "required": true, "group": "مضمون الإشهاد", "hint": "بأن ... (الوقائع الموضوع بها)" },
+        { "key": "f008", "label": "مضمون الإشهاد (2)", "type": "textarea", "required": false, "group": "مضمون الإشهاد" },
+        { "key": "f009", "label": "مضمون الإشهاد (3)", "type": "textarea", "required": false, "group": "مضمون الإشهاد" },
+        { "key": "f010", "label": "مضمون الإشهاد (4)", "type": "textarea", "required": false, "group": "مضمون الإشهاد" },
+        { "key": "f011", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "اشهادات/اشهاد بالعمل.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم صاحب العمل (المُشهَد)", "type": "text", "required": true, "group": "صاحب العمل" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "صاحب العمل" },
+        { "key": "f003", "label": "العنوان", "type": "text", "required": true, "group": "صاحب العمل" },
+        { "key": "f004", "label": "اسم الأجير/المستخدم", "type": "text", "required": true, "group": "الأجير" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الأجير" },
+        { "key": "f006", "label": "العنوان", "type": "text", "required": true, "group": "الأجير" },
+        { "key": "f007", "label": "الصفة الوظيفية (يعمل كـ)", "type": "text", "required": true, "group": "العمل" },
+        { "key": "f008", "label": "عنوان مقر العمل", "type": "text", "required": true, "group": "العمل" },
+        { "key": "f009", "label": "سنة الالتحاق بالعمل", "type": "number", "required": true, "group": "العمل", "hint": "مثال: 2020" },
+        { "key": "f010", "label": "مكان وتاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f011", "label": "الإمضاء", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "اشهادات/اشهاد بتوصل بمبلغ من مسير محل.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم المتوصل (المُشهَد)", "type": "text", "required": true },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true },
+        { "key": "f003", "label": "المبلغ المتوصل به (درهم)", "type": "money", "required": true, "hint": "مثال: 1500 أو 1500.50" },
+        { "key": "f004", "label": "اسم مسير المحل", "type": "text", "required": true },
+        { "key": "f005", "label": "عنوان المحل التجاري (أ)", "type": "text", "required": true },
+        { "key": "f006", "label": "عنوان المحل التجاري (ب)", "type": "text", "required": false },
+        { "key": "f007", "label": "تاريخ بداية المدة (من فاتح)", "type": "date", "required": false },
+        { "key": "f008", "label": "تاريخ نهاية المدة (إلى غاية متم)", "type": "date", "required": false },
+        { "key": "f009", "label": "الإمضاء", "type": "text", "required": false }
+      ]
+    },
+    {
+      "file": "تنازلات/تنازل عن مجوهرات ذهب مقابل مبلغ مالي.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم المتنازلة", "type": "text", "required": true, "group": "الطرف الأول (المتنازلة)" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الأول (المتنازلة)" },
+        { "key": "f003", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الأول (المتنازلة)" },
+        { "key": "f004", "label": "اسم المتنازل لها", "type": "text", "required": true, "group": "الطرف الثاني (المتنازل لها)" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الثاني (المتنازل لها)" },
+        { "key": "f006", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الثاني (المتنازل لها)" },
+        { "key": "f007", "label": "كمية الذهب المتنازل عنه", "type": "text", "required": true, "group": "موضوع التنازل" },
+        { "key": "f008", "label": "عيار الذهب", "type": "text", "required": true, "group": "موضوع التنازل", "hint": "مثال: 18 أو 21" },
+        { "key": "f009", "label": "المبلغ المالي المقابل (درهم)", "type": "money", "required": true, "group": "موضوع التنازل" },
+        { "key": "f010", "label": "رقم توصيل الشراء", "type": "number", "required": false, "group": "وثيقة الملكية" },
+        { "key": "f011", "label": "تاريخ توصيل الشراء", "type": "date", "required": false, "group": "وثيقة الملكية" },
+        { "key": "f012", "label": "اسم محل المجوهرات", "type": "text", "required": false, "group": "وثيقة الملكية" },
+        { "key": "f013", "label": "عنوان محل المجوهرات", "type": "text", "required": false, "group": "وثيقة الملكية" },
+        { "key": "f014", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f015", "label": "التوقيع", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "التزامات/التزام بالسكن.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الملتزم (المُشهَد)", "type": "text", "required": true, "group": "الملتزم" },
+        { "key": "f002", "label": "تاريخ الازدياد", "type": "date", "required": false, "group": "الملتزم" },
+        { "key": "f003", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الملتزم" },
+        { "key": "f004", "label": "العنوان", "type": "text", "required": true, "group": "الملتزم" },
+        { "key": "f005", "label": "اسم الساكن معه (المصرَّح له)", "type": "text", "required": true, "group": "الساكن المصرَّح له" },
+        { "key": "f006", "label": "تاريخ الازدياد", "type": "date", "required": false, "group": "الساكن المصرَّح له" },
+        { "key": "f007", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الساكن المصرَّح له" },
+        { "key": "f008", "label": "العنوان", "type": "text", "required": true, "group": "الساكن المصرَّح له" },
+        { "key": "f009", "label": "عنوان السكنى", "type": "text", "required": true, "group": "السكنى" },
+        { "key": "f010", "label": "مكان التحرير", "type": "text", "required": false, "group": "التحرير" },
+        { "key": "f011", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f012", "label": "الإمضاء", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "التزامات/التزام بتسكين شخص دون مقابل مادي.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم السيدة (المُشهِدة)", "type": "text", "required": true, "group": "الطرف الأول (المُشهِدة)" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الأول (المُشهِدة)" },
+        { "key": "f003", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الأول (المُشهِدة)" },
+        { "key": "f004", "label": "اسم السيد (المُسكَن)", "type": "text", "required": true, "group": "الطرف الثاني (المُسكَن)" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الثاني (المُسكَن)" },
+        { "key": "f006", "label": "اسم المُشهِدة (تأكيد)", "type": "text", "required": true, "group": "موضوع التسكين" },
+        { "key": "f007", "label": "اسم الشخص المصرَّح له بالإقامة", "type": "text", "required": true, "group": "موضوع التسكين" },
+        { "key": "f008", "label": "عنوان السكنى", "type": "text", "required": true, "group": "موضوع التسكين" },
+        { "key": "f009", "label": "المتحمل بفواتير الماء والكهرباء", "type": "text", "required": false, "group": "موضوع التسكين" },
+        { "key": "f010", "label": "اسم الملتزم بالمحافظة على السكنى", "type": "text", "required": true, "group": "موضوع التسكين" },
+        { "key": "f011", "label": "مكان وتاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f012", "label": "التوقيع", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "عقود بيع كراء عمل تسيير/عقد تسيير محل تجاري.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الطرف الأول (المالك)", "type": "text", "required": true, "group": "الطرف الأول (المالك)" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الأول (المالك)" },
+        { "key": "f003", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الأول (المالك)" },
+        { "key": "f004", "label": "اسم الطرف الثاني (المسير)", "type": "text", "required": true, "group": "الطرف الثاني (المسير)" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية", "type": "text", "required": true, "group": "الطرف الثاني (المسير)" },
+        { "key": "f006", "label": "العنوان", "type": "text", "required": true, "group": "الطرف الثاني (المسير)" },
+        { "key": "f007", "label": "اسم الطرف الأول (الإقرار)", "type": "text", "required": true, "group": "المحل التجاري" },
+        { "key": "f008", "label": "اسم الطرف الثاني (الإقرار)", "type": "text", "required": true, "group": "المحل التجاري" },
+        { "key": "f009", "label": "عنوان المحل", "type": "text", "required": true, "group": "المحل التجاري" },
+        { "key": "f010", "label": "مساحة المحل", "type": "number", "required": false, "group": "المحل التجاري" },
+        { "key": "f011", "label": "النشاط (المخصص للبيع)", "type": "text", "required": true, "group": "المحل التجاري" },
+        { "key": "f012", "label": "الحد: الأمام", "type": "text", "required": false, "group": "حدود المحل" },
+        { "key": "f013", "label": "الحد: الخلف", "type": "text", "required": false, "group": "حدود المحل" },
+        { "key": "f014", "label": "الحد: مدخل جهة اليمين", "type": "text", "required": false, "group": "حدود المحل" },
+        { "key": "f015", "label": "الحد: مدخل جهة اليسار", "type": "text", "required": false, "group": "حدود المحل" },
+        { "key": "f016", "label": "مدة التسيير (سنوات)", "type": "number", "required": true, "group": "مدة التسيير" },
+        { "key": "f017", "label": "تاريخ بداية التسيير", "type": "date", "required": true, "group": "مدة التسيير" },
+        { "key": "f018", "label": "اسم الطرف الثاني (المسير/الإقرار)", "type": "text", "required": true, "group": "التزامات المسير" },
+        { "key": "f019", "label": "مبلغ الأجرة الشهرية (درهم)", "type": "money", "required": true, "group": "الأجرة" },
+        { "key": "f020", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" }
+      ]
+    }
+  ]
+}
