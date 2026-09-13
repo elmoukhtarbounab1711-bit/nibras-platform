@@ -509,6 +509,149 @@
         { "key": "f019", "label": "مكان تحرير العقد", "type": "text", "required": false, "group": "التحرير" },
         { "key": "f020", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" }
       ]
+    },
+    {
+      "file": "عقود بيع كراء عمل تسيير/عقد بيع قارب الصيد البحري.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الطرف الأول (البائعة)", "type": "text", "required": true, "group": "الطرف الأول (البائعة)" },
+        { "key": "f002", "label": "تاريخ الازدياد (اليوم)", "type": "number", "required": false, "group": "الطرف الأول (البائعة)" },
+        { "key": "f003", "label": "تاريخ الازدياد (الشهر/السنة)", "type": "text", "required": false, "group": "الطرف الأول (البائعة)" },
+        { "key": "f004", "label": "رقم بطاقة التعريف الوطنية للطرف الأول", "type": "text", "required": true, "group": "الطرف الأول (البائعة)", "hint": "مثال: AB123456" },
+        { "key": "f005", "label": "عنوان الطرف الأول", "type": "text", "required": true, "group": "الطرف الأول (البائعة)" },
+        { "key": "f006", "label": "اسم الطرف الثاني (المشتري)", "type": "text", "required": true, "group": "الطرف الثاني (المشتري)" },
+        { "key": "f007", "label": "تاريخ ازدياد الطرف الثاني (اليوم)", "type": "number", "required": false, "group": "الطرف الثاني (المشتري)" },
+        { "key": "f008", "label": "تاريخ ازدياد الطرف الثاني (الشهر/السنة)", "type": "text", "required": false, "group": "الطرف الثاني (المشتري)" },
+        { "key": "f009", "label": "رقم بطاقة التعريف الوطنية للطرف الثاني", "type": "text", "required": true, "group": "الطرف الثاني (المشتري)", "hint": "مثال: AB123456" },
+        { "key": "f010", "label": "عنوان الطرف الثاني", "type": "text", "required": true, "group": "الطرف الثاني (المشتري)" },
+        { "key": "f011", "label": "اسم القارب", "type": "text", "required": true, "group": "القارب", "hint": "الاسم المسجل على القارب" },
+        { "key": "f012", "label": "رقم تسجيل القارب", "type": "text", "required": true, "group": "القارب" },
+        { "key": "f013", "label": "الطول الكلي", "type": "text", "required": false, "group": "مواصفات القارب", "hint": "مثال: 15 م" },
+        { "key": "f014", "label": "العرض من الوسط", "type": "text", "required": false, "group": "مواصفات القارب" },
+        { "key": "f015", "label": "التجويف من الوسط", "type": "text", "required": false, "group": "مواصفات القارب" },
+        { "key": "f016", "label": "وزن الحمولة الخلفي", "type": "text", "required": false, "group": "مواصفات القارب" },
+        { "key": "f017", "label": "أصل الملك", "type": "text", "required": false, "group": "مواصفات القارب" },
+        { "key": "f018", "label": "الثمن الإجمالي (بالأرقام)", "type": "money", "required": true, "group": "الثمن", "hint": "مثال: 150000" },
+        { "key": "f019", "label": "الثمن الإجمالي (كتابةً)", "type": "text", "required": false, "group": "الثمن" }
+      ]
+    },
+    {
+      "file": "اشهادات/اشهاد حادثة.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الشاهد الأول", "type": "text", "required": true, "group": "الشهداء" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية للشاهد الأول", "type": "text", "required": true, "group": "الشهداء", "hint": "مثال: AB123456" },
+        { "key": "f003", "label": "عنوان الشاهد الأول", "type": "text", "required": true, "group": "الشهداء" },
+        { "key": "f004", "label": "اسم الشاهد الثاني", "type": "text", "required": true, "group": "الشهداء" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية للشاهد الثاني", "type": "text", "required": true, "group": "الشهداء", "hint": "مثال: AB123456" },
+        { "key": "f006", "label": "عنوان الشاهد الثاني", "type": "text", "required": true, "group": "الشهداء" },
+        { "key": "f007", "label": "اسم الشاهد الثالث", "type": "text", "required": true, "group": "الشهداء" },
+        { "key": "f008", "label": "رقم بطاقة التعريف الوطنية للشاهد الثالث", "type": "text", "required": true, "group": "الشهداء", "hint": "مثال: AB123456" },
+        { "key": "f009", "label": "عنوان الشاهد الثالث", "type": "text", "required": true, "group": "الشهداء" },
+        { "key": "f010", "label": "تاريخ وقوع الحادثة", "type": "date", "required": true, "group": "الحادثة" },
+        { "key": "f011", "label": "وقت وقوع الحادثة (حوالي الساعة)", "type": "text", "required": false, "group": "الحادثة", "hint": "مثال: العاشرة صباحًا" },
+        { "key": "f012", "label": "مكان وقوع الحادثة", "type": "text", "required": true, "group": "الحادثة" },
+        { "key": "f013", "label": "اسم المتضرر من الحادثة", "type": "text", "required": true, "group": "الحادثة" },
+        { "key": "f014", "label": "وصف الحادثة", "type": "text", "required": true, "group": "الحادثة" },
+        { "key": "f015", "label": "تفاصيل الحادثة", "type": "text", "required": false, "group": "الحادثة" },
+        { "key": "f016", "label": "تفاصيل الحادثة (تتمة)", "type": "text", "required": false, "group": "الحادثة" },
+        { "key": "f017", "label": "مكان وتاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f018", "label": "إمضاء الشهداء", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "موافقات/موافقة سفر قاصر.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الولي (السيد/السيدة)", "type": "text", "required": true, "group": "الولي" },
+        { "key": "f002", "label": "تاريخ ازدياد الولي", "type": "date", "required": false, "group": "الولي" },
+        { "key": "f003", "label": "رقم بطاقة التعريف الوطنية للولي", "type": "text", "required": true, "group": "الولي", "hint": "مثال: AB123456" },
+        { "key": "f004", "label": "عنوان الولي", "type": "text", "required": true, "group": "الولي" },
+        { "key": "f005", "label": "اسم الشخص المستصحِب للقاصر", "type": "text", "required": true, "group": "المرافق" },
+        { "key": "f006", "label": "تاريخ ازدياد المرافق", "type": "date", "required": false, "group": "المرافق" },
+        { "key": "f007", "label": "رقم بطاقة التعريف الوطنية للمرافق", "type": "text", "required": true, "group": "المرافق", "hint": "مثال: AB123456" },
+        { "key": "f008", "label": "عنوان المرافق", "type": "text", "required": true, "group": "المرافق" },
+        { "key": "f009", "label": "اسم الابن القاصر", "type": "text", "required": true, "group": "القاصر" },
+        { "key": "f010", "label": "تاريخ ازدياد الابن القاصر", "type": "date", "required": false, "group": "القاصر" },
+        { "key": "f011", "label": "وجهة السفر", "type": "text", "required": true, "group": "السفر", "hint": "مثال: إسبانيا" },
+        { "key": "f012", "label": "مكان وتاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f013", "label": "إمضاء الولي", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "عقود بيع كراء عمل تسيير/عقد كراء بقعة ارضية.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الطرف الأول (المكري)", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية للطرف الأول", "type": "text", "required": true, "group": "الطرف الأول", "hint": "مثال: AB123456" },
+        { "key": "f003", "label": "عنوان الطرف الأول", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f004", "label": "اسم الطرف الثاني (المكتري)", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية للطرف الثاني", "type": "text", "required": true, "group": "الطرف الثاني", "hint": "مثال: AB123456" },
+        { "key": "f006", "label": "عنوان الطرف الثاني", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f007", "label": "اسم الطرف الأول (تأكيد)", "type": "text", "required": true, "group": "القطعة الأرضية" },
+        { "key": "f008", "label": "اسم الطرف الثاني (تأكيد)", "type": "text", "required": true, "group": "القطعة الأرضية" },
+        { "key": "f009", "label": "موقع القطعة الأرضية", "type": "text", "required": true, "group": "القطعة الأرضية" },
+        { "key": "f010", "label": "مساحة القطعة (متر مربع)", "type": "number", "required": true, "group": "القطعة الأرضية", "hint": "مثال: 200" },
+        { "key": "f011", "label": "الحد: القبلة", "type": "text", "required": false, "group": "حدود القطعة" },
+        { "key": "f012", "label": "الحد: الشمال", "type": "text", "required": false, "group": "حدود القطعة" },
+        { "key": "f013", "label": "الحد: البحر/الغرب", "type": "text", "required": false, "group": "حدود القطعة" },
+        { "key": "f014", "label": "الحد: الجهة الشرقية", "type": "text", "required": false, "group": "حدود القطعة" },
+        { "key": "f015", "label": "الحد: الجنوب", "type": "text", "required": false, "group": "حدود القطعة" },
+        { "key": "f016", "label": "الغرض من الكراء", "type": "text", "required": true, "group": "الكراء", "hint": "مثال: بناء سكنى/تجاري" },
+        { "key": "f017", "label": "مدة الكراء (سنوات)", "type": "number", "required": true, "group": "الكراء", "hint": "مثال: 5" },
+        { "key": "f018", "label": "تاريخ بدء الكراء", "type": "date", "required": false, "group": "الكراء" },
+        { "key": "f019", "label": "ثمن الكراء (بالأرقام)", "type": "money", "required": true, "group": "الكراء", "hint": "مثال: 2000" },
+        { "key": "f020", "label": "مكان التحرير", "type": "text", "required": false, "group": "التحرير" },
+        { "key": "f021", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "اشهادات/اشهاد بتوصل.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم المتوصل منه (الدافع)", "type": "text", "required": true, "group": "الطرف" },
+        { "key": "f002", "label": "تاريخ ازدياد الدافع", "type": "date", "required": false, "group": "الطرف" },
+        { "key": "f003", "label": "رقم بطاقة التعريف الوطنية للدافع", "type": "text", "required": true, "group": "الطرف", "hint": "مثال: AB123456" },
+        { "key": "f004", "label": "عنوان الدافع", "type": "text", "required": true, "group": "الطرف" },
+        { "key": "f005", "label": "مبلغ التوصل (بالأرقام)", "type": "money", "required": true, "group": "المبلغ", "hint": "مثال: 5000" },
+        { "key": "f006", "label": "مبلغ التوصل (كتابةً)", "type": "text", "required": false, "group": "المبلغ" },
+        { "key": "f007", "label": "الملحقة الإدارية المصادِقة", "type": "text", "required": false, "group": "الإقرار بالدين" },
+        { "key": "f008", "label": "تاريخ التصديق على الإقرار", "type": "date", "required": false, "group": "الإقرار بالدين" },
+        { "key": "f009", "label": "عدد التصديق", "type": "number", "required": false, "group": "الإقرار بالدين" },
+        { "key": "f010", "label": "مكان وتاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f011", "label": "الإمضاء", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "عقود بيع كراء عمل تسيير/عقد عمل غير محدد المدة   CDI.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الشركة", "type": "text", "required": true, "group": "الطرف الأول (الشركة)" },
+        { "key": "f002", "label": "المقر الرئيسي للشركة", "type": "text", "required": true, "group": "الطرف الأول (الشركة)" },
+        { "key": "f003", "label": "اسم ممثل الشركة", "type": "text", "required": true, "group": "الطرف الأول (الشركة)" },
+        { "key": "f004", "label": "اسم الطرف الثاني (الأجير)", "type": "text", "required": true, "group": "الطرف الثاني (الأجير)" },
+        { "key": "f005", "label": "تاريخ ميلاد الأجير (اليوم)", "type": "number", "required": false, "group": "الطرف الثاني (الأجير)" },
+        { "key": "f006", "label": "تاريخ ميلاد الأجير (الشهر)", "type": "number", "required": false, "group": "الطرف الثاني (الأجير)" },
+        { "key": "f007", "label": "تاريخ ميلاد الأجير (السنة)", "type": "number", "required": false, "group": "الطرف الثاني (الأجير)" },
+        { "key": "f008", "label": "رقم البطاقة الوطنية للأجير", "type": "text", "required": true, "group": "الطرف الثاني (الأجير)", "hint": "مثال: AB123456" },
+        { "key": "f009", "label": "عنوان الأجير", "type": "text", "required": true, "group": "الطرف الثاني (الأجير)" },
+        { "key": "f010", "label": "الوظيفة المكلف بها", "type": "text", "required": true, "group": "العمل", "hint": "مثال: بائع" },
+        { "key": "f011", "label": "الأجر الشهري الخام (درهم)", "type": "money", "required": true, "group": "الأجر", "hint": "مثال: 4000" },
+        { "key": "f012", "label": "الأجر الأساسي (درهم)", "type": "money", "required": false, "group": "الأجر" },
+        { "key": "f013", "label": "مكان العمل (المقر الكائن ب)", "type": "text", "required": true, "group": "العمل" },
+        { "key": "f014", "label": "المسافة القصوى (كيلومترات)", "type": "number", "required": false, "group": "العمل", "hint": "مثال: 50" },
+        { "key": "f015", "label": "تاريخ بداية العقد", "type": "date", "required": true, "group": "المدة" },
+        { "key": "f016", "label": "مكان تحرير العقد", "type": "text", "required": false, "group": "التحرير" },
+        { "key": "f017", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "تنازلات/تنازل عن شكاية.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم المتنازل", "type": "text", "required": true, "group": "المتنازل" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية للمتنازل", "type": "text", "required": true, "group": "المتنازل", "hint": "مثال: AB123456" },
+        { "key": "f003", "label": "عنوان المتنازل", "type": "text", "required": true, "group": "المتنازل" },
+        { "key": "f004", "label": "اسم المتنازل له", "type": "text", "required": true, "group": "المتنازل له" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية للمتنازل له", "type": "text", "required": true, "group": "المتنازل له", "hint": "مثال: AB123456" },
+        { "key": "f006", "label": "عنوان المتنازل له", "type": "text", "required": true, "group": "المتنازل له" },
+        { "key": "f007", "label": "الجهة المقدم إليها الشكاية", "type": "text", "required": true, "group": "الشكاية", "hint": "مثال: مركز الدرك الملكي/النيابة العامة" },
+        { "key": "f008", "label": "مكان وتاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f009", "label": "إمضاء المتنازل", "type": "text", "required": false, "group": "التحرير" }
+      ]
     }
   ]
 }
