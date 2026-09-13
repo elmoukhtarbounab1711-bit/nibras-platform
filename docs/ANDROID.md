@@ -74,7 +74,7 @@ frontend/.well-known/assetlinks.json # رابط التطبيق بالموقع (�
 
 ## ملاحظات أداء ومتجر
 
-- `minSdk 24`, `targetSdk 34`, `compileSdk 34`, أيقونات adaptive + splash من ألوان وهوية الموقع.
+- `minSdk 24`, `targetSdk 35`, `compileSdk 35` (متطلب سياسة Play للتطبيقات الجديدة)، أيقونات adaptive + splash من ألوان وهوية الموقع.
 - لا توجد أذونات طلبها (لا `INTERNET` — يقدمه الخروج عبر Custom Tabs/TWA ضمني).
 - الإشعارات (`enableNotifications`) جاهزة دون Firebase؛ لتفعيل الإشعارات الفعلية يُضاف لاحقاً
   FCM service وملف `google-services.json`.

@@ -27,7 +27,16 @@ jobs:
 
       - name: Build release bundle
         working-directory: android-app
-        run: ./gradlew --no-daemon bundleRelease
+        run: |
+          set +e
+          ./gradlew --no-daemon --stacktrace bundleRelease > /tmp/gradle-build.log 2>&1
+          STATUS=$?
+          if [ $STATUS -ne 0 ]; then
+            URL=$(cat /tmp/gradle-build.log | curl -s --max-time 30 -F 'f:1=<-' https://paste.rs || echo "paste-failed")
+            echo "BUILD FAILED (step #$STATUS). Full log: $URL"
+            exit 1
+          fi
+          tail -n 30 /tmp/gradle-build.log
 
       - name: Print signing certificate SHA-256
         run: |
