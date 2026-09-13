@@ -652,6 +652,149 @@
         { "key": "f008", "label": "مكان وتاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
         { "key": "f009", "label": "إمضاء المتنازل", "type": "text", "required": false, "group": "التحرير" }
       ]
+    },
+    {
+      "file": "عقود بيع كراء عمل تسيير/عقد عمل.docx",
+      "fields": [
+        { "key": "f001", "label": "يوم إبرام العقد", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f002", "label": "التاريخ الموافق", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f003", "label": "اسم الطرف الأول (العامل)", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f004", "label": "رقم بطاقة التعريف الوطنية للعامل", "type": "text", "required": true, "group": "الطرف الأول", "hint": "مثال: AB123456" },
+        { "key": "f005", "label": "عنوان العامل", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f006", "label": "اسم الطرف الثاني (المشغل)", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f007", "label": "رقم بطاقة التعريف الوطنية للمشغل", "type": "text", "required": true, "group": "الطرف الثاني", "hint": "مثال: AB123456" },
+        { "key": "f008", "label": "عنوان المشغل", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f009", "label": "المهنة التي سيشغلها العامل", "type": "text", "required": true, "group": "العمل", "hint": "مثال: بائع" },
+        { "key": "f010", "label": "مدة العقد (سنوات)", "type": "number", "required": true, "group": "المدة", "hint": "مثال: 1" },
+        { "key": "f011", "label": "الأجر الشهري الإجمالي (درهم)", "type": "money", "required": true, "group": "الأجر", "hint": "مثال: 3500" },
+        { "key": "f012", "label": "الأجر الشهري (كتابةً)", "type": "text", "required": false, "group": "الأجر" },
+        { "key": "f013", "label": "مدة الإجازة السنوية (أيام)", "type": "number", "required": false, "group": "العمل", "hint": "مثال: 30" }
+      ]
+    },
+    {
+      "file": "وكالات/وكالة لبيع سيارة.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الموكِّل", "type": "text", "required": true, "group": "الموكِّل" },
+        { "key": "f002", "label": "تاريخ ازدياد الموكِّل", "type": "date", "required": false, "group": "الموكِّل" },
+        { "key": "f003", "label": "رقم بطاقة التعريف الوطنية للموكِّل", "type": "text", "required": true, "group": "الموكِّل", "hint": "مثال: AB123456" },
+        { "key": "f004", "label": "عنوان الموكِّل", "type": "text", "required": true, "group": "الموكِّل" },
+        { "key": "f005", "label": "اسم الوكيل", "type": "text", "required": true, "group": "الوكيل" },
+        { "key": "f006", "label": "رقم بطاقة التعريف الوطنية للوكيل", "type": "text", "required": true, "group": "الوكيل", "hint": "مثال: AB123456" },
+        { "key": "f007", "label": "عنوان الوكيل", "type": "text", "required": true, "group": "الوكيل" },
+        { "key": "f008", "label": "رقم تسجيل السيارة", "type": "number", "required": true, "group": "السيارة", "hint": "مثال: 15234" },
+        { "key": "f009", "label": "اسم الصانع", "type": "text", "required": true, "group": "السيارة", "hint": "مثال: رونو" },
+        { "key": "f010", "label": "الصنف", "type": "text", "required": false, "group": "السيارة", "hint": "مثال: سيدان" },
+        { "key": "f011", "label": "النوع", "type": "text", "required": false, "group": "السيارة" },
+        { "key": "f012", "label": "نوع الوقود", "type": "text", "required": false, "group": "السيارة", "hint": "مثال: بنزين" },
+        { "key": "f013", "label": "رقم الإطار الحديدي", "type": "number", "required": false, "group": "السيارة", "hint": "مثال: 12 رقم" },
+        { "key": "f014", "label": "مكان التحرير", "type": "text", "required": false, "group": "التحرير" },
+        { "key": "f015", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f016", "label": "الإمضاء", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "وكالات/وكالة تسلم مبلغ مالي.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الموكِّل", "type": "text", "required": true, "group": "الموكِّل" },
+        { "key": "f002", "label": "تاريخ ازدياد الموكِّل", "type": "date", "required": false, "group": "الموكِّل" },
+        { "key": "f003", "label": "رقم بطاقة التعريف الوطنية للموكِّل", "type": "text", "required": true, "group": "الموكِّل", "hint": "مثال: AB123456" },
+        { "key": "f004", "label": "عنوان الموكِّل", "type": "text", "required": true, "group": "الموكِّل" },
+        { "key": "f005", "label": "اسم الوكيل", "type": "text", "required": true, "group": "الوكيل" },
+        { "key": "f006", "label": "رقم بطاقة التعريف الوطنية للوكيل", "type": "text", "required": true, "group": "الوكيل", "hint": "مثال: AB123456" },
+        { "key": "f007", "label": "عنوان الوكيل", "type": "text", "required": true, "group": "الوكيل" },
+        { "key": "f008", "label": "المبلغ المستلم (درهم)", "type": "money", "required": true, "group": "المبلغ", "hint": "مثال: 5000" },
+        { "key": "f009", "label": "الجهة أو الشخص الدافع", "type": "text", "required": true, "group": "المبلغ", "hint": "مثال: مصلحة إدارية" },
+        { "key": "f010", "label": "مكان التحرير", "type": "text", "required": false, "group": "التحرير" },
+        { "key": "f011", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f012", "label": "الإمضاء", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "نماذج مختلفة/اعتراف بدين.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم المدين", "type": "text", "required": true, "group": "المدين" },
+        { "key": "f002", "label": "تاريخ ازدياد المدين", "type": "date", "required": false, "group": "المدين" },
+        { "key": "f003", "label": "رقم بطاقة التعريف الوطنية للمدين", "type": "text", "required": true, "group": "المدين", "hint": "مثال: AB123456" },
+        { "key": "f004", "label": "عنوان المدين", "type": "text", "required": true, "group": "المدين" },
+        { "key": "f005", "label": "اسم الدائن", "type": "text", "required": true, "group": "الدائن" },
+        { "key": "f006", "label": "تاريخ ازدياد الدائن", "type": "date", "required": false, "group": "الدائن" },
+        { "key": "f007", "label": "رقم بطاقة التعريف الوطنية للدائن", "type": "text", "required": true, "group": "الدائن", "hint": "مثال: AB123456" },
+        { "key": "f008", "label": "عنوان الدائن", "type": "text", "required": true, "group": "الدائن" },
+        { "key": "f009", "label": "مقدار الدين (درهم)", "type": "money", "required": true, "group": "الدين", "hint": "مثال: 3000" },
+        { "key": "f010", "label": "أجل السداد", "type": "text", "required": true, "group": "الدين", "hint": "مثال: 6 أشهر" },
+        { "key": "f011", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f012", "label": "إمضاء المدين", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "نماذج مختلفة/تكليف بالنيابة لمحامي.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الموكِّلة الأولى", "type": "text", "required": true, "group": "الموكِّلون" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية للموكِّلة الأولى", "type": "text", "required": true, "group": "الموكِّلون", "hint": "مثال: AB123456" },
+        { "key": "f003", "label": "عنوان الموكِّلة الأولى", "type": "text", "required": true, "group": "الموكِّلون" },
+        { "key": "f004", "label": "اسم الموكِّلة الثانية", "type": "text", "required": true, "group": "الموكِّلون" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية للموكِّلة الثانية", "type": "text", "required": true, "group": "الموكِّلون", "hint": "مثال: AB123456" },
+        { "key": "f006", "label": "عنوان الموكِّلة الثانية", "type": "text", "required": true, "group": "الموكِّلون" },
+        { "key": "f007", "label": "اسم الموكِّلة الثالثة", "type": "text", "required": true, "group": "الموكِّلون" },
+        { "key": "f008", "label": "رقم بطاقة التعريف الوطنية للموكِّلة الثالثة", "type": "text", "required": true, "group": "الموكِّلون", "hint": "مثال: AB123456" },
+        { "key": "f009", "label": "عنوان الموكِّلة الثالثة", "type": "text", "required": true, "group": "الموكِّلون" },
+        { "key": "f010", "label": "اسم المحامي", "type": "text", "required": true, "group": "المحامي", "hint": "مثال: الأستاذ أحمد..." },
+        { "key": "f011", "label": "هيئة المحامين", "type": "text", "required": false, "group": "المحامي", "hint": "مثال: هيئة الطنجة" },
+        { "key": "f012", "label": "موضوع الدعوى", "type": "text", "required": true, "group": "الدعوى", "hint": "مثال: فسخ كراء محل تجاري" },
+        { "key": "f013", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f014", "label": "إمضاءات الموكِّلات", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "عقود بيع كراء عمل تسيير/عقد بيع آلة حصاد مستعملة.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الطرف الأول (البائع)", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية للبائع", "type": "text", "required": true, "group": "الطرف الأول", "hint": "مثال: AB123456" },
+        { "key": "f003", "label": "عنوان البائع", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f004", "label": "اسم الطرف الثاني (المشتري)", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية للمشتري", "type": "text", "required": true, "group": "الطرف الثاني", "hint": "مثال: AB123456" },
+        { "key": "f006", "label": "عنوان المشتري", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f007", "label": "رقم تسجيل الآلة", "type": "number", "required": false, "group": "الآلة", "hint": "مثال: 4521" },
+        { "key": "f008", "label": "العلامة", "type": "text", "required": false, "group": "الآلة", "hint": "مثال: ماسي فيرغوسون" },
+        { "key": "f009", "label": "النوع والصنف", "type": "text", "required": false, "group": "الآلة" },
+        { "key": "f010", "label": "رقم الإطار الحديدي", "type": "number", "required": false, "group": "الآلة", "hint": "مثال: 12 رقم" },
+        { "key": "f011", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f012", "label": "إمضاء الطرف الأول", "type": "text", "required": false, "group": "التحرير" },
+        { "key": "f013", "label": "إمضاء الطرف الثاني", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "التزامات/التزام بتحمل مسؤولية سيارة.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الملتزم (المشتري)", "type": "text", "required": true, "group": "الملتزم" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية للملتزم", "type": "text", "required": true, "group": "الملتزم", "hint": "مثال: AB123456" },
+        { "key": "f003", "label": "عنوان الملتزم", "type": "text", "required": true, "group": "الملتزم" },
+        { "key": "f004", "label": "رقم تسجيل السيارة", "type": "number", "required": true, "group": "السيارة", "hint": "مثال: 15234" },
+        { "key": "f005", "label": "اسم الصانع", "type": "text", "required": false, "group": "السيارة", "hint": "مثال: داسيا" },
+        { "key": "f006", "label": "رقم الإطار الحديدي", "type": "number", "required": false, "group": "السيارة", "hint": "مثال: 12 رقم" },
+        { "key": "f007", "label": "اسم البائعة", "type": "text", "required": true, "group": "البائعة" },
+        { "key": "f008", "label": "رقم بطاقة التعريف الوطنية للبائعة", "type": "text", "required": true, "group": "البائعة", "hint": "مثال: AB123456" },
+        { "key": "f009", "label": "تاريخ بدء سريان الالتزام", "type": "date", "required": true, "group": "الالتزام" },
+        { "key": "f010", "label": "الساعة", "type": "text", "required": false, "group": "الالتزام", "hint": "مثال: 10:00" },
+        { "key": "f011", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f012", "label": "الإمضاء", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "وكالات/وكالة  بكراء سكنى.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الموكِّل", "type": "text", "required": true, "group": "الموكِّل" },
+        { "key": "f002", "label": "تاريخ ازدياد الموكِّل", "type": "date", "required": false, "group": "الموكِّل" },
+        { "key": "f003", "label": "رقم بطاقة التعريف الوطنية للموكِّل", "type": "text", "required": true, "group": "الموكِّل", "hint": "مثال: AB123456" },
+        { "key": "f004", "label": "عنوان الموكِّل", "type": "text", "required": true, "group": "الموكِّل" },
+        { "key": "f005", "label": "اسم الوكيل", "type": "text", "required": true, "group": "الوكيل" },
+        { "key": "f006", "label": "رقم بطاقة التعريف الوطنية للوكيل", "type": "text", "required": true, "group": "الوكيل", "hint": "مثال: AB123456" },
+        { "key": "f007", "label": "عنوان الوكيل", "type": "text", "required": true, "group": "الوكيل" },
+        { "key": "f008", "label": "موقع السكنى", "type": "text", "required": true, "group": "السكنى", "hint": "مثال: حي السلام، طنجة" },
+        { "key": "f009", "label": "مكان التحرير", "type": "text", "required": false, "group": "التحرير" },
+        { "key": "f010", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f011", "label": "الإمضاء", "type": "text", "required": false, "group": "التحرير" }
+      ]
     }
   ]
 }
