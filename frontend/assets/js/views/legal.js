@@ -791,7 +791,7 @@ export async function aboutView() {
 export async function contactView() {
   const isFr = currentLang() === "fr";
 
-  const email = "contact@nibras.ma";
+  const email = "elmoukhtar.bounab1711@gmail.com";
 
   return legalPage(
     isFr ? "Contactez-nous" : "اتصل بنا",

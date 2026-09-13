@@ -437,7 +437,7 @@ def create_app():
         _file = frontend_dir / "robots.txt"
         body = _file.read_text(encoding="utf-8") if _file.exists() else ""
         site = _seo._base_url().rstrip("/")
-        body = body.replace("https://nibras-law-platform.vercel.app/sitemap.xml",
+        body = body.replace("https://nibraslaw.com/sitemap.xml",
                             f"{site}/sitemap.xml")
         return Response(body, mimetype="text/plain")
 

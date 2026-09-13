@@ -516,7 +516,7 @@ def _contact_page():
     """صفحة «اتصل بنا» (SSR) — قناة تواصل فعّالة (متطلبات الشفافية AdSense)."""
     from . import config as _cfg
 
-    email = getattr(_cfg, "CONTACT_EMAIL", "") or "contact@nibras.ma"
+    email = getattr(_cfg, "CONTACT_EMAIL", "") or "elmoukhtar.bounab1711@gmail.com"
     title = "اتصل بنا — نبراس | المنصة القانونية المغربية"
     desc = "تواصل مع فريق نبراس: سؤال، ملاحظة، تبليغ عن خطأ في نص أو قرار، أو طلب يتعلق بمعطياتك الشخصية."
     bits = [
@@ -542,7 +542,7 @@ def _legal_ssr(slug):
     """صفحات الثقة (SSR للزحف): الخصوصية/الشروط/الكوكيز/الإخلاء/الدليل."""
     from . import config as _cfg
 
-    email = getattr(_cfg, "CONTACT_EMAIL", "") or "contact@nibras.ma"
+    email = getattr(_cfg, "CONTACT_EMAIL", "") or "elmoukhtar.bounab1711@gmail.com"
     pages = {
         "privacy": {
             "title": "سياسة الخصوصية — نبراس",

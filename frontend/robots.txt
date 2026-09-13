@@ -17,4 +17,4 @@ User-agent: Google-Display-Ads-Bot
 Allow: /
 
 # المنصة تقدم صفحات SSR قابلة للفهرسة عبر URLs حقيقية (بدون hash).
-Sitemap: https://nibras-law-platform.vercel.app/sitemap.xml
+Sitemap: https://nibraslaw.com/sitemap.xml
