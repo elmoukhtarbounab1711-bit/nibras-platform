@@ -13,11 +13,11 @@
 
         <meta-data
             android:name="asset_statements"
-            android:resource="@string/asset_statements" />
+            android:value='[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"web","site":"https://${appHost}"}}]' />
 
         <meta-data
             android:name="web_manifest_url"
-            android:value="https://nibraslaw.com/manifest.json" />
+            android:value="https://${appHost}/manifest.json" />
 
         <meta-data
             android:name="enableNotifications"
@@ -33,7 +33,7 @@
 
             <meta-data
                 android:name="android.support.customtabs.trusted.DEFAULT_URL"
-                android:value="https://nibraslaw.com/" />
+                android:value="https://${appHost}/" />
 
             <meta-data
                 android:name="android.support.customtabs.trusted.SPLASH_IMAGE_DRAWABLE"
@@ -70,7 +70,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="nibraslaw.com" />
+                    android:host="${appHost}" />
             </intent-filter>
         </activity>
 

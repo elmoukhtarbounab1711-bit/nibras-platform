@@ -12,6 +12,7 @@ android {
         targetSdk 35
         versionCode 1
         versionName "1.0.0"
+        manifestPlaceholders = [appHost: "nibraslaw.com"]
     }
 
 def ksProps = new Properties()
@@ -40,9 +41,10 @@ buildTypes {
             signingConfig signingConfigs.release
         }
     }
-    debug {
-        debuggable true
-    }
+debug {
+            debuggable true
+            manifestPlaceholders = [appHost: "nibras-law-platform.vercel.app"]
+        }
 }
 
     compileOptions {
