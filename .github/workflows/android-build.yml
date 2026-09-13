@@ -1,0 +1,44 @@
+name: Android build (signed AAB)
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'android-app/**'
+      - '.github/workflows/android-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build signed release bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Prepare gradlew
+        run: chmod +x android-app/gradlew
+
+      - name: Build release bundle
+        working-directory: android-app
+        run: ./gradlew --no-daemon bundleRelease
+
+      - name: Print signing certificate SHA-256
+        run: |
+          STORE_PASS=$(grep -oP '^storePassword=\K.*' android-app/keystore.properties)
+          ALIAS=$(grep -oP '^keyAlias=\K.*' android-app/keystore.properties)
+          keytool -list -v -keystore android-app/keystore/nibras-release.p12 \
+            -storepass "$STORE_PASS" -alias "$ALIAS" -storetype PKCS12 | \
+            grep -A1 "SHA256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nibras-release-bundle
+          if-no-files-found: error
+          path: android-app/app/build/outputs/bundle/release/*.aab

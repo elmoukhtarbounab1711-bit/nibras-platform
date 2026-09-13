@@ -1,0 +1,64 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.nibraslaw.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.nibraslaw.app"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+def ksProps = new Properties()
+def ksPropsFile = rootProject.file('keystore.properties')
+if (ksPropsFile.exists()) {
+    ksPropsFile.withInputStream { ksProps.load(it) }
+}
+def ksFile = System.getenv("KEYSTORE_FILE") ?: ksProps.getProperty("storeFile")
+
+signingConfigs {
+    release {
+        if (ksFile) {
+            storeFile rootProject.file(ksFile)
+            storePassword System.getenv("KEYSTORE_PASSWORD") ?: ksProps.getProperty("storePassword")
+            keyAlias System.getenv("KEY_ALIAS") ?: ksProps.getProperty("keyAlias")
+            keyPassword System.getenv("KEY_PASSWORD") ?: ksProps.getProperty("keyPassword")
+            storeType ksProps.getProperty("storeType", "PKCS12")
+        }
+    }
+}
+
+buildTypes {
+    release {
+        minifyEnabled false
+        if (ksFile) {
+            signingConfig signingConfigs.release
+        }
+    }
+    debug {
+        debuggable true
+    }
+}
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.core:core:1.13.1'
+    implementation 'androidx.webkit:webkit:1.11.0'
+    implementation 'androidx.browser:browser:1.8.0'
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.7.3'
+}

@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.nibraslaw.app",
+      "sha256_cert_fingerprints": [
+        "F9:1C:41:9C:F2:2A:25:58:D2:00:DD:D2:6F:62:AB:19:04:3F:AA:E0:69:BF:3C:7A:39:47:C7:81:70:D0:D1:81"
+      ]
+    }
+  }
+]

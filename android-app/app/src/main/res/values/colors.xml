@@ -1,0 +1,6 @@
+<resources>
+    <color name="splash_background">#071A36</color>
+    <color name="status_bar_color">#1F3A93</color>
+    <color name="navigation_bar_color">#071A36</color>
+    <color name="ic_launcher_background">#1F3A93</color>
+</resources>

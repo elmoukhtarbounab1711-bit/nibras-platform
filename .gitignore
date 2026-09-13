@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -6,7 +6,7 @@ __pycache__/
 venv/
 env/
 
-# التطبيق/البيانات (لا تُرفع إلى المستودع — تُنسخ عبر القرص المُثبَّت)
+# Ø§Ù„ØªØ·Ø¨ÙŠÙ‚/Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª (Ù„Ø§ ØªÙØ±ÙØ¹ Ø¥Ù„Ù‰ Ø§Ù„Ù…Ø³ØªÙˆØ¯Ø¹ â€” ØªÙÙ†Ø³Ø® Ø¹Ø¨Ø± Ø§Ù„Ù‚Ø±Øµ Ø§Ù„Ù…ÙØ«Ø¨ÙŽÙ‘Øª)
 nibras.db
 nibras.db-wal
 nibras.db-shm
@@ -14,25 +14,25 @@ nibras.db-shm
 *.sqlite3
 backups/
 
-# الملفات المحمَّلة (وثائق التحقق + قوالب السوق)
+# Ø§Ù„Ù…Ù„ÙØ§Øª Ø§Ù„Ù…Ø­Ù…ÙŽÙ‘Ù„Ø© (ÙˆØ«Ø§Ø¦Ù‚ Ø§Ù„ØªØ­Ù‚Ù‚ + Ù‚ÙˆØ§Ù„Ø¨ Ø§Ù„Ø³ÙˆÙ‚)
 uploads/
 !uploads/.gitkeep
 
-# السجلات
+# Ø§Ù„Ø³Ø¬Ù„Ø§Øª
 *.log
 *.err
 
-# البيئة والأسرار (لا تُرفع أبدًا — النموذج في .env.example)
+# Ø§Ù„Ø¨ÙŠØ¦Ø© ÙˆØ§Ù„Ø£Ø³Ø±Ø§Ø± (Ù„Ø§ ØªÙØ±ÙØ¹ Ø£Ø¨Ø¯Ù‹Ø§ â€” Ø§Ù„Ù†Ù…ÙˆØ°Ø¬ ÙÙŠ .env.example)
 .env
 .env.*
 !.env.example
 
-# أدوات
+# Ø£Ø¯ÙˆØ§Øª
 .pytest_cache/
 .ruff_cache/
 node_modules/
 
-# أنظمة
+# Ø£Ù†Ø¸Ù…Ø©
 .DS_Store
 Thumbs.db
 .vercel
@@ -47,3 +47,9 @@ check_db.py
 data/legal_docs/**
 !data/legal_docs/index.json
 !data/legal_docs/templates.json
+
+# Android TWA build output (not committed); keystore + keystore.properties ARE committed during pre-launch phase
+android-app/build/
+android-app/app/build/
+android-app/local.properties
+android-app/.gradle/
