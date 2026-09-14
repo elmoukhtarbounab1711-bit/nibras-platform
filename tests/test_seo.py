@@ -376,3 +376,47 @@ def test_seo_documents_sitemap(client, gen_template_id):
     assert "<urlset" in xml and "<loc>" in xml
     assert f"/generator/template/{gen_template_id}" in xml, \
         "documents.xml يجب أن يتضمن صفحات القوالب"
+
+
+@pytest.mark.parametrize("path,word", [
+    ("/about", "من نحن"),
+    ("/contact", "اتصل بنا"),
+    ("/privacy", "الخصوصية"),
+    ("/terms", "شروط الاستخدام"),
+    ("/cookie-policy", "ملفات تعريف الارتباط"),
+    ("/disclaimer", "إخلاء المسؤولية"),
+])
+def test_seo_trust_pages_ssr(client, path, word):
+    """صفحات الثقة (من نحن/اتصل/الخصوصية/الشروط/الكوكيز/الإخلاء) تُقدَّم SSR فعلًا.
+
+    الروابط في الـfooter يجب أن تقود لصفحات حقيقية (لا hash ولا #) بمحتوى
+    عربي حقيقي قابل للزحف — أساس أساسي لقبول المراجعة الآلية AdSense."""
+    r = client.get(path)
+    assert r.status_code == 200, f"{path} يجب أن يعيد 200 وليس soft-SPA"
+    html = r.get_data(as_text=True)
+    _assert_ssr_html(html, path)
+    assert word in html, f"الصفحة {path} يجب أن تعرض كلمة «{word}»"
+    assert re.search(r"<h1>\s*<", html) or re.search(r"<h1>[^<#]", html), \
+        f"{path} يجب أن يحوي عنوان H1 بمحتوى فعلي (لا skeleton فارغ)"
+    assert 'id="view"' in html, "صفحات الثقة يجب أن تُقدَّم ضمن غلاف SSR #view"
+    # لا نربط بصفحة غير موجودة: تأكد أن الصفحة تعطي رابطاً (مصدر تحديث) غير # فارغ
+    assert "mailto:" in html, f"{path} يجب أن تعرض قناة تواصل حقيقية (mailto)"
+    assert "الخصوصية" in html or word != "/privacy", "صفحة الخصوصية يجب أن تُذكر ذاتيًا"
+
+
+def test_seo_footer_links_real_trust_pages(client):
+    """الروابط الثابتة في الـfooter (من نحن/اتصل/الخصوصية/الشروط/الكوكيز/الإخلاء)
+    يجب أن تكون صفحات قائمة فعلًا لا روابط وهمية (#) وتقود لمحتوى SSR حقيقي."""
+    r = client.get("/")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    for trust_path in ("/about", "/contact", "/privacy", "/terms",
+                       "/cookie-policy", "/disclaimer"):
+        assert f'href="{trust_path}"' in html, \
+            f"الـfooter يحتوي كتلة روابطالثقة بدون رابط حقيقي {trust_path}"
+        sub = client.get(trust_path)
+        assert sub.status_code == 200, f"رابط الثقة {trust_path} يقود لصفحة قائمة"
+        sun = sub.get_data(as_text=True)
+        assert re.search(r"<h1>[^<#]", sun), \
+            f"صفحة الثقة {trust_path} يجب أن تُقدَّم بمحتوى فعلي"
+    assert 'href="https://nginx/robots"' not in html, "لا رابط وهمي في الـfooter"
