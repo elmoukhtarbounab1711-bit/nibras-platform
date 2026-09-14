@@ -109,6 +109,8 @@ def _inject(title, description, path, content_html, jsonld_blocks=(), schema_typ
     head_block = f"""
 <meta name="description" content="{_esc(description)}">
 <link rel="canonical" href="{_esc(canonical)}">
+<link rel="alternate" hreflang="ar" href="{_esc(canonical)}">
+<link rel="alternate" hreflang="x-default" href="{_esc(canonical)}">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="نبراس">
 <meta property="og:title" content="{_esc(title)}">
@@ -275,6 +277,105 @@ def _type_label(t):
     }.get(t, t)
 
 
+def _cat_roots(names):
+    """جذور الكلمات العربية المعنوية من أسماء فئات/نطاقات للمطابقة المتبادلة."""
+    roots = set()
+    for name in names or ():
+        for w in re.findall(r"[\u0621-\u064A]{3,}", str(name or "")):
+            w = w.lstrip("ال")
+            if w and w != "قانون":
+                roots.add(w[:4] if len(w) >= 4 else w)
+    return roots
+
+
+def _related_mixed(seed_names, kinds=("law", "juris", "proc"), exclude=(),
+                   max_items=8):
+    """رابط داخلي مختلط (قانون ↔ اجتهاد ↔ مسطرة) حسب تقاطع أسماء الفئات.
+
+    لا يخترع بيانات: يطابق الكلمات الجذرية بين أسماء النطاقات/الفئات
+    الحقيقية ويعيد روابط لصفحات قائمة فعلًا في DB."""
+    seeds = _cat_roots(seed_names)
+    if not seeds:
+        return ""
+    items = []
+    with db_session() as conn:
+        if "law" in kinds and _has_table(conn, "legal_domains"):
+            rows = conn.execute(
+                "SELECT id, name_ar FROM legal_domains WHERE name_ar IS NOT NULL"
+            ).fetchall()
+            dom_ids = [r["id"] for r in rows if _cat_roots([r["name_ar"]]) & seeds]
+            if dom_ids:
+                ph = ",".join("?" * len(dom_ids))
+                q = ("SELECT id, title FROM legal_texts WHERE domain_id IN (%s) "
+                     "ORDER BY title LIMIT 4") % ph
+                items += [("law", r["id"], r["title"])
+                          for r in conn.execute(q, tuple(dom_ids)).fetchall()
+                          if r["id"] not in exclude]
+        if "juris" in kinds:
+            if _has_table(conn, "jurisprudence_categories"):
+                rows = conn.execute(
+                    "SELECT id, name FROM jurisprudence_categories WHERE name IS NOT NULL"
+                ).fetchall()
+                cat_ids = [r["id"] for r in rows if _cat_roots([r["name"]]) & seeds]
+                if cat_ids:
+                    ph = ",".join("?" * len(cat_ids))
+                    q = ("SELECT id, title FROM jurisprudence WHERE category_id IN (%s) "
+                         "AND published=1 ORDER BY id DESC LIMIT 4") % ph
+                    items += [("juris", r["id"], r["title"])
+                              for r in conn.execute(q, tuple(cat_ids)).fetchall()
+                              if r["id"] not in exclude]
+        if "proc" in kinds:
+            if _has_table(conn, "procedures"):
+                rows = conn.execute(
+                    "SELECT DISTINCT category FROM procedures "
+                    "WHERE category IS NOT NULL AND category<>''"
+                ).fetchall()
+                cat_sel = [r["category"] for r in rows
+                           if _cat_roots([r["category"]]) & seeds]
+                if cat_sel:
+                    ph = ",".join("?" * len(cat_sel))
+                    q = ("SELECT slug, title FROM procedures WHERE category IN (%s) "
+                         "ORDER BY title LIMIT 3") % ph
+                    items += [("proc", r["slug"], r["title"])
+                              for r in conn.execute(q, tuple(cat_sel)).fetchall()
+                              if r["slug"] not in exclude]
+        if not items and seed_names:
+            for sn in seed_names:
+                if items:
+                    break
+                same_j = conn.execute(
+                    "SELECT id, name FROM jurisprudence_categories "
+                    "WHERE name IS NOT NULL AND name=?", (sn,)
+                ).fetchall()
+                if same_j:
+                    same_ids = [r["id"] for r in same_j]
+                    ph = ",".join("?" * len(same_ids))
+                    q = ("SELECT id, title FROM jurisprudence WHERE category_id IN (%s) "
+                         "AND published=1 ORDER BY id DESC LIMIT 4") % ph
+                    items += [("juris", r["id"], r["title"])
+                              for r in conn.execute(q, tuple(same_ids)).fetchall()
+                              if r["id"] not in exclude]
+                if not items:
+                    same_p = conn.execute(
+                        "SELECT slug, title FROM procedures WHERE category=? "
+                        "ORDER BY title LIMIT 4", (sn,)
+                    ).fetchall()
+                    items += [("proc", r["slug"], r["title"]) for r in same_p
+                              if r["slug"] not in exclude]
+    if not items:
+        return ""
+    labels = {"law": "قانون", "juris": "اجتهاد", "proc": "مسطرة"}
+    urls = {"law": lambda ref: f"/laws/{ref}",
+            "juris": lambda ref: f"/jurisprudence/{ref}",
+            "proc": lambda ref: f"/procedures/{ref}"}
+    bits = ['<h2>ما يتصل بهذا المحتوى</h2><ul class="seo-links">']
+    for kind, ref, ttl in items[:max_items]:
+        lk = f'<span class="seo-badge seo-badge-sm">{labels[kind]}</span> '
+        bits.append(f'<li>{lk}<a href="{urls[kind](ref)}">{_esc(_art_label(ttl, 100))}</a></li>')
+    bits.append("</ul>")
+    return "".join(bits)
+
+
 # ---------------------------------------------------------------------------
 # مكوّنات الصفحات
 # ---------------------------------------------------------------------------
@@ -324,6 +425,10 @@ def _law_page(law_id):
             bits.append(f'<li><a href="/laws/{r["id"]}">{_esc(r["title"])}</a></li>')
         bits.append("</ul>")
 
+    bits.append(_related_mixed(
+        [law.get("domain_name"), law.get("category_name")],
+        kinds=("juris", "proc"), exclude=(law_id,)))
+
     content = "".join(bits)
     return content, title, {"description": desc, "path": f"/laws/{law_id}", "jsonld": ld_bc,
                             "crumb": crumbs, "type": "Article"}
@@ -357,6 +462,9 @@ def _juris_page(decision_id):
         bits.append(f"<h2>مبدأ الحكم</h2><p class='seo-text'>{_esc(d['principles'])}</p>")
     if d.get("content"):
         bits.append(f"<h2>نص الاجتهاد</h2><div class='seo-text'>{_esc(d['content'])}</div>")
+
+    bits.append(_related_mixed(
+        [cat], kinds=("law", "proc"), exclude=(decision_id,)))
 
     content = "".join(bits)
     ld_bc = [{
@@ -404,6 +512,9 @@ def _procedure_page(slug):
         bits.append("</ol>")
     if p.get("faq"):
         bits.append(f"<h2>الأسئلة الشائعة</h2><p class='seo-text'>{_esc(p['faq'])}</p>")
+
+    bits.append(_related_mixed(
+        [cat], kinds=("law", "juris"), exclude=(slug,)))
 
     content = "".join(bits)
     ld_bc = [{

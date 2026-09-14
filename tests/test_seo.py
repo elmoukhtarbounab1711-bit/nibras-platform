@@ -58,6 +58,9 @@ def _assert_ssr_html(html, expect_path):
         f"canonical {canon.group(1)} لا يطابق {expect_path}"
     assert re.search(r"<h1>", html), "لا يوجد H1"
     assert 'id="view"' in html, "لا يوجد غلاف #view"
+    assert 'rel="alternate" hreflang="ar"' in html, "يجب وجود hreflang=ar مرتبط بنفس الصفحة"
+    assert 'rel="alternate" hreflang="x-default"' in html, "يجب وجود hreflang=x-default"
+    assert 'hreflang="fr"' not in html, "لا يصح توجيه hreflang=fr لنسخة فرنسية غير موجودة"
     # لا يترك skeleton فارغًا: يجب أن يكون المحتوى الحقيقي داخل #view
     view_match = re.search(r'id="view"[^>]*>(.*?)</main>', html, re.DOTALL)
     assert view_match and view_match.group(1).strip(), "محتوى #view فارغ (لم يُقدَّم SSR فعليًا)"
