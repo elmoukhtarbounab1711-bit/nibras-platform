@@ -1,5 +1,8 @@
 target-version = "py310"
 
 [lint]
-extend-select = ["E", "F", "I", "W"]
+# select (not extend-select) pins the exact rule set so newer ruff
+# versions with expanded defaults do not change lint results; E501 is
+# intentionally ignored (Arabic text/URLs exceed line length).
+select = ["E", "F", "I", "W"]
 ignore = ["E501"]

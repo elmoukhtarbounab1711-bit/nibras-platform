@@ -312,7 +312,7 @@ def create_app():
     # ------------------------------------------------------------------
     from pathlib import Path as _Path
 
-    from flask import abort, send_from_directory
+    from flask import abort, redirect, send_from_directory
 
     frontend_dir = _Path(config.FRONTEND_DIR)
     _assets_dir = frontend_dir / "assets"
@@ -332,6 +332,11 @@ def create_app():
     app.add_url_rule("/admin", "frontend_admin", _page("admin.html"))
     app.add_url_rule("/admin/", "frontend_admin_slash", _page("admin.html"))
     app.add_url_rule("/admin.html", "frontend_admin_alt", _page("admin.html"))
+
+    @app.route("/home")
+    def home_canonical_redirect():
+        """توحيد المسار: /home و / متطابقان في SPA والسجل الثابت هو الجذر."""
+        return redirect("/", code=301)
 
     @app.route("/assets/<path:filename>")
     def frontend_assets(filename):

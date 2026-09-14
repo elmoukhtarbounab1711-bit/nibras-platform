@@ -847,14 +847,22 @@ def sitemap_index():
     return "".join(index)
 
 
+def _lastmod(v):
+    """تاريخ YYYY-MM-DD من قيمة قابلة للقراءة (None ⟹ إفراغ = تجاهل lastmod)."""
+    s = str(v or "").strip()
+    return _esc(s[:10]) if s else ""
+
+
 def sitemap_main():
     """الصفحات الثابتة الرئيسية + صفحات الثقة (الخصوصية/الشروط/من نحن/اتصل بنا...)."""
+    import datetime as _dt
+    today = _dt.date.today().isoformat()
     site = _base_url()
     body = ["<?xml version='1.0' encoding='UTF-8'?>",
             "<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>"]
     for path in ("/", "/about", "/contact", "/privacy", "/terms",
                  "/cookie-policy", "/disclaimer", "/guide", "/generator"):
-        body.append(f"<url><loc>{site}{path}</loc><lastmod>2026-09-12</lastmod>"
+        body.append(f"<url><loc>{site}{path}</loc><lastmod>{today}</lastmod>"
                     "<changefreq>monthly</changefreq>"
                     "<priority>0.8</priority></url>")
     body.append("</urlset>")
@@ -864,11 +872,14 @@ def sitemap_main():
 def sitemap_laws():
     site = _base_url()
     with db_session() as conn:
-        ids = [r[0] for r in conn.execute("SELECT id FROM legal_texts ORDER BY id").fetchall()]
+        rows = conn.execute(
+            "SELECT id, COALESCE(updated_at, last_amended, enacted_date) AS lm "
+            "FROM legal_texts ORDER BY id").fetchall()
     body = ["<?xml version='1.0' encoding='UTF-8'?>",
             "<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>"]
-    for i in ids:
-        body.append(f"<url><loc>{site}/laws/{i}</loc></url>")
+    for i, lm in rows:
+        lastmod = f"<lastmod>{_lastmod(lm)}</lastmod>" if (lm and str(lm).strip()) else ""
+        body.append(f"<url><loc>{site}/laws/{i}</loc>{lastmod}</url>")
     body.append("</urlset>")
     return "".join(body)
 
@@ -876,12 +887,14 @@ def sitemap_laws():
 def sitemap_jurisprudence():
     site = _base_url()
     with db_session() as conn:
-        ids = [r[0] for r in conn.execute(
-            "SELECT id FROM jurisprudence WHERE published=1 ORDER BY id").fetchall()]
+        rows = conn.execute(
+            "SELECT id, COALESCE(decision_date, updated_at, created_at) AS lm "
+            "FROM jurisprudence WHERE published=1 ORDER BY id").fetchall()
     body = ["<?xml version='1.0' encoding='UTF-8'?>",
             "<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>"]
-    for i in ids:
-        body.append(f"<url><loc>{site}/jurisprudence/{i}</loc></url>")
+    for i, lm in rows:
+        lastmod = f"<lastmod>{_lastmod(lm)}</lastmod>" if (lm and str(lm).strip()) else ""
+        body.append(f"<url><loc>{site}/jurisprudence/{i}</loc>{lastmod}</url>")
     body.append("</urlset>")
     return "".join(body)
 

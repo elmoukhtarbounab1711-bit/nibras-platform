@@ -166,4 +166,32 @@ export function render() {
 export function initRouter() {
   window.addEventListener("hashchange", render);
   window.addEventListener("popstate", render);
+
+  // التنقل داخل SPA عبر المسارات الحقيقية دون إعادة تحميل: نعترض النقر على
+  // الروابط الداخلية (نفس الأصل) فنتنقّل عبر History API، ونترك الروابط
+  // الخارجية/التنزيلات/لوحة الإدارة (صفحة مستقلة) تتصرف كالمعتاد.
+  document.addEventListener("click", (e) => {
+    if (e.defaultPrevented || e.button !== 0) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (!(e.target instanceof Element)) return;
+    const a = e.target.closest("a");
+    if (!a) return;
+    if (a.target === "_blank" || a.hasAttribute("download")) return;
+    const href = a.getAttribute("href") || "";
+    let path;
+    if (href.indexOf("#/") === 0) {
+      path = href.slice(1);
+    } else {
+      if (/^(#(?!\/)|[a-z][a-z0-9+.-]*:|\/\/|javascript:)/i.test(href)) return;
+      let url;
+      try { url = new URL(href, location.href); } catch (_e) { return; }
+      if (url.origin !== location.origin) return;
+      path = url.pathname + url.search;
+      if (path === "/index.html") path = "/";
+      if (path.startsWith("/admin")) return;
+      if (path.startsWith("/api/") || path.startsWith("/assets/") || path.startsWith("/vendor/")) return;
+    }
+    e.preventDefault();
+    navigate(path);
+  });
 }

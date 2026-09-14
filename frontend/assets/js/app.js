@@ -123,7 +123,7 @@ regMulti("/blog", "./views/blog.js", "blogView");
 setNotFound(() => el("div", { class: "card empty" }, [
   el("div", { class: "empty-icon" }, [icon("compass", 40)]),
   el("div", { text: tr("notFound") }),
-  el("button", { class: "btn btn-ghost btn-sm", text: tr("back"), onclick: () => navigate("/home") }),
+  el("button", { class: "btn btn-ghost btn-sm", text: tr("back"), onclick: () => navigate("/") }),
 ]));
 
 setUnauthorizedHandler(() => {
@@ -241,6 +241,10 @@ setAfterRender((route, params) => {
   resetAdObserver();
   setTimeout(initAdSlots, 100);
   updateAppMode();
+  // توحيد الروابط المُولَّدة (الرسائل/البطاقات) على مسارات حقيقية قابلة للفهرسة
+  document.querySelectorAll('a[href^="#/"]').forEach((a) => {
+    a.setAttribute("href", "/" + a.getAttribute("href").slice(2));
+  });
   const pn = window.location.pathname.replace(/^\/+/, "");
   const path = (pn && pn !== "index.html" ? "/" + pn : (location.hash || "#/home").replace(/^#/, "") || "/home");
   applySeo(path, params || {});

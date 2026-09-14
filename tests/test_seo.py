@@ -169,3 +169,39 @@ def test_seo_missing_returns_real_404(client, url):
     assert "text/html" in r.content_type
     assert "robots" in html and "noindex" in html, "صفحة 404 يجب أن تكون noindex"
     assert "<h1>" in html, "صفحة 404 يجب أن تحتوي عنوانًا"
+
+
+def test_seo_home_canonical_redirect(client):
+    r = client.get("/home")
+    assert r.status_code == 301, f"/home يجب أن يحوّل 301 إلى الجذر: {r.status_code}"
+    assert r.headers.get("Location", "").rstrip("/") == "/home".replace("/home", "") or \
+        r.headers.get("Location", "").endswith("/")
+
+def test_seo_index_serves_real_links(client):
+    r = client.get("/")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert 'href="/library"' in html, "الواجهة الثابتة يجب أن تحمل روابط حقيقية"
+    assert 'href="/about"' in html
+    assert 'href="/generator"' in html
+    assert 'href="#/' not in html, "الواجهة الثابتة يجب ألا تحمل روابط hash فعلية"
+
+
+def test_seo_sitemaps_have_lastmod(client, fresh_db):
+    from app.database import db_session
+    with db_session() as conn:
+        law = conn.execute("SELECT id FROM legal_texts LIMIT 1").fetchone()
+        dec = conn.execute("SELECT id FROM jurisprudence WHERE published=1 LIMIT 1").fetchone()
+    if law:
+        body = client.get("/sitemaps/laws.xml").get_data(as_text=True)
+        assert f"/laws/{law[0]}" in body
+        assert re.search(r"<lastmod>\d{4}-\d{2}-\d{2}</lastmod>", body), \
+            "sitemap القوانين يجب أن يحوي lastmod"
+    if dec:
+        body = client.get("/sitemaps/jurisprudence.xml").get_data(as_text=True)
+        assert f"/jurisprudence/{dec[0]}" in body
+        assert re.search(r"<lastmod>\d{4}-\d{2}-\d{2}</lastmod>", body), \
+            "sitemap الاجتهادات يجب أن يحوي lastmod"
+    main = client.get("/sitemaps/main.xml").get_data(as_text=True)
+    assert re.search(r"<lastmod>\d{4}-\d{2}-\d{2}</lastmod>", main), \
+        "sitemap الرئيسي يجب أن يحوي lastmod بتاريخ اليوم"
