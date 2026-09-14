@@ -795,6 +795,129 @@
         { "key": "f010", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
         { "key": "f011", "label": "الإمضاء", "type": "text", "required": false, "group": "التحرير" }
       ]
+    },
+    {
+      "file": "وكالات/وكالة سياقة وبيع سيارة 2.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الموكِّل", "type": "text", "required": true, "group": "الموكِّل" },
+        { "key": "f002", "label": "اسم الوكيل", "type": "text", "required": true, "group": "الوكيل" }
+      ]
+    },
+    {
+      "file": "وكالات/وكالة سياقة وبيع سيارة 3.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الموكِّل", "type": "text", "required": true, "group": "الموكِّل" },
+        { "key": "f002", "label": "اسم الوكيل", "type": "text", "required": true, "group": "الوكيل" }
+      ]
+    },
+    {
+      "file": "وكالات/وكالة شراء شقة.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الموكِّل", "type": "text", "required": true, "group": "الموكِّل" },
+        { "key": "f002", "label": "تاريخ ازدياد الموكِّل", "type": "date", "required": false, "group": "الموكِّل" },
+        { "key": "f003", "label": "رقم بطاقة التعريف الوطنية للموكِّل", "type": "text", "required": true, "group": "الموكِّل", "hint": "مثال: AB123456" },
+        { "key": "f004", "label": "عنوان الموكِّل", "type": "text", "required": true, "group": "الموكِّل" },
+        { "key": "f005", "label": "اسم الوكيل", "type": "text", "required": true, "group": "الوكيل" },
+        { "key": "f006", "label": "رقم بطاقة التعريف الوطنية للوكيل", "type": "text", "required": true, "group": "الوكيل", "hint": "مثال: AB123456" },
+        { "key": "f007", "label": "عنوان الوكيل", "type": "text", "required": true, "group": "الوكيل" },
+        { "key": "f008", "label": "البنك", "type": "text", "required": false, "group": "العقار", "hint": "مثال: البنك الشعبي" },
+        { "key": "f009", "label": "موقع الشقة", "type": "text", "required": true, "group": "العقار", "hint": "مثال: حي ابن بطوطة، طنجة" },
+        { "key": "f010", "label": "تفاصيل الشقة (رقم/طابق)", "type": "text", "required": false, "group": "العقار", "hint": "مثال: شقة 4، الطابق 2" },
+        { "key": "f011", "label": "مكان التحرير", "type": "text", "required": false, "group": "التحرير" },
+        { "key": "f012", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f013", "label": "الإمضاء", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "وكالات/وكالة شراء دار.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الموكِّل", "type": "text", "required": true, "group": "الموكِّل" },
+        { "key": "f002", "label": "تاريخ ازدياد الموكِّل", "type": "date", "required": false, "group": "الموكِّل" },
+        { "key": "f003", "label": "رقم بطاقة التعريف الوطنية للموكِّل", "type": "text", "required": true, "group": "الموكِّل", "hint": "مثال: AB123456" },
+        { "key": "f004", "label": "عنوان الموكِّل", "type": "text", "required": true, "group": "الموكِّل" },
+        { "key": "f005", "label": "اسم الوكيل", "type": "text", "required": true, "group": "الوكيل" },
+        { "key": "f006", "label": "رقم بطاقة التعريف الوطنية للوكيل", "type": "text", "required": true, "group": "الوكيل", "hint": "مثال: AB123456" },
+        { "key": "f007", "label": "عنوان الوكيل", "type": "text", "required": true, "group": "الوكيل" },
+        { "key": "f008", "label": "البنك", "type": "text", "required": false, "group": "العقار", "hint": "مثال: البنك الشعبي" },
+        { "key": "f009", "label": "موقع الدار", "type": "text", "required": true, "group": "العقار", "hint": "مثال: حي السلام، طنجة" },
+        { "key": "f010", "label": "تفاصيل الدار (رقم/مدخل)", "type": "text", "required": false, "group": "العقار", "hint": "مثال: منزل 12، المدخل ب" },
+        { "key": "f011", "label": "مكان التحرير", "type": "text", "required": false, "group": "التحرير" },
+        { "key": "f012", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f013", "label": "الإمضاء", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "نماذج مختلفة/إبراء ذمة  من شكاية.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم المصرِّح (المبرئ)", "type": "text", "required": true, "group": "المصرِّح" },
+        { "key": "f002", "label": "تاريخ ازدياد المصرِّح", "type": "date", "required": false, "group": "المصرِّح" },
+        { "key": "f003", "label": "رقم بطاقة التعريف الوطنية للمصرِّح", "type": "text", "required": true, "group": "المصرِّح", "hint": "مثال: AB123456" },
+        { "key": "f004", "label": "عنوان المصرِّح", "type": "text", "required": true, "group": "المصرِّح" },
+        { "key": "f005", "label": "اسم الشخص المبرأة ذمته", "type": "text", "required": true, "group": "المبرأة ذمته" },
+        { "key": "f006", "label": "رقم بطاقة التعريف الوطنية للمبرأة ذمته", "type": "text", "required": true, "group": "المبرأة ذمته", "hint": "مثال: AB123456" },
+        { "key": "f007", "label": "عنوان المبرأة ذمته", "type": "text", "required": true, "group": "المبرأة ذمته" },
+        { "key": "f008", "label": "الشارع / مكان الواقعة", "type": "text", "required": true, "group": "الواقعة", "hint": "مثال: شارع محمد الخامس" },
+        { "key": "f009", "label": "المحكمة الابتدائية", "type": "text", "required": true, "group": "الواقعة", "hint": "مثال: المحكمة الابتدائية بطنجة" },
+        { "key": "f010", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f011", "label": "الإمضاء", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "عقود بيع كراء عمل تسيير/عقد كراء سكنى مفروشة.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الطرف الأول (المالك)", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية للمالك", "type": "text", "required": true, "group": "الطرف الأول", "hint": "مثال: AB123456" },
+        { "key": "f003", "label": "عنوان المالك", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f004", "label": "اسم الطرف الثاني (المكتري)", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية للمكتري", "type": "text", "required": true, "group": "الطرف الثاني", "hint": "مثال: AB123456" },
+        { "key": "f006", "label": "عنوان المكتري", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f007", "label": "مكونات السكنى (غرف/صالات)", "type": "text", "required": true, "group": "السكنى", "hint": "مثال: 2 غرف وصالة ومطبخ" },
+        { "key": "f008", "label": "التجهيزات", "type": "text", "required": false, "group": "السكنى", "hint": "مثال: مجهزة بأثاث وثلاجة" },
+        { "key": "f009", "label": "موقع السكنى", "type": "text", "required": true, "group": "السكنى", "hint": "مثال: حي القصبة، طنجة" },
+        { "key": "f010", "label": "تفاصيل إضافية (طابق/رقم)", "type": "text", "required": false, "group": "السكنى" },
+        { "key": "f011", "label": "مدة الكراء (شهور)", "type": "number", "required": true, "group": "الكراء", "hint": "مثال: 12" },
+        { "key": "f012", "label": "الكراء الشهري (درهم)", "type": "money", "required": true, "group": "الكراء", "hint": "مثال: 1500" },
+        { "key": "f013", "label": "الكراء الشهري (كتابةً)", "type": "text", "required": false, "group": "الكراء" },
+        { "key": "f014", "label": "نص/إمضاءات الأطراف", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "نماذج مختلفة/اقرار بالبنوة.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم المقر", "type": "text", "required": true, "group": "المقر" },
+        { "key": "f002", "label": "تاريخ ازدياد المقر", "type": "date", "required": false, "group": "المقر" },
+        { "key": "f003", "label": "رقم بطاقة التعريف الوطنية للمقر", "type": "text", "required": true, "group": "المقر", "hint": "مثال: AB123456" },
+        { "key": "f004", "label": "عنوان المقر", "type": "text", "required": true, "group": "المقر" },
+        { "key": "f005", "label": "اسم المولود", "type": "text", "required": true, "group": "المولود" },
+        { "key": "f006", "label": "تاريخ ازدياد المولود", "type": "date", "required": true, "group": "المولود" },
+        { "key": "f007", "label": "اسم والدة المولود", "type": "text", "required": true, "group": "الوَالدة" },
+        { "key": "f008", "label": "رقم بطاقة التعريف الوطنية للوالدة", "type": "text", "required": true, "group": "الوَالدة", "hint": "مثال: AB123456" },
+        { "key": "f009", "label": "عنوان الوالدة", "type": "text", "required": true, "group": "الوَالدة" },
+        { "key": "f010", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" },
+        { "key": "f011", "label": "التوقيع", "type": "text", "required": false, "group": "التحرير" }
+      ]
+    },
+    {
+      "file": "عقود بيع كراء عمل تسيير/عقد وعد بالبيع 2.docx",
+      "fields": [
+        { "key": "f001", "label": "اسم الطرف الأول (الواعد)", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f002", "label": "رقم بطاقة التعريف الوطنية للطرف الأول", "type": "text", "required": true, "group": "الطرف الأول", "hint": "مثال: AB123456" },
+        { "key": "f003", "label": "عنوان الطرف الأول", "type": "text", "required": true, "group": "الطرف الأول" },
+        { "key": "f004", "label": "اسم الطرف الثاني (الموعود)", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f005", "label": "رقم بطاقة التعريف الوطنية للطرف الثاني", "type": "text", "required": true, "group": "الطرف الثاني", "hint": "مثال: AB123456" },
+        { "key": "f006", "label": "عنوان الطرف الثاني", "type": "text", "required": true, "group": "الطرف الثاني" },
+        { "key": "f007", "label": "تأكيد اسم الطرف الأول", "type": "text", "required": true, "group": "الوعد" },
+        { "key": "f008", "label": "تأكيد اسم الطرف الثاني", "type": "text", "required": true, "group": "الوعد" },
+        { "key": "f009", "label": "البقعة موضوع البيع", "type": "text", "required": true, "group": "الوعد" },
+        { "key": "f010", "label": "موقع البقعة", "type": "text", "required": true, "group": "الوعد", "hint": "مثال: حي النهضة، طنجة" },
+        { "key": "f011", "label": "الثمن المتفق عليه (بالأرقام)", "type": "money", "required": true, "group": "الثمن", "hint": "مثال: 300000" },
+        { "key": "f012", "label": "الثمن (كتابةً)", "type": "text", "required": false, "group": "الثمن" },
+        { "key": "f013", "label": "الثمن (مؤكداً)", "type": "text", "required": false, "group": "الثمن" },
+        { "key": "f014", "label": "المبلغ المستلم (بالأرقام)", "type": "money", "required": true, "group": "الثمن" },
+        { "key": "f015", "label": "المبلغ المستلم (كتابةً)", "type": "text", "required": false, "group": "الثمن" },
+        { "key": "f016", "label": "مكان التحرير", "type": "text", "required": false, "group": "التحرير" },
+        { "key": "f017", "label": "تاريخ التحرير", "type": "date", "required": false, "group": "التحرير" }
+      ]
     }
   ]
 }
