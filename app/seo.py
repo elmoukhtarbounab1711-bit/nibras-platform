@@ -418,6 +418,93 @@ def _procedure_page(slug):
                             "jsonld": ld_bc, "type": "Article"}
 
 
+def _home_page():
+    """الصفحة الرئيسية (SSR): إحصائيات حقيقية + أحدث المحتوى + روابط الأقسام."""
+    from . import generator as _gen
+    with db_session() as conn:
+        laws_count = conn.execute("SELECT COUNT(*) FROM legal_texts").fetchone()[0]
+        juris_count = conn.execute(
+            "SELECT COUNT(*) FROM jurisprudence WHERE published=1").fetchone()[0]
+        proc_count = conn.execute("SELECT COUNT(*) FROM procedures").fetchone()[0]
+        laws = conn.execute(
+            "SELECT id, title FROM legal_texts ORDER BY id DESC LIMIT 8").fetchall()
+        juris = conn.execute(
+            "SELECT id, title FROM jurisprudence WHERE published=1 "
+            "ORDER BY id DESC LIMIT 8").fetchall()
+        blogs = conn.execute(
+            "SELECT id, title FROM blog_articles WHERE status='published' "
+            "ORDER BY published_at DESC, id DESC LIMIT 8").fetchall()
+    docs_count = _gen.read_index().get("total_files", 0)
+
+    numerals = {"0": "٠", "1": "١", "2": "٢", "3": "٣", "4": "٤",
+                "5": "٥", "6": "٦", "7": "٧", "8": "٨", "9": "٩"}
+    def fmt(n):
+        return "".join(numerals.get(c, c) for c in str(n))
+
+    title = "نبراس — المنصة القانونية المغربية"
+    desc = ("المكتبة القانونية المغربية في متناول الجميع: نصوص قانونية، اجتهادات "
+            "قضائية، مساطر إدارية وقضائية، مولد وثائق وعقود، ومدوّنة قانونية.")
+
+    stats = [
+        ("نصًا قانونيًا", laws_count, "/laws"),
+        ("اجتهادًا قضائيًا", juris_count, "/jurisprudence"),
+        ("مسطرة وإجراء", proc_count, "/procedures"),
+        ("مستندًا للتعبيئة", docs_count, "/generator"),
+    ]
+    bits = ['<section class="home-hero"><h1>نبراس — منصة القانون المغربي</h1>',
+            f"<p>{_esc(desc)}</p>"
+            '<p class="seo-small">ابحث في كل المحتوى من الصفحة الرئيسية أو من شريط البحث.</p>'
+            '<div class="home-stats">']
+    for label, val, href in stats:
+        bits.append(f'<a class="seo-stat" href="{href}"><strong>{fmt(val)}</strong>'
+                    f'<span>{_esc(label)}</span></a>')
+    bits.append("</div></section>")
+
+    sections = [
+        (("أحدث النصوص القانونية", "/laws"),
+         [f'<li><a href="/laws/{r["id"]}">{_esc(_art_label(r["title"], 100))}</a></li>'
+          for r in laws] or ["<li>لا نتائج.</li>"]),
+        (("أحدث الاجتهادات القضائية", "/jurisprudence"),
+         [f'<li><a href="/jurisprudence/{r["id"]}">{_esc(_art_label(r["title"], 100))}</a></li>'
+          for r in juris] or ["<li>لا نتائج.</li>"]),
+        (("أحدث مقالات المدوّنة", "/blog"),
+         [f'<li><a href="/blog/{r["id"]}">{_esc(_art_label(r["title"], 100))}</a></li>'
+          for r in blogs] or ["<li>لا نتائج.</li>"]),
+    ]
+    for (heading, link), items in sections:
+        bits.append(f'<section class="home-section"><h2>'
+                    f'<a href="{link}">{_esc(heading)}</a></h2><ul class="seo-links">{ "".join(items) }</ul></section>')
+
+    bits.append('<section class="home-section"><h2>بوابات الوصول السريع</h2><ul class="seo-links">'
+                '<li><a href="/laws">المكتبة القانونية</a></li>'
+                '<li><a href="/jurisprudence">الاجتهادات القضائية</a></li>'
+                '<li><a href="/procedures">المساطر</a></li>'
+                '<li><a href="/generator">مولد الوثائق والعقود</a></li>'
+                '<li><a href="/blog">المدوّنة</a></li>'
+                '<li><a href="/about">من نحن</a></li>'
+                '<li><a href="/contact">اتصل بنا</a></li>'
+                '<li><a href="/disclaimer">إخلاء المسؤولية</a></li>'
+                '</ul></section>')
+
+    content = "".join(bits)
+    site = _base_url()
+    ld = [{
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": title,
+        "url": site + "/",
+        "inLanguage": "ar",
+        "potentialAction": {
+            "@type": "SearchAction",
+            "target": {"@type": "EntryPoint",
+                       "urlTemplate": site + "/library/q/{search_term_string}"},
+            "query-input": "required name=search_term_string",
+        },
+        "publisher": {"@type": "Organization", "name": "نبراس", "url": site},
+    }]
+    return content, title, {"description": desc, "path": "/", "jsonld": ld}
+
+
 def _list_laws():
     with db_session() as conn:
         rows = conn.execute(
@@ -457,8 +544,8 @@ def _list_jurisprudence():
 def _list_procedures():
     with db_session() as conn:
         rows = conn.execute(
-            "SELECT p.slug, p.title, p.category, c.name AS category_name "
-            "FROM procedures p LEFT JOIN jurisprudence_categories c ON 1=0 "
+            "SELECT p.slug, p.title, p.category "
+            "FROM procedures p "
             "ORDER BY p.title").fetchall()
     bits = [('<nav aria-label="Breadcrumb" class="seo-breadcrumb"><ol>'
              '<li><a href="/">الرئيسية</a></li><li aria-current="page">المساطر</li></ol></nav>'),
@@ -942,6 +1029,10 @@ def render_seo(path):
         return None
     path = "/" + path.lstrip("/")
     path = path.split("?")[0]
+    if path in ("/", "/index.html"):
+        content, title, meta = _home_page()
+        return _inject(title, meta["description"], "/", content,
+                       jsonld_blocks=meta.get("jsonld", []))
 
     m = re.match(r"^/laws/(\d+)$", path)
     if m:

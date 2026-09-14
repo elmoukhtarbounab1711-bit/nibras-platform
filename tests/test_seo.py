@@ -197,6 +197,39 @@ def test_seo_index_serves_real_links(client):
     assert 'href="#/' not in html, "الواجهة الثابتة يجب ألا تحمل روابط hash فعلية"
 
 
+def test_seo_home_ssr_content(client, fresh_db):
+    """الرئيسية تُقدَّم SSR بمحتوى إحصائي/روابط/بيانات مهيكلة لا skeleton فارغ."""
+    r = client.get("/")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    _assert_ssr_html(html, "/")
+    assert len(re.findall(r"<h1>", html)) == 1, "يجب أن يكون هناك H1 واحد فقط"
+    assert "نبراس" in html
+    # محتوى حقيقي داخل #view (إحصائيات/أقسام) وليس skeleton
+    view = re.search(r'id="view"[^>]*>(.*?)</main>', html, re.DOTALL)
+    assert view and ("home-stats" in view.group(1) or "الاجتهادات" in view.group(1)
+                     or "المكتبة" in view.group(1)), "محتوى الرئيسية SSR مفقود"
+    assert "/jurisprudence" in view.group(1) or "/laws" in view.group(1), \
+        "الرئيسية يجب أن تربط بالأقسام الرئيسية"
+    # بيانات مهيكلة: WebSite + SearchAction حقيقي
+    objs = _ld_objects(html)
+    sites = [o for o in objs if o.get("@type") == "WebSite"]
+    assert sites, "لا توجد WebSite schema في الرئيسية"
+    sa = sites[0].get("potentialAction") or {}
+    assert "#/" not in (sa.get("target") or {}).get("urlTemplate", ""), \
+        "SearchAction يجب ألا يوجّه إلى hash"
+    assert "/library/q/" in (sa.get("target") or {}).get("urlTemplate", ""), \
+        "SearchAction يجب أن يوجّه إلى مسار بحث حقيقي"
+
+
+def test_seo_index_html_alt_is_ssr(client, fresh_db):
+    r = client.get("/index.html")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert 'id="view"' in html
+    assert "<html" in html
+
+
 def test_seo_sitemaps_have_lastmod(client, fresh_db):
     from app.database import db_session
     with db_session() as conn:

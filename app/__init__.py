@@ -327,8 +327,6 @@ def create_app():
         serve_page.__name__ = f"serve_{name.replace('.', '_')}"
         return serve_page
 
-    app.add_url_rule("/", "frontend_index", _page("index.html"))
-    app.add_url_rule("/index.html", "frontend_index_alt", _page("index.html"))
     app.add_url_rule("/admin", "frontend_admin", _page("admin.html"))
     app.add_url_rule("/admin/", "frontend_admin_slash", _page("admin.html"))
     app.add_url_rule("/admin.html", "frontend_admin_alt", _page("admin.html"))
@@ -370,6 +368,14 @@ def create_app():
         if html is None:
             return _seo_404()
         return Response(html, mimetype="text/html")
+
+    @app.route("/")
+    def seo_home():
+        return _ssr_or_404("/")
+
+    @app.route("/index.html")
+    def seo_home_index_alt():
+        return _ssr_or_404("/index.html")
 
     @app.route("/laws/<path:law_ident>")
     def seo_law_page(law_ident):
