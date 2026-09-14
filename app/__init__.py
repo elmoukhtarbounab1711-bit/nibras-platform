@@ -399,6 +399,10 @@ def create_app():
     def seo_generator():
         return _ssr_or_404("/generator")
 
+    @app.route("/generator/template/<path:template_ident>")
+    def seo_generator_template(template_ident):
+        return _ssr_or_404(f"/generator/template/{template_ident}")
+
     @app.route("/blog/<int:article_ident>")
     def seo_blog_article(article_ident):
         return _ssr_or_404(f"/blog/{article_ident}")
@@ -440,6 +444,10 @@ def create_app():
     @app.route("/sitemaps/blog.xml")
     def seo_sitemap_blog():
         return Response(_seo.sitemap_blog(), mimetype="application/xml")
+
+    @app.route("/sitemaps/documents.xml")
+    def seo_sitemap_documents():
+        return Response(_seo.sitemap_documents(), mimetype="application/xml")
 
     @app.route("/sitemaps/main.xml")
     def seo_sitemap_main():

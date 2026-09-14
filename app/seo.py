@@ -753,7 +753,9 @@ def _list_generator():
     if templates:
         bits.append("<h2>قوالب موصى بها</h2><ul class='seo-links'>")
         for t in templates[:30]:
-            bits.append(f'<li><a href="/generator">{_esc(t["title"])}</a>'
+            tid = t.get("id")
+            target = f"/generator/template/{_esc(tid)}" if tid else "/generator"
+            bits.append(f'<li><a href="{target}">{_esc(t["title"])}</a>'
                         f' <span class="seo-small">({_esc(t["category"])})</span></li>')
         bits.append("</ul>")
     if cats:
@@ -762,6 +764,78 @@ def _list_generator():
             bits.append(f'<li><strong>{_esc(c["name"])}</strong> — {_esc(c["count"])} قالب</li>')
         bits.append("</ul>")
     return "".join(bits), title, {"description": desc}
+
+
+_GEN_FIELD_TYPES = {"text": "نص", "textarea": "نص طويل", "date": "تاريخ",
+                    "money": "مبلغ", "number": "رقم"}
+
+
+def _gen_field_count_label(n):
+    if not n or n <= 0:
+        return ""
+    if n == 1:
+        return "حقل واحد للتعبئة"
+    return f"{n} حقول للتعبئة" if n <= 10 else f"{n} حقلًا للتعبئة"
+
+
+def _template_page(template_id):
+    """صفحة قالب موصى به من مولد العقود (SSR): الاسم/الوصف/الحقول + JSON-LD."""
+    from . import generator as _gen
+    tpl = _gen.get_recommended(template_id)
+    if not tpl or not tpl.get("file"):
+        return None, None, None
+    title = tpl.get("title") or "قالب وثيقة"
+    category = tpl.get("category") or ""
+    desc = tpl.get("description") or f"قالب «{title}» من مكتبة الوثائق المغربية."
+    fields = tpl.get("fields") or []
+    path = f"/generator/template/{template_id}"
+
+    crumbs = [("الرئيسية", "/"), ("مولد العقود", "/generator")]
+    if category:
+        crumbs.append((category, None))
+    crumbs.append((title, None))
+    bc_html = _breadcrumb_html(crumbs)
+
+    bits = [bc_html, f"<h1>{_esc(title)}</h1>", '<div class="seo-meta">']
+    if category:
+        bits.append(f'<a class="seo-badge" href="/generator">{_esc(category)}</a>')
+    if fields:
+        bits.append(f'<span class="seo-badge">{_esc(_gen_field_count_label(len(fields)))}</span>')
+    bits.append("</div>")
+    if desc:
+        bits.append(f"<p class='seo-text'>{_esc(desc)}</p>")
+    if fields:
+        bits.append("<h2>حقول التعبئة</h2><ul class='seo-links'>")
+        for f in fields:
+            label = f.get("label") or f.get("key") or ""
+            ftype = _GEN_FIELD_TYPES.get(f.get("type"), f.get("type") or "نص")
+            bits.append(f'<li>{_esc(label)} <span class="seo-small">({_esc(ftype)})</span></li>')
+        bits.append("</ul>")
+    content = "".join(bits)
+
+    site = _base_url()
+    ld_bc = [{
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "الرئيسية", "item": site + "/"},
+            {"@type": "ListItem", "position": 2, "name": "مولد العقود", "item": site + "/generator"},
+            {"@type": "ListItem", "position": 3, "name": title, "item": site + path},
+        ],
+    }]
+    ld_article = {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": title,
+        "url": site + path,
+        "description": desc,
+        "inLanguage": "ar",
+        "author": {"@type": "Organization", "name": "نبراس", "url": site},
+        "publisher": {"@type": "Organization", "name": "نبراس", "url": site},
+        "mainEntityOfPage": {"@type": "WebPage", "@id": site + path},
+    }
+    return content, title, {"description": desc, "path": path,
+                            "jsonld": ld_bc + [ld_article]}
 
 
 def _blog_page(article_id):
@@ -907,6 +981,14 @@ def render_seo(path):
         content, title, meta = _list_generator()
         return _inject(title, meta["description"], "/generator", content)
 
+    m = re.match(r"^/generator/template/([^/]+)$", path)
+    if m:
+        content, title, meta = _template_page(m.group(1))
+        if content is None:
+            return None
+        return _inject(title, meta["description"], meta["path"], content,
+                       jsonld_blocks=meta.get("jsonld", []))
+
     m = re.match(r"^/blog/(\d+)$", path)
     if m:
         content, title, meta = _blog_page(int(m.group(1)))
@@ -962,6 +1044,7 @@ def sitemap_index():
         {"loc": f"{site}/sitemaps/jurisprudence.xml", "changefreq": "weekly"},
         {"loc": f"{site}/sitemaps/procedures.xml", "changefreq": "monthly"},
         {"loc": f"{site}/sitemaps/blog.xml", "changefreq": "weekly"},
+        {"loc": f"{site}/sitemaps/documents.xml", "changefreq": "weekly"},
         {"loc": f"{site}/sitemap.xml", "changefreq": "daily"},
     ]
     # التقسيم عبر صفحات سايت ماب فرعية
@@ -1049,5 +1132,22 @@ def sitemap_blog():
     for i, lm in rows:
         lastmod = f"<lastmod>{_lastmod(lm)}</lastmod>" if (lm and str(lm).strip()) else ""
         body.append(f"<url><loc>{site}/blog/{i}</loc>{lastmod}</url>")
+    body.append("</urlset>")
+    return "".join(body)
+
+
+def sitemap_documents():
+    """صفحات قوالب مولد العقود الموصى بها (SSR) في documents.xml."""
+    from . import generator as _gen
+    site = _base_url()
+    templates = _gen.recommended_templates()
+    body = ["<?xml version='1.0' encoding='UTF-8'?>",
+            "<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>"]
+    for t in templates:
+        tid = t.get("id")
+        if not tid:
+            continue
+        body.append(f"<url><loc>{site}/generator/template/{_esc(tid)}</loc>"
+                    "<changefreq>monthly</changefreq></url>")
     body.append("</urlset>")
     return "".join(body)

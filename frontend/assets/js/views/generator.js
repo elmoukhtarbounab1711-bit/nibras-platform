@@ -644,6 +644,26 @@ export function generatorTemplateView() {
   return openTemplate(file, qs("template"), false);
 }
 
+export async function generatorTemplateByIdView(params) {
+  const tplId = decodeURIComponent(params.id || "");
+  if (!tplId) return el("div", { class: "card empty", text: "قالب غير محدد." });
+  const wrap = el("div", { class: "flex-col" });
+  wrap.append(skeleton(3, 90));
+  let data;
+  try {
+    data = await api.get("/api/generator/templates");
+  } catch (e) {
+    wrap.replaceChildren(el("div", { class: "card empty" }, [el("div", { text: e.message })]));
+    return wrap;
+  }
+  const tpl = (data.templates || []).find((t) => t && t.id === tplId);
+  if (!tpl || !tpl.file) {
+    wrap.replaceChildren(emptyState("القالب غير متوفر.", "file"));
+    return wrap;
+  }
+  return openTemplate(tpl.file, tplId, false);
+}
+
 export function generatorDocView() {
   const file = qs("file");
   if (!file) return el("div", { class: "card empty", text: "وثيقة غير محددة." });

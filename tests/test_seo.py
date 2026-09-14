@@ -289,3 +289,54 @@ def test_seo_blog_missing_returns_real_404(client):
     html = r.get_data(as_text=True)
     assert "text/html" in r.content_type
     assert "robots" in html and "noindex" in html
+
+
+@pytest.fixture()
+def gen_template_id():
+    """معرّف أول قالب موصى به من مكتبة الوثائق (إن وُجدت ملفات)."""
+    from app.generator import recommended_templates
+    templates = recommended_templates()
+    if not templates:
+        pytest.skip("مكتبة الوثائق غير متاحة في بيئة الاختبار")
+    return templates[0]["id"]
+
+
+def test_seo_generator_template_ssr(client, gen_template_id):
+    r = client.get(f"/generator/template/{gen_template_id}")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    _assert_ssr_html(html, f"/generator/template/{gen_template_id}")
+    assert len(re.findall(r"<h1>", html)) == 1, "يجب أن يكون هناك H1 واحد فقط"
+    arts = [o for o in _ld_objects(html) if o.get("@type") == "Article"]
+    assert arts, "لا توجد بيانات مهيكلة Article في صفحة القالب"
+    assert "headline" in arts[0] and "description" in arts[0]
+    assert ("حقل" in html or "تعبئة" in html), "الصفحة يجب أن تذكر حقول التعبئة"
+
+
+def test_seo_generator_template_missing_returns_real_404(client):
+    r = client.get("/generator/template/nonexistent-000")
+    assert r.status_code == 404
+    html = r.get_data(as_text=True)
+    assert "text/html" in r.content_type
+    assert "robots" in html and "noindex" in html
+
+
+def test_seo_generator_list_links_real_templates(client, gen_template_id):
+    r = client.get("/generator")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    assert f"/generator/template/{gen_template_id}" in html, \
+        "قائمة المولد يجب أن تربط بمسارات قوالب حقيقية"
+
+
+def test_seo_documents_sitemap(client, gen_template_id):
+    idx = client.get("/sitemap.xml")
+    assert idx.status_code == 200
+    idx_body = idx.get_data(as_text=True)
+    assert "/sitemaps/documents.xml" in idx_body, "فهرس الخرائط يجب أن يشمل documents.xml"
+    body = client.get("/sitemaps/documents.xml")
+    assert body.status_code == 200
+    xml = body.get_data(as_text=True)
+    assert "<urlset" in xml and "<loc>" in xml
+    assert f"/generator/template/{gen_template_id}" in xml, \
+        "documents.xml يجب أن يتضمن صفحات القوالب"

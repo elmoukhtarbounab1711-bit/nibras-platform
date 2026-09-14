@@ -67,6 +67,7 @@ register("/my-documents", lazy("./views/documents.js", "myDocumentsView"), { aut
 
 register("/generator", lazy("./views/generator.js", "generatorView"));
 register("/generator/template", lazy("./views/generator.js", "generatorTemplateView"));
+register("/generator/template/:id", lazy("./views/generator.js", "generatorTemplateByIdView"));
 register("/generator/doc", lazy("./views/generator.js", "generatorDocView"));
 
 register("/legal-french", lazy("./views/legal_french.js", "legalFrenchView"));
