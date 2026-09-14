@@ -22,7 +22,7 @@ DEBUG = _env_bool("NIBRAS_DEBUG")
 
 # النطاق الرسمي للمنصة — يُستخدم في canonical وOpen Graph وsitemaps وJSON-LD
 # وrobots.txt. يُضبط صراحةً في الإنتاج عبر NIBRAS_SITE_URL.
-SITE_URL = os.environ.get("NIBRAS_SITE_URL", "https://nibraslaw.com").rstrip("/")
+SITE_URL = os.environ.get("NIBRAS_SITE_URL", "https://nibras-law-platform.vercel.app").rstrip("/")
 # بريد التواصل العام (متطلبات الشفافية AdSense: صفحة اتصل بنا فعّالة)
 CONTACT_EMAIL = os.environ.get("NIBRAS_CONTACT_EMAIL", "elmoukhtar.bounab1711@gmail.com")
 
