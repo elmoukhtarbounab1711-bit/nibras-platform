@@ -37,6 +37,16 @@ def _ld_blocks(html):
     return re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.DOTALL)
 
 
+def _ld_objects(html):
+    """يجمع كائنات JSON-LD من كل البلوكات (كل بلوك قد يكون مصفوفة)."""
+    out = []
+    for blk in _ld_blocks(html):
+        data = json.loads(blk)
+        items = data if isinstance(data, list) else [data]
+        out.extend(o for o in items if isinstance(o, dict))
+    return out
+
+
 def _assert_ssr_html(html, expect_path):
     assert "<html" in html
     title = re.search(r"<title>(.*?)</title>", html, re.DOTALL)
@@ -119,7 +129,7 @@ def test_seo_sitemap_index_and_splits(client, ids):
     assert idx.content_type.startswith("application/xml")
     body = idx.get_data(as_text=True)
     assert "<sitemapindex" in body
-    for name in ("laws.xml", "jurisprudence.xml", "procedures.xml"):
+    for name in ("laws.xml", "jurisprudence.xml", "procedures.xml", "blog.xml"):
         assert "/sitemaps/" + name in body
 
     j = client.get("/sitemaps/jurisprudence.xml")
@@ -205,3 +215,77 @@ def test_seo_sitemaps_have_lastmod(client, fresh_db):
     main = client.get("/sitemaps/main.xml").get_data(as_text=True)
     assert re.search(r"<lastmod>\d{4}-\d{2}-\d{2}</lastmod>", main), \
         "sitemap الرئيسي يجب أن يحوي lastmod بتاريخ اليوم"
+
+
+@pytest.fixture()
+def blog_post(fresh_db):
+    """ينشئ مقالة مدوّنة منشورة في قاعدة الاختبار المعزولة ويعيد معرّفها."""
+    from app.database import db_session
+
+    with db_session() as conn:
+        author_id = conn.execute(
+            """INSERT INTO users (email, full_name, password_hash, status, tenant_id,
+                                  consent_data_processing, consent_terms)
+               VALUES (?, ?, ?, 'active', NULL, 1, 1)""",
+            ("blog@seo.test", "كاتب تجريبي", "seed-only-hash-not-for-login"),
+        ).lastrowid
+        madani = conn.execute(
+            "SELECT id FROM blog_categories WHERE slug='madani'"
+        ).fetchone()
+        if not madani:
+            pytest.skip("فئة المدونة madani غير متاحة في بيانات الاختبار")
+        article_id = conn.execute(
+            """INSERT INTO blog_articles
+               (user_id, category_id, title, summary, body, keywords, status,
+                published_at, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, 'published', datetime('now'), datetime('now'))""",
+            (author_id, madani[0],
+             "شرح المادة 230 من قانون الالتزامات والعقود",
+             "شرح مبسط لمبدأ العقد شريعة المتعاقدين.",
+             "المادة 230 من قانون الالتزامات والعقود تقر أن العقد شريعة المتعاقدين.",
+             "عقد,التزامات,قانون مدني"),
+        ).lastrowid
+    return article_id
+
+
+def test_seo_blog_list_ssr(client, blog_post):
+    r = client.get("/blog")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    _assert_ssr_html(html, "/blog")
+    assert "المدونة" in html or "مدوّنة" in html, "صفحة المدونة يجب أن تذكر المدونة"
+    assert len(re.findall(r"<h1>", html)) == 1, "يجب أن يكون هناك H1 واحد فقط"
+    assert f"/blog/{blog_post}" in html, "قائمة المدونة يجب أن تدرج المقال المنشور"
+
+
+def test_seo_blog_article_ssr(client, blog_post):
+    article_id = blog_post
+    r = client.get(f"/blog/{article_id}")
+    assert r.status_code == 200
+    html = r.get_data(as_text=True)
+    _assert_ssr_html(html, f"/blog/{article_id}")
+    assert len(re.findall(r"<h1>", html)) == 1, "يجب أن يكون هناك H1 واحد فقط"
+    blogs = [o for o in _ld_objects(html) if o.get("@type") == "BlogPosting"]
+    assert blogs, "لا توجد بيانات مهيكلة BlogPosting في صفحة المقال"
+    assert "headline" in blogs[0], "BlogPosting يجب أن يحوي headline"
+    assert "الالتزامات والعقود" in html, "الصفحة يجب أن تعرض محتوى المقال"
+
+
+def test_seo_blog_sitemap(client, blog_post):
+    idx = client.get("/sitemap.xml")
+    assert idx.status_code == 200
+    idx_body = idx.get_data(as_text=True)
+    assert "/sitemaps/blog.xml" in idx_body, "فهرس الخرائط يجب أن يشمل blog.xml"
+    body = client.get("/sitemaps/blog.xml")
+    assert body.status_code == 200
+    xml = body.get_data(as_text=True)
+    assert "<urlset" in xml and "<loc>" in xml
+    assert f"/blog/{blog_post}" in xml, "blog.xml يجب أن يتضمن المقالات المنشورة"
+
+
+def test_seo_blog_missing_returns_real_404(client):
+    r = client.get("/blog/999999999")
+    assert r.status_code == 404
+    html = r.get_data(as_text=True)
+    assert "text/html" in r.content_type
+    assert "robots" in html and "noindex" in html

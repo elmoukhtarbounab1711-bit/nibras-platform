@@ -249,6 +249,25 @@ def _get_procedure(slug):
         return p
 
 
+def _get_article(article_id):
+    """مقال مدوّنة منشور واحد فقط (SSR للزحف — لا internal ولا مسوّدة)."""
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT a.id, a.title, a.summary, a.body, a.keywords, a.cover_url, "
+            "a.published_at, a.updated_at, a.views, "
+            "u.full_name AS author_name, "
+            "bc.name AS category_name, bc.slug AS category_slug, "
+            "j.name AS jurisdiction_name "
+            "FROM blog_articles a "
+            "JOIN users u ON u.id = a.user_id "
+            "LEFT JOIN blog_categories bc ON bc.id = a.category_id "
+            "LEFT JOIN law_jurisdictions j ON j.id = a.jurisdiction_id "
+            "WHERE a.id = ? AND a.status = 'published'",
+            (article_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
 def _type_label(t):
     return {
         "law": "قانون", "decree": "مرسوم", "dahir": "ظهير", "decision": "قرار",
@@ -745,6 +764,100 @@ def _list_generator():
     return "".join(bits), title, {"description": desc}
 
 
+def _blog_page(article_id):
+    """صفحة مقال واحد من المدوّنة (SSR) مع JSON-LD نوع BlogPosting."""
+    a = _get_article(article_id)
+    if not a:
+        return None, None, None
+    title = a.get("title") or "مقال"
+    cat = a.get("category_name")
+    author = a.get("author_name") or "نبراس"
+    desc = _art_label(a.get("summary") or f"{title} — من مدوّنة نبراس القانونية.", 160)
+    crumbs = [("الرئيسية", "/"), ("المدونة", "/blog"), (cat or "المقال", None)]
+    bc_html = _breadcrumb_html(crumbs)
+
+    bits = [bc_html, f"<h1>{_esc(title)}</h1>", '<div class="seo-meta">']
+    if cat:
+        bits.append(f'<a class="seo-badge" href="/blog?cat={_esc(a.get("category_slug") or "")}">{_esc(cat)}</a>')
+    if a.get("published_at"):
+        bits.append(f'<span class="seo-badge">{_esc(a["published_at"][:10])}</span>')
+    if author:
+        bits.append(f'<span class="seo-badge">بقلم {_esc(author)}</span>')
+    bits.append("</div>")
+    if a.get("summary"):
+        bits.append(f"<p class='seo-text'>{_esc(a['summary'])}</p>")
+    if a.get("body"):
+        bits.append(f"<div class='seo-text'>{_esc(a['body'])}</div>")
+
+    content = "".join(bits)
+    site = _base_url()
+    ld_bc = [{
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": 1, "name": "الرئيسية", "item": site + "/"},
+            {"@type": "ListItem", "position": 2, "name": "المدونة", "item": site + "/blog"},
+            {"@type": "ListItem", "position": 3, "name": title, "item": site + f"/blog/{article_id}"},
+        ],
+    }]
+    ld_article = {
+        "@context": "https://schema.org",
+        "@type": "BlogPosting",
+        "headline": title,
+        "url": site + f"/blog/{article_id}",
+        "description": desc,
+        "inLanguage": "ar",
+        "author": {"@type": "Person", "name": author},
+        "publisher": {"@type": "Organization", "name": "نبراس", "url": site},
+        "mainEntityOfPage": {"@type": "WebPage", "@id": site + f"/blog/{article_id}"},
+    }
+    if a.get("published_at"):
+        ld_article["datePublished"] = a["published_at"].replace(" ", "T")
+    if a.get("updated_at"):
+        ld_article["dateModified"] = a["updated_at"].replace(" ", "T")
+    if a.get("cover_url"):
+        ld_article["image"] = {"@type": "ImageObject", "url": a["cover_url"]}
+    if a.get("keywords"):
+        ld_article["keywords"] = a["keywords"]
+
+    return content, title, {"description": desc, "path": f"/blog/{article_id}",
+                             "jsonld": ld_bc + [ld_article], "type": "BlogPosting"}
+
+
+def _list_blog():
+    """قائمة المقالات المنشورة (SSR) — أول 50 مقالاً بأحدث النشر."""
+    with db_session() as conn:
+        rows = conn.execute(
+            "SELECT a.id, a.title, a.summary, a.published_at, "
+            "u.full_name AS author_name, bc.name AS category_name, bc.slug AS category_slug "
+            "FROM blog_articles a "
+            "JOIN users u ON u.id = a.user_id "
+            "LEFT JOIN blog_categories bc ON bc.id = a.category_id "
+            "WHERE a.status = 'published' "
+            "ORDER BY a.published_at DESC, a.id DESC LIMIT 50"
+        ).fetchall()
+    bits = [
+        ('<nav aria-label="Breadcrumb" class="seo-breadcrumb"><ol>'
+         '<li><a href="/">الرئيسية</a></li>'
+         '<li aria-current="page">المدونة</li></ol></nav>'),
+        "<h1>مدوّنة نبراس القانونية</h1>",
+        "<p>مقالات وشروحات قانونية مغربية: تفسير نصوص، مبادئ قضائية، ومقالات موضوعية.</p>",
+        '<ul class="seo-links">',
+    ]
+    for r in rows:
+        label = r["title"]
+        meta_bits = []
+        if r["category_name"]:
+            meta_bits.append(_esc(r["category_name"]))
+        if r["published_at"]:
+            meta_bits.append(_esc(r["published_at"][:10]))
+        suffix = f" ({', '.join(meta_bits)})" if meta_bits else ""
+        bits.append(f'<li><a href="/blog/{r["id"]}">{_esc(label)}</a>{suffix}</li>')
+    bits.append("</ul>")
+    return "".join(bits), "مدوّنة نبراس القانونية", \
+           {"description": "مقالات وشروحات قانونية مغربية من نبراس: تفسير النصوص، مبادئ قضائية، ودراسات موضوعية."}
+
+
 # ---------------------------------------------------------------------------
 # الراوتر الداخلي لصفحات SEO
 # ---------------------------------------------------------------------------
@@ -794,6 +907,18 @@ def render_seo(path):
         content, title, meta = _list_generator()
         return _inject(title, meta["description"], "/generator", content)
 
+    m = re.match(r"^/blog/(\d+)$", path)
+    if m:
+        content, title, meta = _blog_page(int(m.group(1)))
+        if content is None:
+            return None
+        return _inject(title, meta["description"], meta["path"], content,
+                       jsonld_blocks=meta.get("jsonld", []))
+
+    if path == "/blog":
+        content, title, meta = _list_blog()
+        return _inject(title, meta["description"], "/blog", content)
+
     m = re.match(r"^/domains/([^/]+)$", path)
     if m:
         page = _domain_page(m.group(1))
@@ -836,6 +961,7 @@ def sitemap_index():
         {"loc": f"{site}/sitemaps/laws.xml", "changefreq": "weekly"},
         {"loc": f"{site}/sitemaps/jurisprudence.xml", "changefreq": "weekly"},
         {"loc": f"{site}/sitemaps/procedures.xml", "changefreq": "monthly"},
+        {"loc": f"{site}/sitemaps/blog.xml", "changefreq": "weekly"},
         {"loc": f"{site}/sitemap.xml", "changefreq": "daily"},
     ]
     # التقسيم عبر صفحات سايت ماب فرعية
@@ -907,5 +1033,21 @@ def sitemap_procedures():
             "<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>"]
     for s in slugs:
         body.append(f"<url><loc>{site}/procedures/{_esc(s)}</loc></url>")
+    body.append("</urlset>")
+    return "".join(body)
+
+
+def sitemap_blog():
+    """مقالات المدوّنة المنشورة فقط، مع lastmod من آخر تحديث/نشر."""
+    site = _base_url()
+    with db_session() as conn:
+        rows = conn.execute(
+            "SELECT id, COALESCE(updated_at, published_at) AS lm "
+            "FROM blog_articles WHERE status='published' ORDER BY id").fetchall()
+    body = ["<?xml version='1.0' encoding='UTF-8'?>",
+            "<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>"]
+    for i, lm in rows:
+        lastmod = f"<lastmod>{_lastmod(lm)}</lastmod>" if (lm and str(lm).strip()) else ""
+        body.append(f"<url><loc>{site}/blog/{i}</loc>{lastmod}</url>")
     body.append("</urlset>")
     return "".join(body)
