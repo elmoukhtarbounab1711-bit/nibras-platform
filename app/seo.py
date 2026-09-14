@@ -14,6 +14,7 @@ Server-Side Rendering (SSR) لصفحات SEO الحقيقية في نبراس.
 كل البيانات مستخرجة فعلًا من قاعدة البيانات — لا تُختلق أي بيانات قانونية.
 """
 import html as _html
+import logging as _logging
 import re
 from pathlib import Path
 
@@ -23,6 +24,27 @@ from . import config
 from .database import db_session
 
 SITE = config.SITE_URL
+
+
+def _log(level: int, msg: str) -> None:
+    """تسجيل بسيط آمن الترميز لرسائل نبراس SEO."""
+    _logging.getLogger("nibras.seo").log(level, "%s", msg)
+
+
+# --------------------------------------------------------------------
+# حارس نطاق (P2-final): لو ضُبط NIBRAS_SITE_URL بيئةً على نطاق متوقف
+# يتبقّى منه سوى صفحة استضافة ميتة، يُرفض الحرفيًّا عند البث بدل
+# canonical متوفٍّ (سقوط فهرسة كامل سابقًا — تقرير التدقيق §P2).
+# # النطاق الحالي الحي يُزاح إلى الأمام دائمًا مهما حاولت البيئة.
+# --------------------------------------------------------------------
+_DEAD_DOMAINS = ('nibraslaw.com',)
+
+if SITE and any(_d in SITE for _d in _DEAD_DOMAINS):
+    _log(_logging.WARNING, "... راقى متغيّر NIBRAS_SITE_URL إلى نطاق متوقف "
+              + "لا يخدم الآن إلا صفحة استضافة؛ أثبت canonical إلى النطاق الحي.")
+    SITE = 'https://nibras-law-platform.vercel.app/'.rstrip("/")
+    _log(_logging.INFO, f"[seo] canonical forced LIVE => {SITE}")
+
 _TEMPLATE = None
 
 
